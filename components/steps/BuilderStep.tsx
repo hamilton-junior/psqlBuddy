@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { DatabaseSchema, BuilderState } from '../../types';
-import { Layers, CheckCircle2, ChevronRight, Settings2, RefreshCw, Search, X } from 'lucide-react';
+import { Layers, CheckCircle2, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square } from 'lucide-react';
 
 interface BuilderStepProps {
   schema: DatabaseSchema;
@@ -62,6 +62,12 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     }
     
     onStateChange({ ...state, selectedTables: newTables, selectedColumns: newCols });
+  };
+
+  const selectNoneColumns = (tableName: string) => {
+    // Remove all columns belonging to this table from selection
+    const newCols = state.selectedColumns.filter(c => !c.startsWith(`${tableName}.`));
+    onStateChange({ ...state, selectedColumns: newCols });
   };
 
   const filteredTables = schema.tables.filter(table => 
@@ -126,9 +132,9 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                    <div 
                      key={table.name}
                      onClick={() => toggleTable(table.name)}
-                     className={`p-3 rounded-lg cursor-pointer transition-all border ${
+                     className={`p-3 rounded-lg cursor-pointer transition-all border-2 relative ${
                        isSelected 
-                        ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
+                        ? 'bg-indigo-50 border-indigo-500 shadow-md z-10' 
                         : 'hover:bg-slate-50 border-transparent'
                      }`}
                    >
@@ -136,7 +142,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                        <span className={`font-bold ${isSelected ? 'text-indigo-700' : 'text-slate-700'}`}>
                           {table.name}
                        </span>
-                       {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+                       {isSelected && <CheckCircle2 className="w-5 h-5 text-indigo-600 drop-shadow-sm" />}
                      </div>
                      <p className="text-xs text-slate-500 line-clamp-2">{table.description || 'No description'}</p>
                    </div>
@@ -169,12 +175,24 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                      <div key={tableName} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
                          <h4 className="font-mono font-bold text-indigo-600 text-sm">{tableName}</h4>
-                         <button 
-                           onClick={() => selectAllColumns(tableName)}
-                           className="text-[10px] uppercase font-bold text-slate-400 hover:text-indigo-600 tracking-wider"
-                         >
-                           Select All
-                         </button>
+                         <div className="flex gap-2">
+                            <button 
+                              onClick={() => selectAllColumns(tableName)}
+                              className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-400 hover:text-indigo-600 tracking-wider transition-colors"
+                              title="Select all columns"
+                            >
+                              <CheckSquare className="w-3 h-3" />
+                              All
+                            </button>
+                            <button 
+                              onClick={() => selectNoneColumns(tableName)}
+                              className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-400 hover:text-slate-600 tracking-wider transition-colors"
+                              title="Deselect all columns"
+                            >
+                              <Square className="w-3 h-3" />
+                              None
+                            </button>
+                         </div>
                        </div>
                        <div className="grid grid-cols-2 gap-2">
                          {table.columns.map(col => {
@@ -183,7 +201,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                              <label 
                                key={col.name} 
                                className={`flex items-center p-2 rounded border cursor-pointer transition-all ${
-                                 isChecked ? 'bg-indigo-50/50 border-indigo-200' : 'border-slate-100 hover:border-slate-200'
+                                 isChecked ? 'bg-indigo-50/50 border-indigo-200 shadow-sm' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'
                                }`}
                              >
                                <input 
