@@ -9,21 +9,28 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
+console.log(`Starting server...`);
+
 // Endpoint to test connection and fetch schema
 app.post('/api/connect', async (req, res) => {
-  const { host, port, user, password, database } = req.body;
+  console.log('--- Received connection request ---');
+  const { host, port, user, database } = req.body;
+  console.log(`Target: ${user}@${host}:${port}/${database}`);
   
   const client = new Client({
     host,
     port: parseInt(port),
     user,
-    password,
+    password: req.body.password,
     database,
-    ssl: false // For local dev, usually SSL is off. Change if connecting to cloud DBs.
+    ssl: false,
+    connectionTimeoutMillis: 5000 // Fail fast if unreachable
   });
 
   try {
+    console.log('Attempting to connect to Postgres...');
     await client.connect();
+    console.log('Connected successfully. Fetching schema...');
 
     // Query to extract schema information
     const schemaQuery = `
@@ -47,6 +54,7 @@ app.post('/api/connect', async (req, res) => {
     `;
 
     const result = await client.query(schemaQuery);
+    console.log(`Schema query returned ${result.rows.length} rows.`);
     
     // Transform raw rows into the app's DatabaseSchema format
     const tablesMap = {};
@@ -56,11 +64,11 @@ app.post('/api/connect', async (req, res) => {
         tablesMap[row.table_name] = {
           name: row.table_name,
           columns: [],
-          description: "" // Postgres doesn't store descriptions easily accessible here without complex queries
+          description: "" 
         };
       }
 
-      // check if column already exists (due to multiple constraints causing duplicates)
+      // check if column already exists
       const existingCol = tablesMap[row.table_name].columns.find(c => c.name === row.column_name);
       if (existingCol) {
         if (row.constraint_type === 'PRIMARY KEY') existingCol.isPrimaryKey = true;
@@ -86,18 +94,27 @@ app.post('/api/connect', async (req, res) => {
       connectionSource: 'real'
     };
 
-    await client.end();
+    console.log('Schema parsed successfully. Sending response.');
     res.json(schema);
 
   } catch (error) {
-    console.error("Connection Error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("CONNECTION ERROR:", error.message);
+    res.status(500).json({ error: `Database Error: ${error.message}` });
+  } finally {
+    try {
+      await client.end();
+      console.log('Connection closed.');
+    } catch (e) {
+      // ignore close errors
+    }
   }
 });
 
 // Endpoint to execute SQL
 app.post('/api/execute', async (req, res) => {
+  console.log('--- Received execution request ---');
   const { credentials, sql } = req.body;
+  console.log(`Executing on ${credentials.database}: ${sql.substring(0, 50)}...`);
   
   const client = new Client({
     host: credentials.host,
@@ -111,14 +128,19 @@ app.post('/api/execute', async (req, res) => {
   try {
     await client.connect();
     const result = await client.query(sql);
-    await client.end();
+    console.log(`Query successful. Returned ${result.rows.length} rows.`);
     res.json(result.rows);
   } catch (error) {
-    console.error("Query Error:", error);
+    console.error("QUERY ERROR:", error.message);
     res.status(500).json({ error: error.message });
+  } finally {
+    try {
+      await client.end();
+    } catch (e) {}
   }
 });
 
 app.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
+  console.log(`Ready to accept connections.`);
 });
