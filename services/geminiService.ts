@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseSchema, QueryResult, ValidationResult, BuilderState } from "../types";
 
