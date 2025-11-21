@@ -28,75 +28,104 @@ app.post('/api/connect', async (req, res) => {
   });
 
   try {
-    console.log('Attempting to connect to Postgres...');
+    console.log("Attempting to connect to Postgres...");
     await client.connect();
-    console.log('Connected successfully. Fetching schema...');
+    console.log("Connected successfully. Fetching schema...");
 
-    // Query to extract schema information
-    const schemaQuery = `
-      SELECT 
-        t.table_name,
-        c.column_name,
-        c.data_type,
-        tc.constraint_type,
+    // Query to extract schema information (optimized)
+    const tablesQuery = `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+      ORDER BY table_name;
+    `;
+    const columnsQuery = `
+      SELECT table_name, column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+      ORDER BY table_name, ordinal_position;
+    `;
+    const pkQuery = `
+      SELECT
+        kcu.table_name,
+        kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name
+      WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public';
+    `;
+    const fkQuery = `
+      SELECT
+        kcu.table_name,
+        kcu.column_name,
         ccu.table_name AS foreign_table_name,
         ccu.column_name AS foreign_column_name
-      FROM information_schema.tables t
-      JOIN information_schema.columns c ON t.table_name = c.table_name
-      LEFT JOIN information_schema.key_column_usage kcu 
-        ON c.table_name = kcu.table_name AND c.column_name = kcu.column_name
-      LEFT JOIN information_schema.table_constraints tc 
-        ON kcu.constraint_name = tc.constraint_name
-      LEFT JOIN information_schema.constraint_column_usage ccu 
-        ON tc.constraint_name = ccu.constraint_name
-      WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
-      ORDER BY t.table_name, c.ordinal_position;
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name
+      JOIN information_schema.constraint_column_usage ccu
+        ON ccu.constraint_name = tc.constraint_name
+      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public';
     `;
 
-    const result = await client.query(schemaQuery);
-    console.log(`Schema query returned ${result.rows.length} rows.`);
-    
-    // Transform raw rows into the app's DatabaseSchema format
+    const [tablesRes, columnsRes, pkRes, fkRes] = await Promise.all([
+      client.query(tablesQuery),
+      client.query(columnsQuery),
+      client.query(pkQuery),
+      client.query(fkQuery),
+    ]);
+
+    // Build schema
     const tablesMap = {};
+    tablesRes.rows.forEach((row) => {
+      tablesMap[row.table_name] = {
+        name: row.table_name,
+        columns: [],
+        description: "",
+      };
+    });
 
-    result.rows.forEach(row => {
-      if (!tablesMap[row.table_name]) {
-        tablesMap[row.table_name] = {
-          name: row.table_name,
-          columns: [],
-          description: "" 
-        };
+    columnsRes.rows.forEach((row) => {
+      if (tablesMap[row.table_name]) {
+        tablesMap[row.table_name].columns.push({
+          name: row.column_name,
+          type: row.data_type,
+          isPrimaryKey: false,
+          isForeignKey: false,
+          references: undefined,
+        });
       }
+    });
 
-      // check if column already exists
-      const existingCol = tablesMap[row.table_name].columns.find(c => c.name === row.column_name);
-      if (existingCol) {
-        if (row.constraint_type === 'PRIMARY KEY') existingCol.isPrimaryKey = true;
-        if (row.constraint_type === 'FOREIGN KEY') {
-          existingCol.isForeignKey = true;
-          existingCol.references = `${row.foreign_table_name}.${row.foreign_column_name}`;
+    pkRes.rows.forEach((row) => {
+      if (tablesMap[row.table_name] && tablesMap[row.table_name].columns) {
+        const col = tablesMap[row.table_name].columns.find(
+          (c) => c.name === row.column_name
+        );
+        if (col) col.isPrimaryKey = true;
+      }
+    });
+
+    fkRes.rows.forEach((row) => {
+      if (tablesMap[row.table_name] && tablesMap[row.table_name].columns) {
+        const col = tablesMap[row.table_name].columns.find(
+          (c) => c.name === row.column_name
+        );
+        if (col) {
+          col.isForeignKey = true;
+          col.references = `${row.foreign_table_name}.${row.foreign_column_name}`;
         }
-        return;
       }
-
-      tablesMap[row.table_name].columns.push({
-        name: row.column_name,
-        type: row.data_type,
-        isPrimaryKey: row.constraint_type === 'PRIMARY KEY',
-        isForeignKey: row.constraint_type === 'FOREIGN KEY',
-        references: row.constraint_type === 'FOREIGN KEY' ? `${row.foreign_table_name}.${row.foreign_column_name}` : undefined
-      });
     });
 
     const schema = {
       name: database,
       tables: Object.values(tablesMap),
-      connectionSource: 'real'
+      connectionSource: "real",
     };
 
-    console.log('Schema parsed successfully. Sending response.');
+    console.log("Schema parsed successfully. Sending response.");
     res.json(schema);
-
   } catch (error) {
     console.error("CONNECTION ERROR:", error.message);
     res.status(500).json({ error: `Database Error: ${error.message}` });
