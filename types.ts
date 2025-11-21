@@ -34,9 +34,38 @@ export interface QueryResult {
 
 export type AppStep = 'connection' | 'builder' | 'preview' | 'results';
 
+export type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'ILIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL';
+export type JoinType = 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
+
+export interface Filter {
+  id: string;
+  column: string;
+  operator: Operator;
+  value: string;
+}
+
+export interface ExplicitJoin {
+  id: string;
+  fromTable: string;
+  fromColumn: string;
+  type: JoinType;
+  toTable: string;
+  toColumn: string;
+}
+
+export interface OrderBy {
+  id: string;
+  column: string;
+  direction: 'ASC' | 'DESC';
+}
+
 export interface BuilderState {
   selectedTables: string[];
   selectedColumns: string[]; // Format: "tableName.columnName"
+  joins: ExplicitJoin[];
+  filters: Filter[];
+  groupBy: string[];
+  orderBy: OrderBy[];
   limit: number;
 }
 

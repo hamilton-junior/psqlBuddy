@@ -85,15 +85,18 @@ export const generateSqlFromBuilderState = async (
 
   const systemInstruction = `
     You are an expert PostgreSQL Query Builder.
-    Construct a valid SQL query based on the user's visual selection of tables and columns.
+    Construct a valid SQL query based on the user's visual selection of tables, columns, and explicit logic.
     
     Rules:
-    1. Select ONLY the columns specified in "Target Columns".
-    2. Automatically determine the correct JOIN syntax (INNER/LEFT) based on the foreign keys in the schema to connect the "Selected Tables".
-    3. Apply the LIMIT clause as requested.
-    4. CRITICAL: Ensure strict whitespace rules. ALWAYS put a space after keywords (SELECT, FROM, WHERE, LIMIT, JOIN, ON).
-    5. NEVER concatenate keywords with identifiers (e.g. "SELECTid" is forbidden, must be "SELECT id").
-    6. Format the SQL nicely (newlines and indentation) within the JSON string to be readable.
+    1. Select ONLY the columns specified in "Target Columns". If "Target Columns" is empty but tables are selected, select all columns from those tables.
+    2. JOINS: Use the "Explicit Joins" if provided. If no explicit joins are provided but multiple tables are selected, automatically determine the correct JOIN syntax (INNER/LEFT) based on foreign keys.
+    3. FILTERS: Apply all provided "Filters" in the WHERE clause.
+    4. GROUP BY: Apply the GROUP BY clause if "Group By Columns" are provided.
+    5. ORDER BY: Apply the ORDER BY clause if "Order By Rules" are provided.
+    6. LIMIT: Apply the LIMIT clause.
+    7. CRITICAL: Ensure strict whitespace rules. ALWAYS put a space after keywords (SELECT, FROM, WHERE, LIMIT, JOIN, ON, GROUP BY, ORDER BY).
+    8. NEVER concatenate keywords with identifiers (e.g. "SELECTid" is forbidden, must be "SELECT id").
+    9. Format the SQL nicely (newlines and indentation) within the JSON string to be readable.
   `;
 
   const prompt = `
@@ -103,9 +106,13 @@ export const generateSqlFromBuilderState = async (
     Visual Builder State:
     - Selected Tables: ${state.selectedTables.join(', ')}
     - Target Columns: ${state.selectedColumns.join(', ')}
+    - Explicit Joins: ${JSON.stringify(state.joins)}
+    - Filters (WHERE): ${JSON.stringify(state.filters)}
+    - Group By Columns: ${state.groupBy.join(', ')}
+    - Order By Rules: ${JSON.stringify(state.orderBy)}
     - Limit: ${state.limit}
 
-    Generate the SQL query and an explanation of the automatically generated JOINs.
+    Generate the SQL query and an explanation of the logic.
   `;
 
   try {
@@ -135,21 +142,16 @@ export const generateSqlFromBuilderState = async (
       const result = JSON.parse(response.text) as QueryResult;
       
       // Safety net: regex post-processing to ensure whitespace around key keywords
-      // This fixes issues where the AI might output "SELECTid" or "tableFROM"
       let fixedSql = result.sql;
-      
-      // Ensure space after SELECT if missing (and it's at start of string)
       fixedSql = fixedSql.replace(/^SELECT(?=[^\s])/i, 'SELECT ');
-      
-      // Ensure space before FROM if missing (e.g. "columnFROM")
       fixedSql = fixedSql.replace(/([^\s])FROM/gi, '$1 FROM');
-      // Ensure space after FROM if missing (e.g. "FROMtable")
       fixedSql = fixedSql.replace(/FROM(?=[^\s])/gi, 'FROM ');
-      
-      // Ensure space before LIMIT
       fixedSql = fixedSql.replace(/([^\s])LIMIT/gi, '$1 LIMIT');
-      // Ensure space after LIMIT
       fixedSql = fixedSql.replace(/LIMIT(?=[^\s])/gi, 'LIMIT ');
+      fixedSql = fixedSql.replace(/([^\s])WHERE/gi, '$1 WHERE');
+      fixedSql = fixedSql.replace(/WHERE(?=[^\s])/gi, 'WHERE ');
+      fixedSql = fixedSql.replace(/([^\s])ORDER/gi, '$1 ORDER');
+      fixedSql = fixedSql.replace(/([^\s])GROUP/gi, '$1 GROUP');
 
       result.sql = fixedSql;
 
@@ -181,7 +183,6 @@ export const generateMockData = async (
       contents: prompt,
       config: {
         responseMimeType: "application/json"
-        // Note: responseSchema removed to allow dynamic object keys in the array
       }
     });
 

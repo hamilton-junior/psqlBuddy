@@ -17,6 +17,10 @@ function App() {
   const [builderState, setBuilderState] = useState<BuilderState>({
     selectedTables: [],
     selectedColumns: [],
+    joins: [],
+    filters: [],
+    groupBy: [],
+    orderBy: [],
     limit: 100
   });
   
@@ -30,7 +34,15 @@ function App() {
   const handleSchemaLoaded = (newSchema: DatabaseSchema) => {
     setSchema(newSchema);
     // Reset downstream state
-    setBuilderState({ selectedTables: [], selectedColumns: [], limit: 100 });
+    setBuilderState({ 
+      selectedTables: [], 
+      selectedColumns: [], 
+      joins: [],
+      filters: [],
+      groupBy: [],
+      orderBy: [],
+      limit: 100 
+    });
     setQueryResult(null);
     setMockResults([]);
     setCurrentStep('builder');
