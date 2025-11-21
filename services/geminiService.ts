@@ -1,7 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseSchema, QueryResult, ValidationResult, BuilderState } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Vite will replace 'process.env.API_KEY' with the actual string from your .env file at build time.
+// @ts-ignore: process is defined via Vite config
+const apiKey = process.env.API_KEY;
+
+const ai = new GoogleGenAI({ apiKey: apiKey });
 
 const SCHEMA_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
