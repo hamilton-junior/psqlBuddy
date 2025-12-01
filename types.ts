@@ -29,7 +29,8 @@ export interface DbCredentials {
 
 export interface ValidationResult {
   isValid: boolean;
-  error?: string;
+  error?: string; // Short technical error
+  detailedError?: string; // Longer, helpful explanation
   correctedSql?: string;
 }
 
@@ -67,15 +68,50 @@ export interface OrderBy {
   direction: 'ASC' | 'DESC';
 }
 
+export type AggregateFunction = 'NONE' | 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+
 export interface BuilderState {
   selectedTables: string[];
   selectedColumns: string[]; // Format: "tableName.columnName"
+  aggregations: Record<string, AggregateFunction>; // Format: { "tableName.columnName": "COUNT" }
   joins: ExplicitJoin[];
   filters: Filter[];
   groupBy: string[];
   orderBy: OrderBy[];
   limit: number;
 }
+
+export interface SavedQuery {
+  id: string;
+  name: string;
+  createdAt: number;
+  schemaName: string; // To ensure we only load queries for the correct DB
+  state: BuilderState;
+}
+
+export interface AppSettings {
+  theme: 'light' | 'dark';
+  defaultDbHost: string;
+  defaultDbPort: string;
+  defaultDbUser: string;
+  defaultDbName: string;
+  defaultLimit: number;
+  enableAiGeneration: boolean; // Master switch for AI
+  enableAiValidation: boolean;
+  enableAiTips: boolean;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  theme: 'light',
+  defaultDbHost: 'localhost',
+  defaultDbPort: '5432',
+  defaultDbUser: 'postgres',
+  defaultDbName: '',
+  defaultLimit: 100,
+  enableAiGeneration: true,
+  enableAiValidation: true,
+  enableAiTips: true
+};
 
 export enum MessageRole {
   USER = 'user',
