@@ -309,6 +309,9 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
                       {getSortedColumns(table.columns).map((col) => {
                          const targetTable = col.references ? col.references.split('.')[0] : null;
                          const isMatch = searchTerm && col.name.toLowerCase().includes(searchTerm.toLowerCase());
+                         const tooltipText = col.isForeignKey && col.references 
+                            ? `${col.name} references ${col.references}` 
+                            : col.name;
                          
                          return (
                           <div 
@@ -326,8 +329,8 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
                             
                             <div className="flex-1 flex justify-between items-center min-w-0">
                                <div className="flex flex-col truncate">
-                                  <div className="flex items-center">
-                                    <span className={`font-mono ${col.isForeignKey ? 'text-blue-700 font-medium' : 'text-slate-700'}`} title={col.name}>
+                                  <div className="flex items-center" title={tooltipText}>
+                                    <span className={`font-mono ${col.isForeignKey ? 'text-blue-700 font-medium' : 'text-slate-700'}`}>
                                       {col.name}
                                     </span>
                                     {/* Link Icon next to name for FK */}
