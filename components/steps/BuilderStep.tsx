@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { DatabaseSchema, BuilderState, ExplicitJoin, JoinType, Filter, Operator, OrderBy, AppSettings, SavedQuery, AggregateFunction } from '../../types';
+import React, { useState, useMemo, useEffect, useCallback, useDeferredValue, memo } from 'react';
+import { DatabaseSchema, BuilderState, ExplicitJoin, JoinType, Filter, Operator, OrderBy, AppSettings, SavedQuery, AggregateFunction, Column } from '../../types';
 import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square, Plus, Trash2, ArrowRightLeft, Filter as FilterIcon, ArrowDownAZ, List, Link2, Check, ChevronDown, Pin, XCircle, Undo2, Redo2, Save, FolderOpen, Calendar, Clock, Sigma, Key, Combine, ArrowRight, ArrowLeft } from 'lucide-react';
 
 interface BuilderStepProps {
@@ -14,9 +14,208 @@ interface BuilderStepProps {
 
 type TabType = 'columns' | 'joins' | 'filters' | 'sortgroup';
 
+// --- Sub-components Memoized for Performance ---
+
+interface ColumnItemProps {
+  col: Column;
+  tableName: string;
+  isSelected: boolean;
+  aggregation: AggregateFunction;
+  onToggle: (tableName: string, colName: string) => void;
+  onAggregationChange: (tableName: string, colName: string, func: AggregateFunction) => void;
+}
+
+const ColumnItem = memo(({ col, tableName, isSelected, aggregation, onToggle, onAggregationChange }: ColumnItemProps) => {
+  return (
+    <div 
+      onClick={() => onToggle(tableName, col.name)}
+      className={`flex items-center p-2 rounded border cursor-pointer transition-all duration-200 ease-in-out relative group ${
+        isSelected 
+          ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500 shadow-sm z-10' 
+          : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 hover:scale-[1.01]'
+      }`}
+    >
+      <div className={`w-4 h-4 rounded border flex items-center justify-center mr-2 transition-all shrink-0 ${
+          isSelected ? 'bg-indigo-600 border-indigo-600 shadow-sm' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
+        }`}>
+         {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-[1px]"></div>}
+      </div>
+      <div className="flex-1 min-w-0 pr-8">
+         <div className={`text-sm font-medium truncate transition-colors ${isSelected ? 'text-indigo-900 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-300'}`}>{col.name}</div>
+         <div className="text-[10px] text-slate-400">{col.type}</div>
+      </div>
+
+      {/* Aggregation Selector (Visible when checked) */}
+      {isSelected && (
+         <div 
+           className="absolute right-1 top-1/2 -translate-y-1/2"
+           onClick={e => e.stopPropagation()}
+         >
+            <select
+               value={aggregation}
+               onChange={(e) => onAggregationChange(tableName, col.name, e.target.value as AggregateFunction)}
+               className={`text-[10px] font-bold uppercase rounded px-1 py-0.5 outline-none border cursor-pointer transition-colors ${
+                  aggregation !== 'NONE' 
+                    ? 'bg-indigo-600 text-white border-indigo-600' 
+                    : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'
+               }`}
+            >
+               <option value="NONE">--</option>
+               <option value="COUNT">CNT</option>
+               <option value="SUM">SUM</option>
+               <option value="AVG">AVG</option>
+               <option value="MIN">MIN</option>
+               <option value="MAX">MAX</option>
+            </select>
+         </div>
+      )}
+    </div>
+  );
+}, (prev, next) => {
+  return prev.isSelected === next.isSelected && 
+         prev.aggregation === next.aggregation && 
+         prev.col.name === next.col.name &&
+         prev.tableName === next.tableName;
+});
+
+interface TableCardProps {
+  table: { name: string, columns: Column[] };
+  selectedColumns: string[];
+  aggregations: Record<string, AggregateFunction>;
+  isCollapsed: boolean;
+  colSearchTerm: string;
+  onToggleCollapse: (tableName: string) => void;
+  onToggleColumn: (tableName: string, colName: string) => void;
+  onAggregationChange: (tableName: string, colName: string, func: AggregateFunction) => void;
+  onSelectAll: (tableName: string, visibleColumns: string[]) => void;
+  onSelectNone: (tableName: string, visibleColumns: string[]) => void;
+  onSearchChange: (tableName: string, term: string) => void;
+  onClearSearch: (tableName: string) => void;
+}
+
+const TableCard = memo(({ 
+  table, selectedColumns, aggregations, isCollapsed, colSearchTerm,
+  onToggleCollapse, onToggleColumn, onAggregationChange, onSelectAll, onSelectNone, onSearchChange, onClearSearch
+}: TableCardProps) => {
+
+  // Advanced Search Logic moved inside TableCard and memoized
+  const filteredColumns = useMemo(() => {
+    if (!colSearchTerm.trim()) return table.columns;
+    
+    const term = colSearchTerm;
+    const orGroups = term.split(/\s+OR\s+/i);
+    
+    return table.columns.filter(col => {
+       return orGroups.some(group => {
+        const andTerms = group.trim().split(/\s+/);
+        return andTerms.every(t => {
+          try {
+             // Simple contains check is much faster than Regex for typing
+             return col.name.toLowerCase().includes(t.toLowerCase());
+          } catch (e) {
+             return false;
+          }
+        });
+      });
+    });
+  }, [table.columns, colSearchTerm]);
+
+  const visibleColNames = useMemo(() => filteredColumns.map(c => c.name), [filteredColumns]);
+  const selectedCount = selectedColumns.filter(c => c.startsWith(`${table.name}.`)).length;
+
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+       {/* Card Header */}
+       <div 
+         className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+         onClick={() => onToggleCollapse(table.name)}
+       >
+         <div className="flex items-center gap-2">
+            {isCollapsed ? <ChevronRight className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            <h4 className="font-bold text-slate-700 dark:text-slate-300">{table.name}</h4>
+            <span className="text-xs text-slate-400 px-2 py-0.5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-full">
+              {selectedCount} selecionadas
+            </span>
+         </div>
+         <div className="flex gap-2" onClick={e => e.stopPropagation()}>
+            <button onClick={() => onSelectAll(table.name, visibleColNames)} className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 px-2 py-1 rounded transition-colors">Todas</button>
+            <button onClick={() => onSelectNone(table.name, visibleColNames)} className="text-xs font-bold text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded transition-colors">Nenhuma</button>
+         </div>
+       </div>
+
+       {!isCollapsed && (
+         <>
+           {/* Column Search Bar */}
+           <div className="px-3 py-2 border-b border-slate-50 dark:border-slate-700 bg-white dark:bg-slate-800">
+              <div className="relative">
+                 <Search className="absolute left-2.5 top-1.5 w-3.5 h-3.5 text-slate-300" />
+                 <input 
+                    type="text" 
+                    value={colSearchTerm}
+                    onChange={(e) => onSearchChange(table.name, e.target.value)}
+                    placeholder={`Filtrar colunas em ${table.name}...`}
+                    className="w-full pl-8 pr-2 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder-slate-400 text-slate-700 dark:text-slate-300"
+                 />
+                 {colSearchTerm && (
+                    <button 
+                      onClick={() => onClearSearch(table.name)}
+                      className="absolute right-2 top-1.5 text-slate-300 hover:text-slate-500"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                 )}
+              </div>
+           </div>
+
+           {/* Columns Grid */}
+           <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+             {filteredColumns.length === 0 ? (
+                <div className="col-span-full text-center py-4 text-xs text-slate-400 italic">
+                   Nenhuma coluna encontrada para "{colSearchTerm}"
+                </div>
+             ) : (
+                filteredColumns.map(col => {
+                  const colFullId = `${table.name}.${col.name}`;
+                  const isChecked = selectedColumns.includes(colFullId);
+                  const agg = aggregations[colFullId] || 'NONE';
+                  
+                  return (
+                    <ColumnItem 
+                      key={col.name}
+                      col={col}
+                      tableName={table.name}
+                      isSelected={isChecked}
+                      aggregation={agg}
+                      onToggle={onToggleColumn}
+                      onAggregationChange={onAggregationChange}
+                    />
+                  );
+                })
+             )}
+           </div>
+         </>
+       )}
+    </div>
+  );
+}, (prev, next) => {
+   // Optimization: Only re-render if something RELEVANT changed for this table
+   return prev.isCollapsed === next.isCollapsed &&
+          prev.colSearchTerm === next.colSearchTerm &&
+          prev.table.name === next.table.name &&
+          // Shallow compare specific props that might change
+          prev.selectedColumns === next.selectedColumns &&
+          prev.aggregations === next.aggregations;
+});
+
+
+// --- Main Component ---
+
 const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange, onGenerate, isGenerating, settings }) => {
   const [activeTab, setActiveTab] = useState<TabType>('columns');
+  
+  // Search state for tables
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm); // DEFERRED: Avoid blocking UI on type
   
   // State for column search within specific tables
   const [columnSearchTerms, setColumnSearchTerms] = useState<Record<string, string>>({});
@@ -54,30 +253,32 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
 
   // --- History Management Wrappers ---
   
-  const updateStateWithHistory = (newState: BuilderState) => {
+  const updateStateWithHistory = useCallback((newState: BuilderState) => {
+    // Avoid expensive clone if not necessary, but kept for safety. 
+    // Ideally use structuredClone if environment supports it, or keep JSON.
     const currentStateCopy = JSON.parse(JSON.stringify(state));
     setHistory(prev => [...prev, currentStateCopy]);
     setFuture([]);
     onStateChange(newState);
-  };
+  }, [state, onStateChange]);
 
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     if (history.length === 0) return;
     const previousState = history[history.length - 1];
     const newHistory = history.slice(0, -1);
     setFuture(prev => [state, ...prev]);
     setHistory(newHistory);
     onStateChange(previousState);
-  };
+  }, [history, state, onStateChange]);
 
-  const handleRedo = () => {
+  const handleRedo = useCallback(() => {
     if (future.length === 0) return;
     const nextState = future[0];
     const newFuture = future.slice(1);
     setHistory(prev => [...prev, state]);
     setFuture(newFuture);
     onStateChange(nextState);
-  };
+  }, [future, state, onStateChange]);
 
   // --- Saved Queries Logic ---
   
@@ -115,15 +316,17 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   };
 
   // Filter queries for current schema
-  const relevantSavedQueries = savedQueries.filter(q => q.schemaName === schema.name);
+  const relevantSavedQueries = useMemo(() => 
+    savedQueries.filter(q => q.schemaName === schema.name), 
+  [savedQueries, schema.name]);
 
   // --- Helpers ---
-  const getColumnsForTable = (tableName: string) => {
+  const getColumnsForTable = useCallback((tableName: string) => {
     const t = schema.tables.find(table => table.name === tableName);
     return t ? t.columns : [];
-  };
+  }, [schema.tables]);
 
-  const getAllSelectedTableColumns = () => {
+  const getAllSelectedTableColumns = useCallback(() => {
     let cols: {table: string, column: string}[] = [];
     state.selectedTables.forEach(tName => {
       const t = schema.tables.find(table => table.name === tName);
@@ -132,39 +335,22 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       }
     });
     return cols;
-  };
+  }, [state.selectedTables, schema.tables]);
 
-  const toggleTableCollapse = (tableName: string) => {
-    const newSet = new Set(collapsedTables);
-    if (newSet.has(tableName)) {
-      newSet.delete(tableName);
-    } else {
-      newSet.add(tableName);
-    }
-    setCollapsedTables(newSet);
-  };
-
-  // --- Advanced Search Logic ---
-  const matchColumnName = (colName: string, searchInput: string): boolean => {
-    if (!searchInput.trim()) return true;
-    const orGroups = searchInput.split(/\s+OR\s+/i);
-    return orGroups.some(group => {
-      const andTerms = group.trim().split(/\s+/);
-      return andTerms.every(term => {
-        const escaped = term.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-        const regexPattern = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
-        try {
-          const regex = new RegExp(regexPattern, 'i');
-          return regex.test(colName);
-        } catch (e) {
-          return colName.toLowerCase().includes(term.toLowerCase());
-        }
-      });
+  const toggleTableCollapse = useCallback((tableName: string) => {
+    setCollapsedTables(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(tableName)) {
+        newSet.delete(tableName);
+      } else {
+        newSet.add(tableName);
+      }
+      return newSet;
     });
-  };
+  }, []);
 
   // --- Table Selection Logic ---
-  const toggleTable = (tableName: string) => {
+  const toggleTable = useCallback((tableName: string) => {
     const isSelected = state.selectedTables.includes(tableName);
     let newTables = [];
     if (isSelected) {
@@ -186,21 +372,24 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
         joins: newJoins, 
         filters: newFilters 
       });
-      const newSearchTerms = { ...columnSearchTerms };
-      delete newSearchTerms[tableName];
-      setColumnSearchTerms(newSearchTerms);
+      // Clear search terms for removed table
+      setColumnSearchTerms(prev => {
+         const next = { ...prev };
+         delete next[tableName];
+         return next;
+      });
     } else {
       newTables = [...state.selectedTables, tableName];
       updateStateWithHistory({ ...state, selectedTables: newTables });
     }
-  };
+  }, [state, updateStateWithHistory]);
 
-  const clearAllTables = () => {
+  const clearAllTables = useCallback(() => {
      updateStateWithHistory({ ...state, selectedTables: [], selectedColumns: [], aggregations: {}, joins: [], filters: [] });
-  };
+  }, [state, updateStateWithHistory]);
 
   // --- Column Selection Logic ---
-  const toggleColumn = (tableName: string, colName: string) => {
+  const toggleColumn = useCallback((tableName: string, colName: string) => {
     const fullId = `${tableName}.${colName}`;
     const isSelected = state.selectedColumns.includes(fullId);
     let newColumns = [];
@@ -217,9 +406,9 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     if (!state.selectedTables.includes(tableName)) newTables = [...state.selectedTables, tableName];
 
     updateStateWithHistory({ ...state, selectedTables: newTables, selectedColumns: newColumns, aggregations: newAggs });
-  };
+  }, [state, updateStateWithHistory]);
   
-  const updateAggregation = (tableName: string, colName: string, func: AggregateFunction) => {
+  const updateAggregation = useCallback((tableName: string, colName: string, func: AggregateFunction) => {
     const fullId = `${tableName}.${colName}`;
     const newAggs = { ...state.aggregations };
     if (func === 'NONE') {
@@ -235,18 +424,18 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     }
     
     updateStateWithHistory({ ...state, selectedColumns: newColumns, aggregations: newAggs });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const selectAllColumns = (tableName: string, visibleColumns: string[]) => {
+  const selectAllColumns = useCallback((tableName: string, visibleColumns: string[]) => {
     const newColsSet = new Set(state.selectedColumns);
     visibleColumns.forEach(colName => newColsSet.add(`${tableName}.${colName}`));
     const newCols = Array.from(newColsSet);
     let newTables = state.selectedTables;
     if (!state.selectedTables.includes(tableName)) newTables = [...state.selectedTables, tableName];
     updateStateWithHistory({ ...state, selectedTables: newTables, selectedColumns: newCols });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const selectNoneColumns = (tableName: string, visibleColumns: string[]) => {
+  const selectNoneColumns = useCallback((tableName: string, visibleColumns: string[]) => {
     const visibleSet = new Set(visibleColumns.map(c => `${tableName}.${c}`));
     const newCols = state.selectedColumns.filter(c => !visibleSet.has(c));
     // Clear aggs for these columns
@@ -254,10 +443,19 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     visibleSet.forEach(key => delete newAggs[key]);
 
     updateStateWithHistory({ ...state, selectedColumns: newCols, aggregations: newAggs });
-  };
+  }, [state, updateStateWithHistory]);
+
+  // --- Search Handlers ---
+  const handleColumnSearchChange = useCallback((tableName: string, term: string) => {
+    setColumnSearchTerms(prev => ({...prev, [tableName]: term}));
+  }, []);
+
+  const handleClearColumnSearch = useCallback((tableName: string) => {
+    setColumnSearchTerms(prev => ({...prev, [tableName]: ''}));
+  }, []);
 
   // --- Joins/Filters/Sort Wrappers ---
-  const addJoin = () => {
+  const addJoin = useCallback(() => {
     const newJoin: ExplicitJoin = {
       id: crypto.randomUUID(),
       fromTable: state.selectedTables[0] || '',
@@ -267,18 +465,18 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       toColumn: ''
     };
     updateStateWithHistory({ ...state, joins: [...state.joins, newJoin] });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const updateJoin = (id: string, field: keyof ExplicitJoin, value: string) => {
+  const updateJoin = useCallback((id: string, field: keyof ExplicitJoin, value: string) => {
     const newJoins = state.joins.map(j => j.id === id ? { ...j, [field]: value } : j);
     updateStateWithHistory({ ...state, joins: newJoins });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const removeJoin = (id: string) => {
+  const removeJoin = useCallback((id: string) => {
     updateStateWithHistory({ ...state, joins: state.joins.filter(j => j.id !== id) });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const addFilter = () => {
+  const addFilter = useCallback(() => {
     const newFilter: Filter = {
       id: crypto.randomUUID(),
       column: state.selectedColumns[0] || (state.selectedTables[0] ? `${state.selectedTables[0]}.id` : ''),
@@ -286,46 +484,46 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       value: ''
     };
     updateStateWithHistory({ ...state, filters: [...state.filters, newFilter] });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const updateFilter = (id: string, field: keyof Filter, value: string) => {
+  const updateFilter = useCallback((id: string, field: keyof Filter, value: string) => {
     const newFilters = state.filters.map(f => f.id === id ? { ...f, [field]: value } : f);
     updateStateWithHistory({ ...state, filters: newFilters });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const removeFilter = (id: string) => {
+  const removeFilter = useCallback((id: string) => {
     updateStateWithHistory({ ...state, filters: state.filters.filter(f => f.id !== id) });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const toggleGroupBy = (col: string) => {
+  const toggleGroupBy = useCallback((col: string) => {
     const exists = state.groupBy.includes(col);
     const newGroup = exists ? state.groupBy.filter(g => g !== col) : [...state.groupBy, col];
     updateStateWithHistory({ ...state, groupBy: newGroup });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const addSort = () => {
+  const addSort = useCallback(() => {
     const newSort: OrderBy = {
       id: crypto.randomUUID(),
       column: state.selectedColumns[0] || '',
       direction: 'ASC'
     };
     updateStateWithHistory({ ...state, orderBy: [...state.orderBy, newSort] });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const updateSort = (id: string, field: keyof OrderBy, value: string) => {
+  const updateSort = useCallback((id: string, field: keyof OrderBy, value: string) => {
     const newSorts = state.orderBy.map(s => s.id === id ? { ...s, [field]: value } : s);
     updateStateWithHistory({ ...state, orderBy: newSorts });
-  };
+  }, [state, updateStateWithHistory]);
 
-  const removeSort = (id: string) => {
+  const removeSort = useCallback((id: string) => {
     updateStateWithHistory({ ...state, orderBy: state.orderBy.filter(s => s.id !== id) });
-  };
+  }, [state, updateStateWithHistory]);
 
 
   // --- Render Helpers ---
   
   const { pinnedTables, unpinnedTables } = useMemo(() => {
-    const term = searchTerm.toLowerCase().trim();
+    const term = deferredSearchTerm.toLowerCase().trim(); // Use Deferred Term
     let allMatches = schema.tables;
     if (term) {
        allMatches = schema.tables.filter(table => 
@@ -356,7 +554,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       pinnedTables: pinned.sort(sorter),
       unpinnedTables: unpinned.sort(sorter)
     };
-  }, [schema.tables, searchTerm, state.selectedTables]);
+  }, [schema.tables, deferredSearchTerm, state.selectedTables]);
 
   const renderTabButton = (id: TabType, label: string, icon: React.ReactNode) => (
     <button
@@ -666,119 +864,23 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                      const table = schema.tables.find(t => t.name === tableName);
                      if (!table) return null;
                      
-                     const colSearch = columnSearchTerms[tableName] || '';
-                     const filteredColumns = table.columns.filter(col => matchColumnName(col.name, colSearch));
-                     const visibleColNames = filteredColumns.map(c => c.name);
-                     const isCollapsed = collapsedTables.has(tableName);
-                     
+                     // Use the memoized TableCard here
                      return (
-                       <div key={tableName} className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
-                         {/* Card Header */}
-                         <div 
-                           className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                           onClick={() => toggleTableCollapse(tableName)}
-                         >
-                           <div className="flex items-center gap-2">
-                              {isCollapsed ? <ChevronRight className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-                              <h4 className="font-bold text-slate-700 dark:text-slate-300">{tableName}</h4>
-                              <span className="text-xs text-slate-400 px-2 py-0.5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-full">
-                                {state.selectedColumns.filter(c => c.startsWith(tableName)).length} selecionadas
-                              </span>
-                           </div>
-                           <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                              <button onClick={() => selectAllColumns(tableName, visibleColNames)} className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 px-2 py-1 rounded transition-colors">Todas</button>
-                              <button onClick={() => selectNoneColumns(tableName, visibleColNames)} className="text-xs font-bold text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded transition-colors">Nenhuma</button>
-                           </div>
-                         </div>
-
-                         {!isCollapsed && (
-                           <>
-                             {/* Column Search Bar */}
-                             <div className="px-3 py-2 border-b border-slate-50 dark:border-slate-700 bg-white dark:bg-slate-800">
-                                <div className="relative">
-                                   <Search className="absolute left-2.5 top-1.5 w-3.5 h-3.5 text-slate-300" />
-                                   <input 
-                                      type="text" 
-                                      value={colSearch}
-                                      onChange={(e) => setColumnSearchTerms(prev => ({...prev, [tableName]: e.target.value}))}
-                                      placeholder={`Filtrar colunas em ${tableName}... (suporta *, ?, OR)`}
-                                      className="w-full pl-8 pr-2 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder-slate-400 text-slate-700 dark:text-slate-300"
-                                   />
-                                   {colSearch && (
-                                      <button 
-                                        onClick={() => setColumnSearchTerms(prev => ({...prev, [tableName]: ''}))}
-                                        className="absolute right-2 top-1.5 text-slate-300 hover:text-slate-500"
-                                      >
-                                        <X className="w-3.5 h-3.5" />
-                                      </button>
-                                   )}
-                                </div>
-                             </div>
-
-                             {/* Columns Grid */}
-                             <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                               {filteredColumns.length === 0 ? (
-                                  <div className="col-span-full text-center py-4 text-xs text-slate-400 italic">
-                                     Nenhuma coluna encontrada para "{colSearch}"
-                                  </div>
-                               ) : (
-                                  filteredColumns.map(col => {
-                                    const colFullId = `${tableName}.${col.name}`;
-                                    const isChecked = state.selectedColumns.includes(colFullId);
-                                    const aggregation = state.aggregations?.[colFullId] || 'NONE';
-                                    
-                                    return (
-                                      <div 
-                                        key={col.name}
-                                        onClick={() => toggleColumn(tableName, col.name)}
-                                        className={`flex items-center p-2 rounded border cursor-pointer transition-all duration-200 ease-in-out relative group ${
-                                          isChecked 
-                                            ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500 shadow-sm z-10' 
-                                            : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 hover:scale-[1.01]'
-                                        }`}
-                                      >
-                                        <div className={`w-4 h-4 rounded border flex items-center justify-center mr-2 transition-all ${
-                                            isChecked ? 'bg-indigo-600 border-indigo-600 shadow-sm' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
-                                          }`}>
-                                           {isChecked && <div className="w-1.5 h-1.5 bg-white rounded-[1px]"></div>}
-                                        </div>
-                                        <div className="flex-1 min-w-0 pr-8">
-                                           <div className={`text-sm font-medium truncate transition-colors ${isChecked ? 'text-indigo-900 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-300'}`}>{col.name}</div>
-                                           <div className="text-[10px] text-slate-400">{col.type}</div>
-                                        </div>
-
-                                        {/* Aggregation Selector (Visible when checked) */}
-                                        {isChecked && (
-                                           <div 
-                                             className="absolute right-1 top-1/2 -translate-y-1/2"
-                                             onClick={e => e.stopPropagation()}
-                                           >
-                                              <select
-                                                 value={aggregation}
-                                                 onChange={(e) => updateAggregation(tableName, col.name, e.target.value as AggregateFunction)}
-                                                 className={`text-[10px] font-bold uppercase rounded px-1 py-0.5 outline-none border cursor-pointer transition-colors ${
-                                                    aggregation !== 'NONE' 
-                                                      ? 'bg-indigo-600 text-white border-indigo-600' 
-                                                      : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'
-                                                 }`}
-                                              >
-                                                 <option value="NONE">--</option>
-                                                 <option value="COUNT">CNT</option>
-                                                 <option value="SUM">SUM</option>
-                                                 <option value="AVG">AVG</option>
-                                                 <option value="MIN">MIN</option>
-                                                 <option value="MAX">MAX</option>
-                                              </select>
-                                           </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })
-                               )}
-                             </div>
-                           </>
-                         )}
-                       </div>
+                        <TableCard 
+                           key={tableName}
+                           table={table}
+                           selectedColumns={state.selectedColumns}
+                           aggregations={state.aggregations}
+                           isCollapsed={collapsedTables.has(tableName)}
+                           colSearchTerm={columnSearchTerms[tableName] || ''}
+                           onToggleCollapse={toggleTableCollapse}
+                           onToggleColumn={toggleColumn}
+                           onAggregationChange={updateAggregation}
+                           onSelectAll={selectAllColumns}
+                           onSelectNone={selectNoneColumns}
+                           onSearchChange={handleColumnSearchChange}
+                           onClearSearch={handleClearColumnSearch}
+                        />
                      );
                    })
                  )}
