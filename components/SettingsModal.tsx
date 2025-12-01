@@ -1,6 +1,7 @@
 
+
 import React from 'react';
-import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb } from 'lucide-react';
+import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -23,7 +24,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
     setFormData(prev => ({ ...prev, theme: prev.theme === 'light' ? 'dark' : 'light' }));
   };
 
-  const isAiDisabled = !formData.enableAiGeneration || quotaExhausted;
+  const isAiDisabled = !formData.enableAiGeneration;
 
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">
@@ -50,11 +51,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
              </h4>
              
              {quotaExhausted && (
-                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg flex gap-3 items-start">
-                  <AlertTriangle className="w-5 h-5 text-red-500 dark:text-red-400 shrink-0 mt-0.5" />
-                  <div className="text-xs text-red-700 dark:text-red-300">
-                    <span className="font-bold block mb-1">Cota de IA Esgotada</span>
-                    <p>Você atingiu o limite da API. As funcionalidades de IA foram desativadas automaticamente. Você pode continuar usando o app no modo offline.</p>
+                <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg flex gap-3 items-start">
+                  <AlertTriangle className="w-5 h-5 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-800 dark:text-amber-200">
+                    <span className="font-bold block mb-1">Cota de IA Atingida</span>
+                    <p>Funcionalidades extras (Dicas, Validação) estão bloqueadas para economizar. Você ainda pode tentar gerar queries, mas falhas podem ocorrer.</p>
                   </div>
                 </div>
               )}
@@ -69,17 +70,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
                      <div className="flex flex-col">
                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Habilitar Geração com IA</span>
                        <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-1 max-w-[240px]">
-                         Usa o Google Gemini para criar queries complexas e inferir joins automaticamente. Requer internet.
+                         Usa o Google Gemini para criar queries complexas e inferir joins automaticamente.
                        </span>
                      </div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer mt-1">
                     <input 
                       type="checkbox" 
-                      checked={quotaExhausted ? false : formData.enableAiGeneration} 
+                      checked={formData.enableAiGeneration} 
                       onChange={e => setFormData({...formData, enableAiGeneration: e.target.checked})}
                       className="sr-only peer" 
-                      disabled={quotaExhausted}
                     />
                     <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                   </label>
@@ -97,8 +97,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
                      <label className="relative inline-flex items-center cursor-pointer">
                        <input 
                          type="checkbox" 
-                         checked={formData.enableAiValidation} 
+                         checked={quotaExhausted ? false : formData.enableAiValidation} 
                          onChange={e => setFormData({...formData, enableAiValidation: e.target.checked})}
+                         disabled={quotaExhausted}
                          className="sr-only peer" 
                        />
                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
@@ -115,12 +116,33 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
                      <label className="relative inline-flex items-center cursor-pointer">
                        <input 
                          type="checkbox" 
-                         checked={formData.enableAiTips} 
+                         checked={quotaExhausted ? false : formData.enableAiTips} 
                          onChange={e => setFormData({...formData, enableAiTips: e.target.checked})}
+                         disabled={quotaExhausted}
                          className="sr-only peer" 
                        />
                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
                      </label>
+                  </div>
+
+                  {/* AI Timeout Setting */}
+                  <div className="pt-2">
+                     <div className="flex items-center gap-2 mb-2 text-slate-700 dark:text-slate-300">
+                        <Clock className="w-4 h-4 text-indigo-500" />
+                        <label className="text-sm font-medium">Tempo de Timeout da IA (ms)</label>
+                     </div>
+                     <div className="flex gap-2 items-center">
+                        <input 
+                           type="number" 
+                           min="1000"
+                           step="500"
+                           value={formData.aiGenerationTimeout} 
+                           onChange={e => setFormData({...formData, aiGenerationTimeout: parseInt(e.target.value) || 3000})}
+                           className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                        <span className="text-xs text-slate-400">Padrão: 3000</span>
+                     </div>
+                     <p className="text-[10px] text-slate-400 mt-1">Tempo de espera antes de mostrar o botão "Pular IA".</p>
                   </div>
                </div>
              </div>
@@ -159,8 +181,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
-              <div className="col-span-2">
-                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Limite de Linhas (Default)</label>
+              <div>
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Limite Query (LIMIT)</label>
                 <input 
                   type="number" 
                   value={formData.defaultLimit} 
@@ -175,21 +197,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
 
           {/* Appearance */}
           <div>
-            <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Aparência</h4>
-            <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Tema</span>
-              <button
-                type="button"
-                onClick={handleToggleTheme}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${
-                  formData.theme === 'dark' 
-                    ? 'bg-slate-700 border-slate-600 text-yellow-300' 
-                    : 'bg-white border-slate-200 text-amber-500'
-                }`}
-              >
-                {formData.theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                <span className="text-xs font-bold uppercase">{formData.theme === 'light' ? 'Claro' : 'Escuro'}</span>
-              </button>
+            <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Aparência e Grid</h4>
+            <div className="space-y-4">
+               <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Tema</span>
+                 <button
+                   type="button"
+                   onClick={handleToggleTheme}
+                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${
+                     formData.theme === 'dark' 
+                       ? 'bg-slate-700 border-slate-600 text-yellow-300' 
+                       : 'bg-white border-slate-200 text-amber-500'
+                   }`}
+                 >
+                   {formData.theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                   <span className="text-xs font-bold uppercase">{formData.theme === 'light' ? 'Claro' : 'Escuro'}</span>
+                 </button>
+               </div>
+
+               <div>
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                     <LayoutList className="w-3.5 h-3.5" /> Linhas por página (Padrão)
+                  </label>
+                  <select 
+                     value={formData.defaultRowsPerPage} 
+                     onChange={e => setFormData({...formData, defaultRowsPerPage: parseInt(e.target.value) || 10})}
+                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  >
+                     <option value={10}>10</option>
+                     <option value={25}>25</option>
+                     <option value={50}>50</option>
+                     <option value={100}>100</option>
+                  </select>
+               </div>
             </div>
           </div>
 

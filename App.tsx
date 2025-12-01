@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, AppSettings, DEFAULT_SETTINGS } from './types';
 import Sidebar from './components/Sidebar';
@@ -12,7 +13,7 @@ import { generateSqlFromBuilderState, validateSqlQuery, generateMockData } from 
 import { generateLocalSql } from './services/localSqlService';
 import { initializeSimulation, executeOfflineQuery, SimulationData } from './services/simulationService';
 import { executeQueryReal } from './services/dbService';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X, ZapOff } from 'lucide-react';
 
 function App() {
   // Settings State
@@ -35,6 +36,7 @@ function App() {
 
   // Global State for Quota Limits
   const [quotaExhausted, setQuotaExhausted] = useState(false);
+  const [hasShownQuotaWarning, setHasShownQuotaWarning] = useState(false);
 
   // Apply Theme - STRICT MODE for Tailwind
   useEffect(() => {
@@ -78,7 +80,8 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false); // For SQL Gen & Execution
   const [progressMessage, setProgressMessage] = useState<string>(''); // Detailed progress
   const [isValidating, setIsValidating] = useState(false); // For Background Validation
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{message: string, action?: {label: string, handler: () => void}} | null>(null);
+  const [warningToast, setWarningToast] = useState<string | null>(null);
 
   // Reference to track the active request ID to handle race conditions (skip/cancel)
   const generationRequestId = useRef(0);
@@ -114,6 +117,14 @@ function App() {
     setCurrentStep('builder');
   };
 
+  const handleUpdateSchemaDescription = (tableName: string, newDesc: string) => {
+    if (!schema) return;
+    const newTables = schema.tables.map(t => 
+      t.name === tableName ? { ...t, description: newDesc } : t
+    );
+    setSchema({ ...schema, tables: newTables });
+  };
+
   const handleBuilderChange = (newState: BuilderState) => {
     setBuilderState(newState);
   };
@@ -133,36 +144,54 @@ function App() {
       setQueryResult(result);
       setCurrentStep('preview');
     } catch (e: any) {
-      setError("Falha na geração local: " + e.message);
+      setError({ message: "Falha na geração local: " + e.message });
     } finally {
       setIsProcessing(false);
       setProgressMessage("");
     }
   };
 
+  const retryWithoutExtras = () => {
+     setError(null);
+     setSettings(prev => ({...prev, enableAiTips: false, enableAiValidation: false}));
+     handleGeneratePreview();
+  };
+
   const handleGeneratePreview = async () => {
     if (!schema) return;
     setError(null);
     setIsProcessing(true);
+    setWarningToast(null);
     
     // Assign a new ID for this specific generation request
     const currentRequestId = generationRequestId.current + 1;
     generationRequestId.current = currentRequestId;
 
     setProgressMessage("Iniciando...");
+
+    // Warning Logic for High Quota Usage
+    const usingExtras = settings.enableAiGeneration && (settings.enableAiValidation || settings.enableAiTips);
+    if (usingExtras && !hasShownQuotaWarning && !quotaExhausted) {
+       setWarningToast("Dicas e Validação consomem mais cota da API. Desative nas configurações se desejar economizar.");
+       setHasShownQuotaWarning(true);
+    }
     
     let result: QueryResult | null = null;
     let usedLocalFallback = false;
 
     try {
-      // 1. Attempt AI Generation if enabled and technically allowed
-      if (settings.enableAiGeneration && !quotaExhausted) {
+      // 1. Attempt AI Generation if enabled
+      // Even if quotaExhausted is true, we try (maybe it reset?), but we FORCE disable extras to save cost/errors
+      if (settings.enableAiGeneration) {
          try {
            // Pass granular progress callback
+           // Disable tips if quota is exhausted to try a lighter request
+           const includeTips = settings.enableAiTips && !quotaExhausted;
+
            result = await generateSqlFromBuilderState(
              schema, 
              builderState, 
-             settings.enableAiTips,
+             includeTips, 
              (msg) => {
                // Only update if this request is still active/latest
                if (generationRequestId.current === currentRequestId) {
@@ -188,7 +217,24 @@ function App() {
 
            if (aiError.message === "QUOTA_ERROR") {
               setQuotaExhausted(true);
-              setError("Cota de IA excedida. Alternando para modo offline automaticamente.");
+              
+              // If we were trying to use extras, offer a retry without them
+              if (settings.enableAiValidation || settings.enableAiTips) {
+                 setError({
+                    message: "Cota de IA excedida ao tentar usar recursos avançados.",
+                    action: {
+                       label: "Desativar Extras e Tentar Novamente",
+                       handler: retryWithoutExtras
+                    }
+                 });
+                 setIsProcessing(false);
+                 setProgressMessage("");
+                 return;
+              } else {
+                 // Even basic failed, show error but maybe fallback local
+                 // We will try local fallback below, but notify user
+                 console.warn("Quota exhausted even for basic generation.");
+              }
            } else if (aiError.message === "NO_RELATIONSHIP") {
               throw new Error("A IA não encontrou relacionamento entre estas tabelas. Defina Joins manualmente.");
            } else if (aiError.message === "TIMEOUT") {
@@ -208,6 +254,7 @@ function App() {
 
       // 2. Fallback to Local Engine if AI failed or was disabled
       if (usedLocalFallback) {
+         // If we are here because of Quota Error and we didn't return above, we are falling back to local
          setProgressMessage("Gerando SQL com motor local...");
          // Artificial small delay for UX so user sees the switch
          await new Promise(r => setTimeout(r, 500));
@@ -225,7 +272,7 @@ function App() {
       setProgressMessage("");
 
       // 4. Run Validation in Background (ONLY if enabled, allowed, and NOT using local fallback)
-      // If we used local fallback, validation is likely to fail quota too or be unnecessary
+      // If quotaExhausted is true, skip validation to save remaining quota for generations
       if (settings.enableAiGeneration && settings.enableAiValidation && !quotaExhausted && !usedLocalFallback) {
         setIsValidating(true);
         validateSqlQuery(result.sql, schema)
@@ -246,7 +293,7 @@ function App() {
     } catch (e: any) {
       if (generationRequestId.current !== currentRequestId) return;
       console.error(e);
-      setError(e.message || "Falha ao gerar SQL a partir da seleção.");
+      setError({ message: e.message || "Falha ao gerar SQL a partir da seleção." });
       setIsProcessing(false);
       setProgressMessage("");
     }
@@ -264,10 +311,19 @@ function App() {
       if (credentials.host === 'simulated') {
          if (simulationData) {
             data = executeOfflineQuery(schema, simulationData, builderState);
-         } else if (settings.enableAiGeneration && !quotaExhausted) {
-            data = await generateMockData(schema, queryResult.sql);
+         } else if (settings.enableAiGeneration) {
+             // Try to use AI to gen data, but handle quota
+            try {
+               data = await generateMockData(schema, queryResult.sql);
+            } catch (mockErr: any) {
+               if (mockErr.message === "QUOTA_ERROR") {
+                  setQuotaExhausted(true);
+                  throw new Error("Cota excedida durante geração de dados. Tente usar o modo offline completo.");
+               }
+               throw mockErr;
+            }
          } else {
-            data = [{ info: "Erro: Dados de simulação não inicializados." }];
+            data = [{ info: "Erro: Dados de simulação não inicializados e IA desativada." }];
          }
       } else {
          data = await executeQueryReal(credentials, queryResult.sql);
@@ -279,9 +335,9 @@ function App() {
       console.error(e);
       if (e.message === "QUOTA_ERROR") {
          setQuotaExhausted(true);
-         setError("Cota excedida durante geração de dados simulados.");
+         setError({ message: "Cota excedida durante execução." });
       } else {
-         setError("Falha na execução: " + e.message);
+         setError({ message: "Falha na execução: " + e.message });
       }
     } finally {
       setIsProcessing(false);
@@ -313,8 +369,10 @@ function App() {
       <Sidebar 
         currentStep={currentStep} 
         onNavigate={handleNavigate} 
-        hasSchema={!!schema}
+        schema={schema}
         onOpenSettings={() => setShowSettings(true)}
+        onRegenerateClick={handleReset}
+        onDescriptionChange={handleUpdateSchemaDescription}
       />
 
       {/* Main Content Area */}
@@ -337,7 +395,17 @@ function App() {
           <div className="bg-red-50 dark:bg-red-900/30 border-b border-red-200 dark:border-red-800 p-4 flex items-center justify-between animate-in slide-in-from-top-2">
             <div className="flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
-              <span className="text-sm font-medium text-red-800 dark:text-red-200">{error}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                 <span className="text-sm font-medium text-red-800 dark:text-red-200">{error.message}</span>
+                 {error.action && (
+                    <button 
+                       onClick={error.action.handler}
+                       className="text-xs bg-red-100 hover:bg-red-200 dark:bg-red-800 dark:hover:bg-red-700 text-red-800 dark:text-red-100 px-2 py-1 rounded font-bold transition-colors"
+                    >
+                       {error.action.label}
+                    </button>
+                 )}
+              </div>
             </div>
             <button 
               onClick={() => setError(null)}
@@ -345,6 +413,21 @@ function App() {
             >
               <X className="w-4 h-4" />
             </button>
+          </div>
+        )}
+
+        {/* Warning Toast (Dismissible) */}
+        {warningToast && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg w-full px-4 animate-in fade-in slide-in-from-top-4">
+             <div className="bg-amber-50 dark:bg-amber-900/90 backdrop-blur border border-amber-200 dark:border-amber-700 p-3 rounded-xl shadow-lg flex items-start gap-3">
+               <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+               <div className="flex-1 text-sm text-amber-800 dark:text-amber-100">
+                  {warningToast}
+               </div>
+               <button onClick={() => setWarningToast(null)} className="text-amber-400 hover:text-amber-600 dark:text-amber-300">
+                  <X className="w-4 h-4" />
+               </button>
+             </div>
           </div>
         )}
 
@@ -386,6 +469,7 @@ function App() {
               sql={queryResult?.sql || ''}
               onBackToBuilder={() => handleNavigate('builder')}
               onNewConnection={handleReset}
+              settings={settings}
             />
           )}
         </div>

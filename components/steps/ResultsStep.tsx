@@ -1,20 +1,23 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Table, ArrowLeft, Database, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, Search, Copy, Check } from 'lucide-react';
+import { AppSettings } from '../../types';
 
 interface ResultsStepProps {
   data: any[];
   sql: string;
   onBackToBuilder: () => void;
   onNewConnection: () => void;
+  settings?: AppSettings;
 }
 
-const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, onNewConnection }) => {
+const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, onNewConnection, settings }) => {
   const columns = data.length > 0 ? Object.keys(data[0]) : [];
   
-  // Pagination State
+  // Pagination State - use default from settings or fallback to 10
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(settings?.defaultRowsPerPage || 10);
   const [localSearch, setLocalSearch] = useState('');
   
   // Copy SQL State
@@ -24,6 +27,13 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   useEffect(() => {
     setCurrentPage(1);
   }, [data]);
+
+  // Update rows per page if settings change and user hasn't manually interacted (optional, but good for consistency)
+  useEffect(() => {
+    if (settings?.defaultRowsPerPage) {
+       setRowsPerPage(settings.defaultRowsPerPage);
+    }
+  }, [settings?.defaultRowsPerPage]);
 
   // Filter Data locally (Visual search)
   const filteredData = data.filter(row => {

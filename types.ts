@@ -1,4 +1,5 @@
 
+
 export interface Column {
   name: string;
   type: string;
@@ -99,6 +100,8 @@ export interface AppSettings {
   enableAiGeneration: boolean; // Master switch for AI
   enableAiValidation: boolean;
   enableAiTips: boolean;
+  aiGenerationTimeout: number; // ms to show skip button
+  defaultRowsPerPage: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -110,7 +113,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultLimit: 100,
   enableAiGeneration: true,
   enableAiValidation: true,
-  enableAiTips: true
+  enableAiTips: true,
+  aiGenerationTimeout: 3000,
+  defaultRowsPerPage: 10
 };
 
 export enum MessageRole {

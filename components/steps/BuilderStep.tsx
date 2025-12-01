@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useCallback, useDeferredValue, memo, useRef } from 'react';
 import { DatabaseSchema, BuilderState, ExplicitJoin, JoinType, Filter, Operator, OrderBy, AppSettings, SavedQuery, AggregateFunction, Column } from '../../types';
 import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square, Plus, Trash2, ArrowRightLeft, Filter as FilterIcon, ArrowDownAZ, List, Link2, Check, ChevronDown, Pin, XCircle, Undo2, Redo2, Save, FolderOpen, Calendar, Clock, Sigma, Key, Combine, ArrowRight, ArrowLeft, FastForward } from 'lucide-react';
@@ -37,6 +36,7 @@ const ColumnItem = memo(({ col, tableName, isSelected, aggregation, onToggle, on
           ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500 shadow-sm z-10' 
           : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 hover:scale-[1.01]'
       }`}
+      title={`Clique para selecionar ${col.name}`}
     >
       <div className={`w-4 h-4 rounded border flex items-center justify-center mr-2 transition-all shrink-0 ${
           isSelected ? 'bg-indigo-600 border-indigo-600 shadow-sm' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
@@ -53,6 +53,7 @@ const ColumnItem = memo(({ col, tableName, isSelected, aggregation, onToggle, on
          <div 
            className="absolute right-1 top-1/2 -translate-y-1/2"
            onClick={e => e.stopPropagation()}
+           title="Aplicar função de agregação"
          >
             <select
                value={aggregation}
@@ -131,6 +132,7 @@ const TableCard = memo(({
        <div 
          className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
          onClick={() => onToggleCollapse(table.name)}
+         title={isCollapsed ? "Expandir colunas" : "Recolher colunas"}
        >
          <div className="flex items-center gap-2">
             {isCollapsed ? <ChevronRight className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
@@ -140,8 +142,8 @@ const TableCard = memo(({
             </span>
          </div>
          <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-            <button onClick={() => onSelectAll(table.name, visibleColNames)} className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 px-2 py-1 rounded transition-colors">Todas</button>
-            <button onClick={() => onSelectNone(table.name, visibleColNames)} className="text-xs font-bold text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded transition-colors">Nenhuma</button>
+            <button onClick={() => onSelectAll(table.name, visibleColNames)} title="Selecionar todas as colunas visíveis" className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 px-2 py-1 rounded transition-colors">Todas</button>
+            <button onClick={() => onSelectNone(table.name, visibleColNames)} title="Desmarcar todas as colunas" className="text-xs font-bold text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded transition-colors">Nenhuma</button>
          </div>
        </div>
 
@@ -157,11 +159,13 @@ const TableCard = memo(({
                     onChange={(e) => onSearchChange(table.name, e.target.value)}
                     placeholder={`Filtrar colunas em ${table.name}...`}
                     className="w-full pl-8 pr-2 py-1 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder-slate-400 text-slate-700 dark:text-slate-300"
+                    title="Filtrar colunas desta tabela"
                  />
                  {colSearchTerm && (
                     <button 
                       onClick={() => onClearSearch(table.name)}
                       className="absolute right-2 top-1.5 text-slate-300 hover:text-slate-500"
+                      title="Limpar filtro"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -232,12 +236,12 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
        setShowSkipButton(false);
        timer = setTimeout(() => {
           setShowSkipButton(true);
-       }, 3000); // 3 seconds threshold
+       }, settings.aiGenerationTimeout || 3000); // Configurable timeout
     } else {
        setShowSkipButton(false);
     }
     return () => clearTimeout(timer);
-  }, [isGenerating]);
+  }, [isGenerating, settings.aiGenerationTimeout]);
 
   // --- Undo / Redo History State ---
   const [history, setHistory] = useState<BuilderState[]>([]);
@@ -583,9 +587,10 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     };
   }, [schema.tables, deferredSearchTerm, state.selectedTables]);
 
-  const renderTabButton = (id: TabType, label: string, icon: React.ReactNode) => (
+  const renderTabButton = (id: TabType, label: string, icon: React.ReactNode, tooltip: string) => (
     <button
       onClick={() => setActiveTab(id)}
+      title={tooltip}
       className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
         activeTab === id 
           ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/20 dark:text-indigo-300' 
@@ -606,6 +611,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
           ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-400 shadow-sm' 
           : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-transparent hover:border-slate-200 dark:hover:border-slate-700'
       }`}
+      title={isPinned ? "Clique para remover tabela" : "Clique para adicionar tabela à consulta"}
     >
       <div className="min-w-0">
         <span className={`font-bold text-sm block truncate ${isPinned ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-300'}`}>
@@ -622,7 +628,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
         <button 
           onClick={(e) => { e.stopPropagation(); toggleTable(table.name); }}
           className="mt-0.5 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-700 rounded-full p-0.5 shadow-sm hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-          title="Unselect Table"
+          title="Remover tabela da seleção"
         >
           <X className="w-3 h-3" strokeWidth={3} />
         </button>
@@ -670,10 +676,10 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
 
   const renderJoinTypeSelector = (value: string, onChange: (val: any) => void) => {
     const types = [
-      { id: 'INNER', label: 'Inner', icon: <Combine className="w-3 h-3" /> },
-      { id: 'LEFT', label: 'Left', icon: <ArrowLeft className="w-3 h-3" /> },
-      { id: 'RIGHT', label: 'Right', icon: <ArrowRight className="w-3 h-3" /> },
-      { id: 'FULL', label: 'Full', icon: <ArrowRightLeft className="w-3 h-3" /> },
+      { id: 'INNER', label: 'Inner', icon: <Combine className="w-3 h-3" />, desc: "Registros em ambas as tabelas" },
+      { id: 'LEFT', label: 'Left', icon: <ArrowLeft className="w-3 h-3" />, desc: "Todos da esquerda, correspondentes da direita" },
+      { id: 'RIGHT', label: 'Right', icon: <ArrowRight className="w-3 h-3" />, desc: "Todos da direita, correspondentes da esquerda" },
+      { id: 'FULL', label: 'Full', icon: <ArrowRightLeft className="w-3 h-3" />, desc: "Registros em qualquer uma das tabelas" },
     ];
 
     return (
@@ -682,6 +688,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
              <button
                key={t.id}
                onClick={() => onChange(t.id)}
+               title={t.desc}
                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                   value === t.id 
                     ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm ring-1 ring-slate-200 dark:ring-slate-600' 
@@ -717,7 +724,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                onClick={handleSaveQuery} 
                disabled={state.selectedTables.length === 0}
                className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded transition-all disabled:opacity-30"
-               title="Salvar Consulta"
+               title="Salvar Consulta Atual"
              >
                <Save className="w-4 h-4" />
              </button>
@@ -781,7 +788,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(q.createdAt).toLocaleTimeString()}</span>
                                 </div>
                              </div>
-                             <button onClick={(e) => handleDeleteQuery(q.id, e)} className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <button onClick={(e) => handleDeleteQuery(q.id, e)} className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity" title="Excluir consulta salva">
                                 <Trash2 className="w-4 h-4" />
                              </button>
                           </div>
@@ -820,11 +827,13 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-8 pr-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none text-slate-700 dark:text-slate-300"
+                title="Buscar tabelas por nome ou descrição"
               />
               {searchTerm && (
                 <button 
                   onClick={() => setSearchTerm('')}
                   className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                  title="Limpar busca"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -867,10 +876,10 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
            
            {/* Tabs Header */}
            <div className="flex border-b border-slate-100 dark:border-slate-700">
-             {renderTabButton('columns', 'Colunas', <List className="w-4 h-4" />)}
-             {renderTabButton('joins', `Joins (${state.joins.length})`, <Link2 className="w-4 h-4" />)}
-             {renderTabButton('filters', `Filtros (${state.filters.length})`, <FilterIcon className="w-4 h-4" />)}
-             {renderTabButton('sortgroup', 'Ordenar/Agrupar', <ArrowDownAZ className="w-4 h-4" />)}
+             {renderTabButton('columns', 'Colunas', <List className="w-4 h-4" />, "Selecionar colunas e agregações")}
+             {renderTabButton('joins', `Joins (${state.joins.length})`, <Link2 className="w-4 h-4" />, "Configurar relacionamentos entre tabelas")}
+             {renderTabButton('filters', `Filtros (${state.filters.length})`, <FilterIcon className="w-4 h-4" />, "Adicionar cláusulas WHERE")}
+             {renderTabButton('sortgroup', 'Ordenar/Agrupar', <ArrowDownAZ className="w-4 h-4" />, "Configurar GROUP BY e ORDER BY")}
            </div>
 
            {/* Tabs Content */}
@@ -920,7 +929,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                       <h3 className="text-lg font-bold text-slate-800 dark:text-white">Configuração de Relacionamentos</h3>
                       <p className="text-sm text-slate-500 dark:text-slate-400">Defina explicitamente como suas tabelas se conectam (JOIN).</p>
                     </div>
-                    <button onClick={addJoin} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+                    <button onClick={addJoin} title="Adicionar nova regra de Join" className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
                        <Plus className="w-4 h-4" /> Novo Join
                     </button>
                  </div>
@@ -1027,7 +1036,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                <div className="max-w-3xl mx-auto">
                  <div className="mb-4 flex justify-between items-center">
                     <p className="text-sm text-slate-500 dark:text-slate-400">Adicione condições para filtrar seus resultados (WHERE).</p>
-                    <button onClick={addFilter} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded hover:bg-indigo-700 transition-colors shadow-sm">
+                    <button onClick={addFilter} title="Adicionar nova condição" className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded hover:bg-indigo-700 transition-colors shadow-sm">
                        <Plus className="w-3.5 h-3.5" /> Adicionar Filtro
                     </button>
                  </div>
@@ -1078,7 +1087,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                                    className="flex-1 min-w-[120px] text-sm border border-slate-200 dark:border-slate-700 rounded px-2 py-1 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none"
                                 />
                              )}
-                             <button onClick={() => removeFilter(filter.id)} className="ml-auto text-slate-400 hover:text-red-500">
+                             <button onClick={() => removeFilter(filter.id)} className="ml-auto text-slate-400 hover:text-red-500" title="Remover filtro">
                                 <Trash2 className="w-4 h-4" />
                              </button>
                           </div>
@@ -1105,6 +1114,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                                 <button
                                    key={fullId}
                                    onClick={() => toggleGroupBy(fullId)}
+                                   title={`Alternar agrupamento por ${fullId}`}
                                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
                                       isGrouped 
                                        ? 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-800' 
@@ -1124,7 +1134,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                        <h3 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                           <ArrowDownAZ className="w-4 h-4 text-indigo-600" /> Ordenar Por (Order By)
                        </h3>
-                       <button onClick={addSort} className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline flex items-center gap-1">
+                       <button onClick={addSort} title="Adicionar nova regra de ordenação" className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline flex items-center gap-1">
                           <Plus className="w-3 h-3" /> Adicionar Regra
                        </button>
                     </div>
@@ -1158,7 +1168,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                                       className={`px-2 py-0.5 text-xs rounded ${sort.direction === 'DESC' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-indigo-400 font-bold' : 'text-slate-500 dark:text-slate-400'}`}
                                    >DESC</button>
                                 </div>
-                                <button onClick={() => removeSort(sort.id)} className="text-slate-400 hover:text-red-500">
+                                <button onClick={() => removeSort(sort.id)} className="text-slate-400 hover:text-red-500" title="Remover regra">
                                    <Trash2 className="w-4 h-4" />
                                 </button>
                              </div>
@@ -1179,7 +1189,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
               <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-2">
                  Tabelas Selecionadas
                  {state.selectedTables.length > 0 && (
-                   <button onClick={clearAllTables} className="text-slate-500 hover:text-red-400 transition-colors" title="Limpar tudo">
+                   <button onClick={clearAllTables} className="text-slate-500 hover:text-red-400 transition-colors" title="Limpar todas as tabelas e reiniciar seleção">
                       <Trash2 className="w-3 h-3" />
                    </button>
                  )}
@@ -1194,7 +1204,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
          </div>
 
          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded border border-slate-700">
+            <div className="flex items-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded border border-slate-700" title="Número máximo de linhas a retornar">
                <Settings2 className="w-4 h-4 text-slate-400" />
                <span className="text-xs text-slate-400">Limite:</span>
                <input 
@@ -1220,6 +1230,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
             <button
               onClick={onGenerate}
               disabled={state.selectedTables.length === 0 || isGenerating}
+              title="Gerar SQL e visualizar prévia"
               className="bg-indigo-500 hover:bg-indigo-400 text-white px-6 py-2.5 rounded-lg font-bold shadow-lg shadow-indigo-900/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {isGenerating ? (
