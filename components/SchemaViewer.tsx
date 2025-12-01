@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, memo, useDeferredValue, useRef } from 'react';
 import { DatabaseSchema, Table, Column } from '../types';
-import { Database, Table as TableIcon, Key, ArrowRight, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight } from 'lucide-react';
+import { Database, Table as TableIcon, Key, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight, Loader2, ArrowRight } from 'lucide-react';
 
 interface SchemaViewerProps {
   schema: DatabaseSchema;
@@ -33,7 +33,6 @@ interface SchemaColumnItemProps {
 const SchemaColumnItem = memo(({ 
   col, tableName, isHovered, isRelTarget, isRelSource, debouncedTerm, onHover, onHoverOut 
 }: SchemaColumnItemProps) => {
-  const targetTable = col.references ? col.references.split('.')[0] : null;
   const isMatch = debouncedTerm && col.name.toLowerCase().includes(debouncedTerm.toLowerCase());
   
   let bgClass = '';
@@ -121,7 +120,8 @@ interface SchemaTableItemProps {
   selectedTypeFilter: string;
   sortField: SortField;
   sortDirection: SortDirection;
-  hoveredColumn: { table: string; col: string; references?: string } | null;
+  hoveredColumnKey: string | null; // "table.col"
+  hoveredColumnRef: string | null; // "targetTable.targetCol"
   
   onToggleExpand: (e: React.MouseEvent, name: string) => void;
   onTableClick: (name: string) => void;
@@ -137,7 +137,7 @@ interface SchemaTableItemProps {
 
 const SchemaTableItem = memo(({
   table, visualState, isExpanded, isSelected, selectionMode, editingTable, tempDesc, 
-  debouncedTerm, selectedTypeFilter, sortField, sortDirection, hoveredColumn,
+  debouncedTerm, selectedTypeFilter, sortField, sortDirection, hoveredColumnKey, hoveredColumnRef,
   onToggleExpand, onTableClick, onMouseEnter, onStartEditing, onSaveDescription, onDescChange, onSetEditing, onSortChange, onColumnHover, onColumnHoverOut
 }: SchemaTableItemProps) => {
 
@@ -147,7 +147,7 @@ const SchemaTableItem = memo(({
 
   switch (visualState) {
     case 'dimmed':
-      containerClass = 'opacity-40 grayscale-[0.5] border-slate-100 dark:border-slate-800 dark:bg-slate-900';
+      containerClass = 'opacity-40 grayscale-[0.5] border-slate-100 dark:border-slate-800 dark:bg-slate-900 transition-opacity duration-300';
       break;
     case 'focused':
       containerClass = 'opacity-100 ring-1 ring-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 border-l-4 border-l-indigo-600 shadow-md z-10';
@@ -181,21 +181,25 @@ const SchemaTableItem = memo(({
     let cols = [...table.columns];
     if (selectedTypeFilter) cols = cols.filter(c => c.type.toUpperCase().includes(selectedTypeFilter));
     
-    return cols.sort((a, b) => {
-      let valA: any = '', valB: any = '';
-      switch (sortField) {
-        case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
-        case 'type': valA = a.type.toLowerCase(); valB = b.type.toLowerCase(); break;
-        case 'key': 
-          valA = (a.isPrimaryKey ? 2 : 0) + (a.isForeignKey ? 1 : 0);
-          valB = (b.isPrimaryKey ? 2 : 0) + (b.isForeignKey ? 1 : 0);
-          if (sortDirection === 'asc') return valB - valA;
-          else return valA - valB;
-      }
-      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
+    // Sort columns if needed, otherwise default order
+    if (sortField) {
+        cols.sort((a, b) => {
+          let valA: any = '', valB: any = '';
+          switch (sortField) {
+            case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
+            case 'type': valA = a.type.toLowerCase(); valB = b.type.toLowerCase(); break;
+            case 'key': 
+              valA = (a.isPrimaryKey ? 2 : 0) + (a.isForeignKey ? 1 : 0);
+              valB = (b.isPrimaryKey ? 2 : 0) + (b.isForeignKey ? 1 : 0);
+              if (sortDirection === 'asc') return valB - valA;
+              else return valA - valB;
+          }
+          if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+          if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+          return 0;
+        });
+    }
+    return cols;
   };
 
   const isEditing = editingTable === table.name;
@@ -208,6 +212,7 @@ const SchemaTableItem = memo(({
     <div 
       className={`border rounded-lg transition-all duration-200 relative ${containerClass} ${isExpanded ? 'bg-white dark:bg-slate-800' : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
       onMouseEnter={() => onMouseEnter(table.name)}
+      // Performance: key is vital, but React handles it in parent map
     >
       {label}
       <div 
@@ -270,18 +275,28 @@ const SchemaTableItem = memo(({
           </div>
           <div className="space-y-0.5">
             {getColumns().map((col) => {
-               const isHovered = hoveredColumn?.table === table.name && hoveredColumn?.col === col.name;
-               const isRelTarget = hoveredColumn?.references === `${table.name}.${col.name}`;
-               const isRelSource = hoveredColumn && !hoveredColumn.references && col.references === `${hoveredColumn.table}.${hoveredColumn.col}`;
+               // Use simple string keys for memoization efficiency
+               const colKey = `${table.name}.${col.name}`;
+               const isHovered = hoveredColumnKey === colKey;
+               const isRelTarget = hoveredColumnRef === colKey;
+               
+               // Complex Check: Source
+               // If hoveredColumnRef matches something, does THIS col reference the hovered col?
+               // Or does THIS col reference the hoveredColumnKey?
+               const isRelSource = 
+                  // Case A: This column is an FK, and it points to what we are hovering
+                  (col.references && col.references === hoveredColumnKey) ||
+                  // Case B: We are hovering an FK, and this column is the target of that FK
+                  (hoveredColumnRef && hoveredColumnRef === colKey);
                
                return (
                  <SchemaColumnItem 
                    key={col.name} 
                    col={col} 
                    tableName={table.name} 
-                   isHovered={isHovered || false} 
-                   isRelTarget={isRelTarget || false} 
-                   isRelSource={isRelSource || false}
+                   isHovered={isHovered} 
+                   isRelTarget={isRelTarget} 
+                   isRelSource={!!isRelSource} // Ensure boolean
                    debouncedTerm={debouncedTerm}
                    onHover={onColumnHover}
                    onHoverOut={onColumnHoverOut}
@@ -294,6 +309,20 @@ const SchemaTableItem = memo(({
       )}
     </div>
   );
+}, (prev, next) => {
+  // Manual prop check for performance with large lists
+  return prev.table.name === next.table.name &&
+         prev.visualState === next.visualState &&
+         prev.isExpanded === next.isExpanded &&
+         prev.isSelected === next.isSelected &&
+         prev.editingTable === next.editingTable &&
+         prev.tempDesc === next.tempDesc &&
+         prev.hoveredColumnKey === next.hoveredColumnKey &&
+         prev.hoveredColumnRef === next.hoveredColumnRef &&
+         prev.sortField === next.sortField &&
+         prev.sortDirection === next.sortDirection &&
+         prev.debouncedTerm === next.debouncedTerm &&
+         prev.selectedTypeFilter === next.selectedTypeFilter;
 });
 
 // --- Main Component ---
@@ -316,10 +345,19 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   const [editingTable, setEditingTable] = useState<string | null>(null);
   const [tempDesc, setTempDesc] = useState('');
 
-  // Hover States (Critical for performance)
+  // Hover States (Optimization: use strings instead of objects for easier diffing)
   const [hoveredTable, setHoveredTable] = useState<string | null>(null);
-  const [hoveredColumn, setHoveredColumn] = useState<{ table: string; col: string; references?: string } | null>(null);
-  const [hoveredFkTarget, setHoveredFkTarget] = useState<string | null>(null);
+  const [hoveredColumnKey, setHoveredColumnKey] = useState<string | null>(null); // "table.col"
+  const [hoveredColumnRef, setHoveredColumnRef] = useState<string | null>(null); // "targetTable.targetCol"
+
+  // Defer the hover state to prioritize UI responsiveness (scrolling/mouse move) over highlighting calculation
+  const deferredHoveredTable = useDeferredValue(hoveredTable);
+  const deferredHoveredColumnRef = useDeferredValue(hoveredColumnRef);
+  const deferredHoveredColumnKey = useDeferredValue(hoveredColumnKey);
+
+  // Lazy Loading / Infinite Scroll State
+  const [renderLimit, setRenderLimit] = useState(40); // Start with only 40 items
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // --- Optimization: Pre-calculate Relationship Graph ---
   // Transforms the O(N*M) hover lookup into O(1) lookup
@@ -350,13 +388,29 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
     });
 
     return { parents, children };
-  }, [schema.tables]);
+  }, [schema.name]); // Depend on schema name to rebuild only when DB changes, avoiding unnecessary rebuilds on re-renders
 
   // Debounce Search
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedTerm(inputValue), 300);
+    const timer = setTimeout(() => {
+       setDebouncedTerm(inputValue);
+       setRenderLimit(40); // Reset scroll on search
+       // Scroll to top
+       if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+    }, 300);
     return () => clearTimeout(timer);
   }, [inputValue]);
+
+  // Handle Scroll for Lazy Loading
+  const handleScroll = useCallback(() => {
+    if (scrollContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+      // Load more when user is 300px from bottom
+      if (scrollTop + clientHeight >= scrollHeight - 300) {
+        setRenderLimit(prev => Math.min(prev + 20, schema.tables.length));
+      }
+    }
+  }, [schema.tables.length]);
 
   // Derived Values
   const allColumnTypes = useMemo(() => {
@@ -366,24 +420,31 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
       types.add(simpleType);
     }));
     return Array.from(types).sort();
-  }, [schema]);
+  }, [schema.name]); // Stable dependency
 
   const filteredTables = useMemo(() => {
     const term = debouncedTerm.toLowerCase().trim();
-    let tables = schema.tables.filter(table => {
-      const nameMatch = table.name.toLowerCase().includes(term);
-      const descMatch = table.description && table.description.toLowerCase().includes(term);
-      const colMatch = table.columns.some(col => col.name.toLowerCase().includes(term));
-      const matchesSearch = !term || nameMatch || descMatch || colMatch;
-      let matchesType = true;
-      if (selectedTypeFilter) {
-        matchesType = table.columns.some(col => col.type.toUpperCase().includes(selectedTypeFilter));
-      }
-      return matchesSearch && matchesType;
-    });
+    let tables = schema.tables;
+    
+    // Only filter if necessary (Perf optimization)
+    if (term || selectedTypeFilter) {
+      tables = tables.filter(table => {
+        const nameMatch = !term || table.name.toLowerCase().includes(term);
+        const descMatch = !term || (table.description && table.description.toLowerCase().includes(term));
+        const colMatch = !term || table.columns.some(col => col.name.toLowerCase().includes(term));
+        const matchesSearch = nameMatch || descMatch || colMatch;
+        let matchesType = true;
+        if (selectedTypeFilter) {
+          matchesType = table.columns.some(col => col.type.toUpperCase().includes(selectedTypeFilter));
+        }
+        return matchesSearch && matchesType;
+      });
+    }
 
+    // Sort
+    const sorted = [...tables]; // Copy to avoid mutation
     if (term) {
-      tables.sort((a, b) => {
+      sorted.sort((a, b) => {
         const nameA = a.name.toLowerCase(), nameB = b.name.toLowerCase();
         let scoreA = nameA === term ? 100 : nameA.startsWith(term) ? 50 : nameA.includes(term) ? 10 : 1;
         let scoreB = nameB === term ? 100 : nameB.startsWith(term) ? 50 : nameB.includes(term) ? 10 : 1;
@@ -391,9 +452,9 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
         return nameA.localeCompare(nameB);
       });
     } else {
-       tables.sort((a, b) => a.name.localeCompare(b.name));
+       sorted.sort((a, b) => a.name.localeCompare(b.name));
     }
-    return tables;
+    return sorted;
   }, [schema.tables, debouncedTerm, selectedTypeFilter]);
 
   // Handlers (Memoized to prevent prop churn on children)
@@ -419,17 +480,24 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   }, [selectionMode, onToggleTable]);
 
   const handleMouseEnterTable = useCallback((tableName: string) => {
-    if (!hoveredFkTarget) setHoveredTable(tableName);
-  }, [hoveredFkTarget]);
+    setHoveredTable(tableName);
+  }, []);
 
   const handleColumnHover = useCallback((table: string, col: string, ref?: string) => {
-     if (ref) setHoveredFkTarget(ref.split('.')[0]);
-     setHoveredColumn({ table, col, references: ref });
+     setHoveredColumnKey(`${table}.${col}`);
+     setHoveredColumnRef(ref || null);
+     if (ref) {
+       // Also highlight the target table
+       setHoveredTable(ref.split('.')[0]);
+     } else {
+       setHoveredTable(table);
+     }
   }, []);
 
   const handleColumnHoverOut = useCallback(() => {
-     setHoveredFkTarget(null);
-     setHoveredColumn(null);
+     setHoveredColumnKey(null);
+     setHoveredColumnRef(null);
+     // Don't reset hoveredTable here immediately to avoid flickering, let mouseLeave of table handle it
   }, []);
 
   const handleStartEditing = useCallback((e: React.MouseEvent, table: Table) => {
@@ -449,29 +517,59 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
     else { setSortField(field); setSortDirection('asc'); }
   }, [sortField]);
 
+  const handleDescChange = useCallback((val: string) => setTempDesc(val), []);
+  const handleSetEditing = useCallback((name: string | null) => setEditingTable(name), []);
+
+
   // Actions
   const expandAll = () => setExpandedTables(new Set(filteredTables.map(t => t.name)));
   const collapseAll = () => setExpandedTables(new Set());
 
-  // Determine visual state per table efficiently
-  const getVisualState = useCallback((tableName: string): VisualState => {
-    // 1. Hovering FK Column Mode
-    if (hoveredFkTarget) {
-       if (tableName === hoveredFkTarget) return 'target';
-       if (hoveredColumn && tableName === hoveredColumn.table) return 'source';
-       return 'dimmed';
+  // --- Optimization: Pre-calculate Visual State Map ---
+  // Instead of recalculating getVisualState() inside the render loop for every item,
+  // we calculate a map of { [tableName]: VisualState } once when dependencies change.
+  const visualStateMap = useMemo(() => {
+    const map = new Map<string, VisualState>();
+    if (!deferredHoveredTable && !deferredHoveredColumnRef) return map;
+
+    // 1. Column Hover Logic (Prioritized)
+    if (deferredHoveredColumnRef) {
+       const targetTable = deferredHoveredColumnRef.split('.')[0];
+       map.set(targetTable, 'target');
+       
+       if (deferredHoveredColumnKey) {
+          const sourceTable = deferredHoveredColumnKey.split('.')[0];
+          map.set(sourceTable, 'source');
+       }
+       return map; // When focusing a specific FK relationship, others are dimmed implicitly by default fallback
     }
 
-    // 2. Table Hover Mode
-    if (hoveredTable) {
-       if (tableName === hoveredTable) return 'focused';
-       if (relationshipGraph.parents[hoveredTable]?.has(tableName)) return 'parent'; // This table is a parent of hovered
-       if (relationshipGraph.children[hoveredTable]?.has(tableName)) return 'child'; // This table is a child of hovered
-       return 'dimmed';
+    // 2. Table Hover Logic
+    if (deferredHoveredTable) {
+       map.set(deferredHoveredTable, 'focused');
+       
+       // Add parents
+       const parents = relationshipGraph.parents[deferredHoveredTable];
+       if (parents) parents.forEach(p => map.set(p, 'parent'));
+
+       // Add children
+       const children = relationshipGraph.children[deferredHoveredTable];
+       if (children) children.forEach(c => map.set(c, 'child'));
     }
 
-    return 'normal';
-  }, [hoveredTable, hoveredFkTarget, hoveredColumn, relationshipGraph]);
+    return map;
+  }, [deferredHoveredTable, deferredHoveredColumnRef, deferredHoveredColumnKey, relationshipGraph]);
+
+  // Helper to safely get state, defaulting to 'dimmed' if something else is focused, or 'normal'
+  const getTableState = (tableName: string): VisualState => {
+     if (visualStateMap.size === 0) return 'normal';
+     if (visualStateMap.has(tableName)) return visualStateMap.get(tableName)!;
+     // If something is focused but this table isn't in the map, it should be dimmed
+     return 'dimmed';
+  };
+
+  // Virtualization Slice
+  const visibleTables = filteredTables.slice(0, renderLimit);
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 overflow-hidden select-none">
@@ -482,7 +580,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
             <span title="Database Schema" className="flex items-center"><Database className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /></span>
             <div className="overflow-hidden">
               <h2 className="font-semibold text-sm uppercase tracking-wider truncate max-w-[120px]" title={schema.name}>{loading ? 'Carregando...' : schema.name}</h2>
-              <p className="text-[10px] text-slate-400">{filteredTables.length} tabelas</p>
+              <p className="text-[10px] text-slate-400">{schema.tables.length} tabelas</p>
             </div>
           </div>
           {onRegenerateClick && (
@@ -504,14 +602,14 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
            </div>
            <div className="relative">
              <div className="absolute left-2 top-2 pointer-events-none"><Filter className={`w-4 h-4 ${selectedTypeFilter ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} /></div>
-             <select value={selectedTypeFilter} onChange={(e) => setSelectedTypeFilter(e.target.value)} className={`w-[100px] h-full pl-8 pr-2 py-2 border rounded text-xs outline-none appearance-none cursor-pointer font-medium ${selectedTypeFilter ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
+             <select value={selectedTypeFilter} onChange={(e) => { setSelectedTypeFilter(e.target.value); setRenderLimit(40); }} className={`w-[100px] h-full pl-8 pr-2 py-2 border rounded text-xs outline-none appearance-none cursor-pointer font-medium ${selectedTypeFilter ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
                 <option value="">Tipos</option>
                 {allColumnTypes.map(t => <option key={t} value={t}>{t}</option>)}
              </select>
            </div>
         </div>
         <div className="flex justify-between items-center px-1">
-           <span className="text-[10px] text-slate-400 font-medium">{filteredTables.length} tabelas</span>
+           <span className="text-[10px] text-slate-400 font-medium">{filteredTables.length} tabelas {filteredTables.length > renderLimit && `(Exibindo ${renderLimit})`}</span>
            <div className="flex gap-2">
              <button onClick={expandAll} className="text-[10px] text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400">Expandir</button>
              <button onClick={collapseAll} className="text-[10px] text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400">Recolher</button>
@@ -519,43 +617,54 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
         </div>
       </div>
       
-      {/* Content Area */}
+      {/* Content Area with Lazy Loading Scroll */}
       <div 
+         ref={scrollContainerRef}
+         onScroll={handleScroll}
          className="flex-1 overflow-y-auto p-3 space-y-2 relative scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700" 
-         onMouseLeave={() => { setHoveredTable(null); setHoveredFkTarget(null); setHoveredColumn(null); }}
+         onMouseLeave={() => { setHoveredTable(null); setHoveredColumnKey(null); setHoveredColumnRef(null); }}
       >
         {loading ? (
           <div className="space-y-4 animate-pulse">{[1, 2, 3, 4].map((i) => <div key={i} className="space-y-2 border border-slate-100 dark:border-slate-700 rounded-lg p-3"><div className="flex items-center gap-2"><div className="w-4 h-4 bg-slate-200 dark:bg-slate-700 rounded"></div><div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div></div></div>)}</div>
         ) : filteredTables.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-xs italic">Nenhuma tabela encontrada.</div>
         ) : (
-          filteredTables.map((table) => (
-            <SchemaTableItem
-              key={table.name}
-              table={table}
-              visualState={getVisualState(table.name)}
-              isExpanded={expandedTables.has(table.name)}
-              isSelected={selectedTableIds.includes(table.name)}
-              selectionMode={selectionMode}
-              editingTable={editingTable}
-              tempDesc={tempDesc}
-              debouncedTerm={debouncedTerm}
-              selectedTypeFilter={selectedTypeFilter}
-              sortField={sortField}
-              sortDirection={sortDirection}
-              hoveredColumn={hoveredColumn}
-              onToggleExpand={handleToggleExpand}
-              onTableClick={handleTableClick}
-              onMouseEnter={handleMouseEnterTable}
-              onStartEditing={handleStartEditing}
-              onSaveDescription={handleSaveDescription}
-              onDescChange={setTempDesc}
-              onSetEditing={setEditingTable}
-              onSortChange={handleSortChange}
-              onColumnHover={handleColumnHover}
-              onColumnHoverOut={handleColumnHoverOut}
-            />
-          ))
+          <>
+            {visibleTables.map((table) => (
+              <SchemaTableItem
+                key={table.name}
+                table={table}
+                visualState={getTableState(table.name)}
+                isExpanded={expandedTables.has(table.name)}
+                isSelected={selectedTableIds.includes(table.name)}
+                selectionMode={selectionMode}
+                editingTable={editingTable}
+                tempDesc={tempDesc}
+                debouncedTerm={debouncedTerm}
+                selectedTypeFilter={selectedTypeFilter}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                hoveredColumnKey={deferredHoveredColumnKey}
+                hoveredColumnRef={deferredHoveredColumnRef}
+                onToggleExpand={handleToggleExpand}
+                onTableClick={handleTableClick}
+                onMouseEnter={handleMouseEnterTable}
+                onStartEditing={handleStartEditing}
+                onSaveDescription={handleSaveDescription}
+                onDescChange={handleDescChange}
+                onSetEditing={handleSetEditing}
+                onSortChange={handleSortChange}
+                onColumnHover={handleColumnHover}
+                onColumnHoverOut={handleColumnHoverOut}
+              />
+            ))}
+            {filteredTables.length > renderLimit && (
+              <div className="py-4 text-center text-slate-400 flex items-center justify-center gap-2">
+                 <Loader2 className="w-4 h-4 animate-spin" />
+                 <span className="text-xs">Carregando mais tabelas...</span>
+              </div>
+            )}
+          </>
         )}
       </div>
       
