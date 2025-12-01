@@ -1,14 +1,16 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useDeferredValue, memo, useRef } from 'react';
 import { DatabaseSchema, BuilderState, ExplicitJoin, JoinType, Filter, Operator, OrderBy, AppSettings, SavedQuery, AggregateFunction, Column } from '../../types';
-import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square, Plus, Trash2, ArrowRightLeft, Filter as FilterIcon, ArrowDownAZ, List, Link2, Check, ChevronDown, Pin, XCircle, Undo2, Redo2, Save, FolderOpen, Calendar, Clock, Sigma, Key, Combine, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square, Plus, Trash2, ArrowRightLeft, Filter as FilterIcon, ArrowDownAZ, List, Link2, Check, ChevronDown, Pin, XCircle, Undo2, Redo2, Save, FolderOpen, Calendar, Clock, Sigma, Key, Combine, ArrowRight, ArrowLeft, FastForward } from 'lucide-react';
 
 interface BuilderStepProps {
   schema: DatabaseSchema;
   state: BuilderState;
   onStateChange: (state: BuilderState) => void;
   onGenerate: () => void;
+  onSkipAi?: () => void;
   isGenerating: boolean;
+  progressMessage?: string;
   settings: AppSettings;
 }
 
@@ -26,7 +28,6 @@ interface ColumnItemProps {
 }
 
 // Memoized Column Item
-// Using strict equality for function props is now safe because we will ensure handlers are stable via refs
 const ColumnItem = memo(({ col, tableName, isSelected, aggregation, onToggle, onAggregationChange }: ColumnItemProps) => {
   return (
     <div 
@@ -112,7 +113,6 @@ const TableCard = memo(({
         const andTerms = group.trim().split(/\s+/);
         return andTerms.every(t => {
           try {
-             // Simple contains check is much faster than Regex for typing
              return col.name.toLowerCase().includes(t.toLowerCase());
           } catch (e) {
              return false;
@@ -200,11 +200,9 @@ const TableCard = memo(({
     </div>
   );
 }, (prev, next) => {
-   // Optimization: Only re-render if something RELEVANT changed for this table
    return prev.isCollapsed === next.isCollapsed &&
           prev.colSearchTerm === next.colSearchTerm &&
           prev.table.name === next.table.name &&
-          // Shallow compare specific props that might change
           prev.selectedColumns === next.selectedColumns &&
           prev.aggregations === next.aggregations;
 });
@@ -212,18 +210,34 @@ const TableCard = memo(({
 
 // --- Main Component ---
 
-const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange, onGenerate, isGenerating, settings }) => {
+const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange, onGenerate, onSkipAi, isGenerating, progressMessage, settings }) => {
   const [activeTab, setActiveTab] = useState<TabType>('columns');
   
   // Search state for tables
   const [searchTerm, setSearchTerm] = useState('');
-  const deferredSearchTerm = useDeferredValue(searchTerm); // DEFERRED: Avoid blocking UI on type
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   
   // State for column search within specific tables
   const [columnSearchTerms, setColumnSearchTerms] = useState<Record<string, string>>({});
   
   // State for collapsible tables
   const [collapsedTables, setCollapsedTables] = useState<Set<string>>(new Set());
+
+  // Show skip button if generating for too long
+  const [showSkipButton, setShowSkipButton] = useState(false);
+
+  useEffect(() => {
+    let timer: any;
+    if (isGenerating) {
+       setShowSkipButton(false);
+       timer = setTimeout(() => {
+          setShowSkipButton(true);
+       }, 3000); // 3 seconds threshold
+    } else {
+       setShowSkipButton(false);
+    }
+    return () => clearTimeout(timer);
+  }, [isGenerating]);
 
   // --- Undo / Redo History State ---
   const [history, setHistory] = useState<BuilderState[]>([]);
@@ -233,15 +247,11 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   const [showSavedQueries, setShowSavedQueries] = useState(false);
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
 
-  // --- STABLE STATE REF PATTERN ---
-  // To avoid re-rendering all memoized components when state changes, we use a ref to access the latest state
-  // inside event handlers without changing the handler reference itself.
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
-  // Load saved queries on mount
   useEffect(() => {
     const saved = localStorage.getItem('psql-buddy-saved-queries');
     if (saved) {
@@ -254,18 +264,16 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     }
   }, []);
 
-  // Initialize defaults from settings if state is fresh
   useEffect(() => {
     if (state.limit === 100 && state.limit !== settings.defaultLimit) {
       onStateChange({ ...state, limit: settings.defaultLimit });
     }
   }, [settings.defaultLimit]);
 
-  // --- History Management Wrappers (Stable) ---
+  // --- History Management Wrappers ---
   
   const updateStateWithHistory = useCallback((newState: BuilderState) => {
     const currentState = stateRef.current;
-    // Deep copy for history safety
     const currentStateCopy = JSON.parse(JSON.stringify(currentState));
     setHistory(prev => [...prev, currentStateCopy]);
     setFuture([]);
@@ -273,8 +281,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   }, [onStateChange]);
 
   const handleUndo = useCallback(() => {
-    // Undo depends on history, which is local, so this recreates when history changes.
-    // That's fine as it's not passed to heavy table components.
     if (history.length === 0) return;
     const previousState = history[history.length - 1];
     const newHistory = history.slice(0, -1);
@@ -297,7 +303,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   }, [future, onStateChange]);
 
   // --- Saved Queries Logic ---
-  
   const handleSaveQuery = () => {
     const name = window.prompt("Nome da consulta para salvar:", `Consulta ${new Date().toLocaleTimeString()}`);
     if (!name) return;
@@ -307,7 +312,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       name,
       createdAt: Date.now(),
       schemaName: schema.name,
-      state: JSON.parse(JSON.stringify(stateRef.current)) // Deep copy
+      state: JSON.parse(JSON.stringify(stateRef.current))
     };
 
     const newSavedList = [newQuery, ...savedQueries];
@@ -331,7 +336,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     }
   };
 
-  // Filter queries for current schema
   const relevantSavedQueries = useMemo(() => 
     savedQueries.filter(q => q.schemaName === schema.name), 
   [savedQueries, schema.name]);
@@ -342,9 +346,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     return t ? t.columns : [];
   }, [schema.tables]);
 
-  // This one reads from stateRef to be safe if called asynchronously, though usually called in render cycle.
-  // Actually used in render, so we should rely on props or make sure ref is current.
-  // We'll use stateRef.current to be safe in event handlers, but props in render.
   const getAllSelectedTableColumns = () => {
     let cols: {table: string, column: string}[] = [];
     state.selectedTables.forEach(tName => {
@@ -368,7 +369,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     });
   }, []);
 
-  // --- Table Selection Logic (STABLE) ---
+  // --- Logic for selection ---
   const toggleTable = useCallback((tableName: string) => {
     const currentState = stateRef.current;
     const isSelected = currentState.selectedTables.includes(tableName);
@@ -379,7 +380,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       const newColumns = currentState.selectedColumns.filter(c => !c.startsWith(`${tableName}.`));
       const newJoins = currentState.joins.filter(j => j.fromTable !== tableName && j.toTable !== tableName);
       const newFilters = currentState.filters.filter(f => !f.column.startsWith(`${tableName}.`));
-      // Remove aggregations for columns of this table
       const newAggs = { ...currentState.aggregations };
       Object.keys(newAggs).forEach(key => {
         if (key.startsWith(`${tableName}.`)) delete newAggs[key];
@@ -393,7 +393,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
         joins: newJoins, 
         filters: newFilters 
       });
-      // Clear search terms for removed table
       setColumnSearchTerms(prev => {
          const next = { ...prev };
          delete next[tableName];
@@ -409,7 +408,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
      updateStateWithHistory({ ...stateRef.current, selectedTables: [], selectedColumns: [], aggregations: {}, joins: [], filters: [] });
   }, [updateStateWithHistory]);
 
-  // --- Column Selection Logic (STABLE) ---
   const toggleColumn = useCallback((tableName: string, colName: string) => {
     const currentState = stateRef.current;
     const fullId = `${tableName}.${colName}`;
@@ -440,7 +438,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       newAggs[fullId] = func;
     }
     
-    // Ensure column is selected if an aggregation is applied
     let newColumns = currentState.selectedColumns;
     if (!currentState.selectedColumns.includes(fullId)) {
       newColumns = [...currentState.selectedColumns, fullId];
@@ -463,14 +460,12 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     const currentState = stateRef.current;
     const visibleSet = new Set(visibleColumns.map(c => `${tableName}.${c}`));
     const newCols = currentState.selectedColumns.filter(c => !visibleSet.has(c));
-    // Clear aggs for these columns
     const newAggs = { ...currentState.aggregations };
     visibleSet.forEach(key => delete newAggs[key]);
 
     updateStateWithHistory({ ...currentState, selectedColumns: newCols, aggregations: newAggs });
   }, [updateStateWithHistory]);
 
-  // --- Search Handlers (Stable) ---
   const handleColumnSearchChange = useCallback((tableName: string, term: string) => {
     setColumnSearchTerms(prev => ({...prev, [tableName]: term}));
   }, []);
@@ -479,7 +474,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     setColumnSearchTerms(prev => ({...prev, [tableName]: ''}));
   }, []);
 
-  // --- Joins/Filters/Sort Wrappers (STABLE) ---
   const addJoin = useCallback(() => {
     const currentState = stateRef.current;
     const newJoin: ExplicitJoin = {
@@ -555,10 +549,8 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   }, [updateStateWithHistory]);
 
 
-  // --- Render Helpers ---
-  
   const { pinnedTables, unpinnedTables } = useMemo(() => {
-    const term = deferredSearchTerm.toLowerCase().trim(); // Use Deferred Term
+    const term = deferredSearchTerm.toLowerCase().trim();
     let allMatches = schema.tables;
     if (term) {
        allMatches = schema.tables.filter(table => 
@@ -642,10 +634,8 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
     </div>
   );
 
-  // Helper component for enhanced column selection in Joins
   const renderColumnSelect = (tableName: string, value: string, onChange: (val: string) => void, placeholder: string) => {
     const cols = getColumnsForTable(tableName);
-    // Group columns: Keys (PK/FK) and others
     const keys = cols.filter(c => c.isPrimaryKey || c.isForeignKey);
     const data = cols.filter(c => !c.isPrimaryKey && !c.isForeignKey);
 
@@ -1214,6 +1204,18 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                  className="w-16 bg-transparent text-right font-mono text-sm outline-none focus:text-indigo-400 text-white"
                />
             </div>
+            
+            {/* Show Skip Button if taking too long */}
+            {isGenerating && showSkipButton && onSkipAi && settings.enableAiGeneration && (
+               <button 
+                  onClick={onSkipAi}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-amber-300 hover:text-amber-200 hover:bg-white/10 rounded transition-colors"
+                  title="Pular IA e usar motor local"
+               >
+                  <FastForward className="w-3.5 h-3.5" />
+                  Demorando? Pular IA
+               </button>
+            )}
 
             <button
               onClick={onGenerate}
@@ -1223,7 +1225,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
               {isGenerating ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  Construindo...
+                  <span className="text-xs opacity-90">{progressMessage || "Processando..."}</span>
                 </>
               ) : (
                 <>

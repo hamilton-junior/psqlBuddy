@@ -106,9 +106,12 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
 export const generateSqlFromBuilderState = async (
   schema: DatabaseSchema,
   state: BuilderState,
-  includeTips: boolean = true
+  includeTips: boolean = true,
+  onProgress?: (msg: string) => void
 ): Promise<QueryResult> => {
   
+  if (onProgress) onProgress("Preparando contexto do schema...");
+
   // Richer schema description for generation including types and keys
   const schemaDescription = schema.tables.map(t => 
     `TABELA: ${t.name}\nCOLUNAS: ${t.columns.map(c => {
@@ -174,7 +177,14 @@ export const generateSqlFromBuilderState = async (
   if (includeTips) requiredFields.push("tips");
 
   try {
-    const response = await ai.models.generateContent({
+    if (onProgress) onProgress("Aguardando resposta da IA...");
+    
+    // Add a timeout race
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("TIMEOUT")), 25000)
+    );
+
+    const apiPromise = ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
@@ -195,6 +205,10 @@ export const generateSqlFromBuilderState = async (
       }
     });
 
+    const response: any = await Promise.race([apiPromise, timeoutPromise]);
+
+    if (onProgress) onProgress("Processando resposta JSON...");
+
     if (response.text) {
       let result: QueryResult;
       try {
@@ -205,6 +219,8 @@ export const generateSqlFromBuilderState = async (
         throw new Error("Resposta inválida da IA.");
       }
       
+      if (onProgress) onProgress("Finalizando query...");
+
       // Check for the specific no-relationship signal
       if (result.sql === "NO_RELATIONSHIP") {
         return result;

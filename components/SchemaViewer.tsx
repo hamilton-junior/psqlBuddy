@@ -1,18 +1,18 @@
-
 import React, { useState, useMemo } from 'react';
 import { DatabaseSchema, Table, Column } from '../types';
-import { Database, Table as TableIcon, Key, ArrowRight, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Database, Table as TableIcon, Key, ArrowRight, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter } from 'lucide-react';
 
 interface SchemaViewerProps {
   schema: DatabaseSchema;
   onRegenerateClick: () => void;
   loading?: boolean;
+  onDescriptionChange?: (tableName: string, newDescription: string) => void;
 }
 
 type SortField = 'name' | 'type' | 'key';
 type SortDirection = 'asc' | 'desc';
 
-const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, loading = false }) => {
+const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, loading = false, onDescriptionChange }) => {
   const [searchTerm, setSearchTerm] = useState('');
   // Store expanded table names. Initialize with empty or all based on preference.
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
@@ -25,21 +25,43 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
   const [sortField, setSortField] = useState<SortField>('key'); // Default to showing keys first
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
+  // Type Filter State
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('');
+
+  // Description Editing State
+  const [editingTable, setEditingTable] = useState<string | null>(null);
+  const [tempDesc, setTempDesc] = useState('');
+
+  // Extract all unique column types for the filter dropdown
+  const allColumnTypes = useMemo(() => {
+    const types = new Set<string>();
+    schema.tables.forEach(t => t.columns.forEach(c => {
+      // Simplify type (e.g., VARCHAR(255) -> VARCHAR) for cleaner filtering
+      const simpleType = c.type.split('(')[0].toUpperCase();
+      types.add(simpleType);
+    }));
+    return Array.from(types).sort();
+  }, [schema]);
+
   const filteredTables = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    if (!term) return schema.tables;
 
     return schema.tables.filter(table => {
-      // Match Table Name
+      // 1. Text Search
       const nameMatch = table.name.toLowerCase().includes(term);
-      // Match Description
       const descMatch = table.description && table.description.toLowerCase().includes(term);
-      // Match Column Names
       const colMatch = table.columns.some(col => col.name.toLowerCase().includes(term));
+      const matchesSearch = !term || nameMatch || descMatch || colMatch;
 
-      return nameMatch || descMatch || colMatch;
+      // 2. Type Filter
+      let matchesType = true;
+      if (selectedTypeFilter) {
+        matchesType = table.columns.some(col => col.type.toUpperCase().includes(selectedTypeFilter));
+      }
+
+      return matchesSearch && matchesType;
     });
-  }, [schema.tables, searchTerm]);
+  }, [schema.tables, searchTerm, selectedTypeFilter]);
 
   // Expand/Collapse logic
   const toggleTable = (tableName: string) => {
@@ -69,8 +91,30 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
     }
   };
 
-  const getSortedColumns = (columns: Column[]) => {
-    return [...columns].sort((a, b) => {
+  const startEditing = (e: React.MouseEvent, table: Table) => {
+    e.stopPropagation();
+    setEditingTable(table.name);
+    setTempDesc(table.description || '');
+  };
+
+  const saveDescription = (e: React.MouseEvent | React.FormEvent, tableName: string) => {
+    e.stopPropagation(); // Prevent toggle
+    e.preventDefault();
+    if (onDescriptionChange) {
+      onDescriptionChange(tableName, tempDesc);
+    }
+    setEditingTable(null);
+  };
+
+  const getSortedAndFilteredColumns = (columns: Column[]) => {
+    let cols = [...columns];
+
+    // Apply Type Filter
+    if (selectedTypeFilter) {
+      cols = cols.filter(c => c.type.toUpperCase().includes(selectedTypeFilter));
+    }
+
+    return cols.sort((a, b) => {
       let valA: any = '';
       let valB: any = '';
 
@@ -216,25 +260,49 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
 
       {/* Search Bar & Controls */}
       <div className="p-2 border-b border-slate-100 shrink-0 space-y-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Filter tables or columns..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            disabled={loading}
-            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-          />
-          {searchTerm && (
-            <button 
-              onClick={() => setSearchTerm('')}
-              className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
+        <div className="flex gap-2">
+           <div className="relative flex-1">
+             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+             <input
+               type="text"
+               placeholder="Find tables..."
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               disabled={loading}
+               className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+             />
+             {searchTerm && (
+               <button 
+                 onClick={() => setSearchTerm('')}
+                 className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600"
+               >
+                 <X className="w-3 h-3" />
+               </button>
+             )}
+           </div>
+           
+           {/* Type Filter Dropdown */}
+           <div className="relative">
+             <div className="absolute left-2 top-2 pointer-events-none">
+               <Filter className={`w-4 h-4 ${selectedTypeFilter ? 'text-indigo-600' : 'text-slate-400'}`} />
+             </div>
+             <select
+                value={selectedTypeFilter}
+                onChange={(e) => setSelectedTypeFilter(e.target.value)}
+                className={`w-[100px] h-full pl-8 pr-2 py-2 border rounded text-xs outline-none appearance-none cursor-pointer font-medium ${
+                  selectedTypeFilter 
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                    : 'bg-slate-50 border-slate-200 text-slate-500'
+                }`}
+             >
+                <option value="">All Types</option>
+                {allColumnTypes.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+             </select>
+           </div>
         </div>
+
         <div className="flex justify-end gap-2 px-1">
            <button onClick={expandAll} className="text-[10px] text-slate-400 hover:text-indigo-600">Expand All</button>
            <button onClick={collapseAll} className="text-[10px] text-slate-400 hover:text-indigo-600">Collapse All</button>
@@ -257,12 +325,13 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
           </div>
         ) : filteredTables.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-xs italic">
-            No tables match your search.
+             No tables match your filters.
           </div>
         ) : (
           filteredTables.map((table) => {
             const isExpanded = expandedTables.has(table.name);
             const { containerClass, label } = getTableVisuals(table.name);
+            const isEditing = editingTable === table.name;
 
             return (
               <div 
@@ -282,9 +351,43 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
                         <span className="font-medium text-sm text-slate-700 truncate">{table.name}</span>
                         {label}
                      </div>
-                     {table.description && (
-                       <p className="text-[10px] text-slate-400 truncate">{table.description}</p>
-                     )}
+                     
+                     {/* Editable Description Area */}
+                     <div className="flex items-center gap-2 mt-0.5 min-h-[16px]">
+                        {isEditing ? (
+                           <div className="flex items-center gap-1 w-full" onClick={e => e.stopPropagation()}>
+                             <input 
+                               type="text" 
+                               value={tempDesc}
+                               onChange={(e) => setTempDesc(e.target.value)}
+                               className="w-full text-xs bg-slate-100 border border-indigo-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700"
+                               autoFocus
+                               onKeyDown={(e) => {
+                                 if (e.key === 'Enter') saveDescription(e, table.name);
+                                 if (e.key === 'Escape') setEditingTable(null);
+                               }}
+                             />
+                             <button onClick={(e) => saveDescription(e, table.name)} className="p-0.5 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200">
+                               <Check className="w-3 h-3" />
+                             </button>
+                           </div>
+                        ) : (
+                           <div className="flex items-center gap-2 group/desc max-w-full">
+                              <p className="text-[10px] text-slate-400 truncate max-w-[180px]" title={table.description || "No description"}>
+                                {table.description || <span className="italic opacity-50">No description</span>}
+                              </p>
+                              {onDescriptionChange && (
+                                <button 
+                                  onClick={(e) => startEditing(e, table)}
+                                  className="opacity-0 group-hover/desc:opacity-100 p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-indigo-600 transition-all"
+                                  title="Edit description"
+                                >
+                                  <Pencil className="w-2.5 h-2.5" />
+                                </button>
+                              )}
+                           </div>
+                        )}
+                     </div>
                   </div>
                 </div>
 
@@ -306,7 +409,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
                     </div>
 
                     <div className="space-y-0.5">
-                      {getSortedColumns(table.columns).map((col) => {
+                      {getSortedAndFilteredColumns(table.columns).map((col) => {
                          const targetTable = col.references ? col.references.split('.')[0] : null;
                          const isMatch = searchTerm && col.name.toLowerCase().includes(searchTerm.toLowerCase());
                          const tooltipText = col.isForeignKey && col.references 
@@ -350,6 +453,12 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({ schema, onRegenerateClick, 
                           </div>
                          )
                       })}
+                      
+                      {getSortedAndFilteredColumns(table.columns).length === 0 && (
+                        <div className="text-[10px] text-slate-400 py-2 text-center italic">
+                          No columns match filter ({selectedTypeFilter})
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

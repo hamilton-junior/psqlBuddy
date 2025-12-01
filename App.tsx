@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, AppSettings, DEFAULT_SETTINGS } from './types';
 import Sidebar from './components/Sidebar';
 import ConnectionStep from './components/steps/ConnectionStep';
@@ -76,8 +76,12 @@ function App() {
   const [dbResults, setDbResults] = useState<any[]>([]);
   
   const [isProcessing, setIsProcessing] = useState(false); // For SQL Gen & Execution
+  const [progressMessage, setProgressMessage] = useState<string>(''); // Detailed progress
   const [isValidating, setIsValidating] = useState(false); // For Background Validation
   const [error, setError] = useState<string | null>(null);
+
+  // Reference to track the active request ID to handle race conditions (skip/cancel)
+  const generationRequestId = useRef(0);
 
   // --- Handlers ---
 
@@ -114,36 +118,115 @@ function App() {
     setBuilderState(newState);
   };
 
+  const handleSkipAiGeneration = async () => {
+    // Increment ID to invalidate any pending AI promise result
+    generationRequestId.current += 1;
+    setProgressMessage("Cancelando IA e alternando para modo local...");
+    
+    // Artificial delay to let user see the status change
+    await new Promise(r => setTimeout(r, 400));
+    
+    if (!schema) return;
+    
+    try {
+      const result = generateLocalSql(schema, builderState);
+      setQueryResult(result);
+      setCurrentStep('preview');
+    } catch (e: any) {
+      setError("Falha na geração local: " + e.message);
+    } finally {
+      setIsProcessing(false);
+      setProgressMessage("");
+    }
+  };
+
   const handleGeneratePreview = async () => {
     if (!schema) return;
     setError(null);
     setIsProcessing(true);
     
-    try {
-      let result: QueryResult;
+    // Assign a new ID for this specific generation request
+    const currentRequestId = generationRequestId.current + 1;
+    generationRequestId.current = currentRequestId;
 
-      // BRANCH: Check if AI is enabled or Quota exhausted
+    setProgressMessage("Iniciando...");
+    
+    let result: QueryResult | null = null;
+    let usedLocalFallback = false;
+
+    try {
+      // 1. Attempt AI Generation if enabled and technically allowed
       if (settings.enableAiGeneration && !quotaExhausted) {
-         // Use Gemini AI
-         result = await generateSqlFromBuilderState(schema, builderState, settings.enableAiTips);
-         
-         if (result.sql === 'NO_RELATIONSHIP') {
-            setError("A IA não encontrou relacionamento entre estas tabelas. Vá para a aba 'Joins' e defina a conexão manualmente.");
-            setIsProcessing(false);
-            return;
+         try {
+           // Pass granular progress callback
+           result = await generateSqlFromBuilderState(
+             schema, 
+             builderState, 
+             settings.enableAiTips,
+             (msg) => {
+               // Only update if this request is still active/latest
+               if (generationRequestId.current === currentRequestId) {
+                 setProgressMessage(msg);
+               }
+             }
+           );
+           
+           // If we have moved on (e.g. user clicked Skip), discard this result
+           if (generationRequestId.current !== currentRequestId) {
+             console.log("Ignorando resultado obsoleto da IA (Skipped)");
+             return; 
+           }
+
+           if (result.sql === 'NO_RELATIONSHIP') {
+              throw new Error("NO_RELATIONSHIP");
+           }
+         } catch (aiError: any) {
+           console.warn("AI Generation failed, attempting fallback...", aiError);
+           
+           // If request ID changed, we probably skipped already, so don't error out
+           if (generationRequestId.current !== currentRequestId) return;
+
+           if (aiError.message === "QUOTA_ERROR") {
+              setQuotaExhausted(true);
+              setError("Cota de IA excedida. Alternando para modo offline automaticamente.");
+           } else if (aiError.message === "NO_RELATIONSHIP") {
+              throw new Error("A IA não encontrou relacionamento entre estas tabelas. Defina Joins manualmente.");
+           } else if (aiError.message === "TIMEOUT") {
+              // Timeout handled naturally by fallback
+              console.warn("AI Timeout - switching to local");
+           }
+           
+           // Trigger fallback
+           usedLocalFallback = true;
          }
       } else {
-         // Use Local Logic (Offline Mode)
+         usedLocalFallback = true;
+      }
+
+      // Check ID again before fallback
+      if (generationRequestId.current !== currentRequestId) return;
+
+      // 2. Fallback to Local Engine if AI failed or was disabled
+      if (usedLocalFallback) {
+         setProgressMessage("Gerando SQL com motor local...");
+         // Artificial small delay for UX so user sees the switch
+         await new Promise(r => setTimeout(r, 500));
+         
+         if (generationRequestId.current !== currentRequestId) return;
          result = generateLocalSql(schema, builderState);
       }
       
-      // 2. Update UI Immediately
+      if (!result) throw new Error("Falha ao gerar SQL.");
+
+      // 3. Update UI Immediately
       setQueryResult(result);
       setCurrentStep('preview');
       setIsProcessing(false);
+      setProgressMessage("");
 
-      // 3. Run Validation in Background (ONLY if enabled, allowed, and not already exhausted)
-      if (settings.enableAiGeneration && settings.enableAiValidation && !quotaExhausted) {
+      // 4. Run Validation in Background (ONLY if enabled, allowed, and NOT using local fallback)
+      // If we used local fallback, validation is likely to fail quota too or be unnecessary
+      if (settings.enableAiGeneration && settings.enableAiValidation && !quotaExhausted && !usedLocalFallback) {
         setIsValidating(true);
         validateSqlQuery(result.sql, schema)
           .then(validation => {
@@ -153,7 +236,6 @@ function App() {
              console.error("Validação em segundo plano falhou:", err);
              if (err.message === "QUOTA_ERROR") {
                 setQuotaExhausted(true);
-                // We don't error out the user flow, just stop validating
              }
           })
           .finally(() => {
@@ -162,16 +244,11 @@ function App() {
       }
 
     } catch (e: any) {
+      if (generationRequestId.current !== currentRequestId) return;
       console.error(e);
-      if (e.message === "QUOTA_ERROR") {
-        setQuotaExhausted(true);
-        // Fallback to local gen if AI fails mid-flight due to quota? 
-        // Ideally yes, but for now let's notify user.
-        setError("Você atingiu o limite gratuito da IA. Desative a 'Geração com IA' nas configurações para continuar offline.");
-      } else {
-        setError(e.message || "Falha ao gerar SQL a partir da seleção.");
-      }
+      setError(e.message || "Falha ao gerar SQL a partir da seleção.");
       setIsProcessing(false);
+      setProgressMessage("");
     }
   };
 
@@ -179,26 +256,20 @@ function App() {
     if (!schema || !queryResult || !credentials) return;
     setError(null);
     setIsProcessing(true);
+    setProgressMessage(credentials.host === 'simulated' ? "Consultando dados simulados..." : "Executando no banco...");
+
     try {
       let data: any[] = [];
       
-      // Check if we are in simulation mode
       if (credentials.host === 'simulated') {
-         // Priority 1: Use local offline simulation data if available (faster, reliable, offline)
-         // We use this if AI is disabled OR if we want consistent data for this session
-         // Since the user asked for "initial values that are kept", we should prioritize the local sim data
-         // UNLESS the user explicitly wants AI generation for some reason. 
-         // But for consistency, let's stick to the local sim data we generated on load.
          if (simulationData) {
             data = executeOfflineQuery(schema, simulationData, builderState);
          } else if (settings.enableAiGeneration && !quotaExhausted) {
-            // Fallback to AI generation if for some reason local data is missing (shouldn't happen in sim mode)
             data = await generateMockData(schema, queryResult.sql);
          } else {
             data = [{ info: "Erro: Dados de simulação não inicializados." }];
          }
       } else {
-         // Execute on real DB via backend
          data = await executeQueryReal(credentials, queryResult.sql);
       }
 
@@ -214,6 +285,7 @@ function App() {
       }
     } finally {
       setIsProcessing(false);
+      setProgressMessage("");
     }
   };
 
@@ -290,7 +362,9 @@ function App() {
               state={builderState}
               onStateChange={handleBuilderChange}
               onGenerate={handleGeneratePreview}
+              onSkipAi={handleSkipAiGeneration}
               isGenerating={isProcessing}
+              progressMessage={progressMessage}
               settings={settings}
             />
           )}
