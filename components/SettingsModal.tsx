@@ -1,7 +1,7 @@
 
 
 import React from 'react';
-import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList } from 'lucide-react';
+import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, AlertCircle } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -153,6 +153,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
           {/* Connection Defaults */}
           <div>
             <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Padrões do Banco</h4>
+            
+            {/* Limit Warning */}
+            <div className="mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-3 flex gap-2">
+               <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5" />
+               <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
+                  Defina um limite de linhas seguro para evitar travamentos ao carregar grandes volumes de dados. Este valor será o padrão para todas as novas consultas.
+               </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Host Padrão</label>
@@ -181,14 +190,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
-              <div>
-                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Limite Query (LIMIT)</label>
-                <input 
-                  type="number" 
-                  value={formData.defaultLimit} 
-                  onChange={e => setFormData({...formData, defaultLimit: parseInt(e.target.value) || 10})}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
+              <div className="col-span-2">
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1 flex items-center gap-1">
+                   <ListFilter className="w-3.5 h-3.5" /> Limite de Linhas (LIMIT Padrão)
+                </label>
+                <div className="relative">
+                  <input 
+                     type="number" 
+                     min="1"
+                     max="10000"
+                     value={formData.defaultLimit} 
+                     onChange={e => setFormData({...formData, defaultLimit: parseInt(e.target.value) || 100})}
+                     className="w-full pl-3 pr-16 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded text-sm font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <div className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium pointer-events-none">
+                     registros
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Recomendado: 100-500 para testes rápidos.</p>
               </div>
             </div>
           </div>
@@ -217,17 +236,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
 
                <div>
                   <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                     <LayoutList className="w-3.5 h-3.5" /> Linhas por página (Padrão)
+                     <LayoutList className="w-3.5 h-3.5" /> Linhas por página (Paginação)
                   </label>
                   <select 
                      value={formData.defaultRowsPerPage} 
                      onChange={e => setFormData({...formData, defaultRowsPerPage: parseInt(e.target.value) || 10})}
                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                   >
-                     <option value={10}>10</option>
-                     <option value={25}>25</option>
-                     <option value={50}>50</option>
-                     <option value={100}>100</option>
+                     <option value={10}>10 linhas</option>
+                     <option value={25}>25 linhas</option>
+                     <option value={50}>50 linhas</option>
+                     <option value={100}>100 linhas</option>
                   </select>
                </div>
             </div>

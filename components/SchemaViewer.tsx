@@ -1,7 +1,8 @@
 
+
 import React, { useState, useMemo, useEffect, useCallback, memo, useDeferredValue, useRef } from 'react';
 import { DatabaseSchema, Table, Column } from '../types';
-import { Database, Table as TableIcon, Key, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight, Loader2, ArrowRight } from 'lucide-react';
+import { Database, Table as TableIcon, Key, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight, Loader2, ArrowRight, Folder, FolderOpen } from 'lucide-react';
 
 interface SchemaViewerProps {
   schema: DatabaseSchema;
@@ -171,7 +172,8 @@ const SchemaTableItem = memo(({
       break;
     case 'normal':
       if (selectionMode && isSelected) {
-        containerClass = 'opacity-100 border-l-4 border-l-indigo-500 border-indigo-200 bg-indigo-50/20 dark:bg-indigo-900/10 dark:border-indigo-800';
+        // Highlight selected tables (pinned) more prominently
+        containerClass = 'opacity-100 border-l-4 border-l-indigo-600 border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 shadow-sm ring-1 ring-indigo-200 dark:ring-indigo-800 z-10';
       }
       break;
   }
@@ -210,27 +212,27 @@ const SchemaTableItem = memo(({
 
   return (
     <div 
-      className={`border rounded-lg transition-all duration-200 relative ${containerClass} ${isExpanded ? 'bg-white dark:bg-slate-800' : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+      className={`border rounded-lg transition-all duration-200 relative ${containerClass} ${isExpanded ? 'bg-white dark:bg-slate-800' : ''} ${!isSelected && visualState === 'normal' ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700' : ''}`}
       onMouseEnter={() => onMouseEnter(table.name)}
       // Performance: key is vital, but React handles it in parent map
     >
       {label}
       <div 
-        className={`flex items-center gap-2 p-3 cursor-pointer ${selectionMode ? 'hover:bg-slate-50 dark:hover:bg-slate-700' : ''}`}
+        className={`flex items-center gap-2 p-3 cursor-pointer ${selectionMode && !isSelected ? 'hover:bg-slate-50 dark:hover:bg-slate-700' : ''}`}
         onClick={() => onTableClick(table.name)}
       >
         {selectionMode && (
-          <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'}`}>
+          <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-indigo-600 border-indigo-600 shadow-sm' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'}`}>
              {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
           </div>
         )}
-        <div onClick={(e) => onToggleExpand(e, table.name)} className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400">
+        <div onClick={(e) => onToggleExpand(e, table.name)} className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400 shrink-0">
           {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </div>
-        <TableIcon className={`w-4 h-4 ${isSelected || isExpanded ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+        <TableIcon className={`w-4 h-4 shrink-0 ${isSelected || isExpanded ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
         <div className="flex-1 min-w-0 pr-6">
            <div className="flex items-center gap-2">
-              <span className={`font-medium text-sm truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'}`}>{table.name}</span>
+              <span className={`font-medium text-sm truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-700 dark:text-slate-200'}`}>{table.name}</span>
            </div>
            <div className="flex items-center gap-2 mt-0.5 min-h-[16px]">
               {isEditing ? (
@@ -342,6 +344,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   // UI State
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
+  const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set(['public'])); // Default public expanded
   const [editingTable, setEditingTable] = useState<string | null>(null);
   const [tempDesc, setTempDesc] = useState('');
 
@@ -397,9 +400,14 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
        setRenderLimit(40); // Reset scroll on search
        // Scroll to top
        if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+       
+       // Expand schemas that match search results
+       if (inputValue) {
+         setExpandedSchemas(new Set(schema.tables.map(t => t.schema || 'public')));
+       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [inputValue]);
+  }, [inputValue, schema.tables]);
 
   // Handle Scroll for Lazy Loading
   const handleScroll = useCallback(() => {
@@ -441,21 +449,47 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
       });
     }
 
-    // Sort
+    // Sort: 1. Selected Tables (Pin to Top), 2. Search Relevance, 3. Alphabetical
     const sorted = [...tables]; // Copy to avoid mutation
-    if (term) {
-      sorted.sort((a, b) => {
+    
+    sorted.sort((a, b) => {
+      // 1. Selection Priority (Pin to Top)
+      const isSelA = selectedTableIds.includes(a.name);
+      const isSelB = selectedTableIds.includes(b.name);
+      
+      if (isSelA && !isSelB) return -1;
+      if (!isSelA && isSelB) return 1;
+
+      // 2. Search Relevance (if searching)
+      if (term) {
         const nameA = a.name.toLowerCase(), nameB = b.name.toLowerCase();
         let scoreA = nameA === term ? 100 : nameA.startsWith(term) ? 50 : nameA.includes(term) ? 10 : 1;
         let scoreB = nameB === term ? 100 : nameB.startsWith(term) ? 50 : nameB.includes(term) ? 10 : 1;
         if (scoreA !== scoreB) return scoreB - scoreA;
-        return nameA.localeCompare(nameB);
-      });
-    } else {
-       sorted.sort((a, b) => a.name.localeCompare(b.name));
-    }
+      }
+      
+      // 3. Alphabetical Fallback
+      return a.name.localeCompare(b.name);
+    });
+
     return sorted;
-  }, [schema.tables, debouncedTerm, selectedTypeFilter]);
+  }, [schema.tables, debouncedTerm, selectedTypeFilter, selectedTableIds]);
+
+  // Group filtered tables by schema
+  const groupedTables = useMemo(() => {
+    const groups: Record<string, Table[]> = {};
+    const visible = filteredTables.slice(0, renderLimit); // Apply render limit here to entire set
+
+    visible.forEach(table => {
+      const s = table.schema || 'public';
+      if (!groups[s]) groups[s] = [];
+      groups[s].push(table);
+    });
+    return groups;
+  }, [filteredTables, renderLimit]);
+
+  const sortedSchemas = useMemo(() => Object.keys(groupedTables).sort(), [groupedTables]);
+
 
   // Handlers (Memoized to prevent prop churn on children)
   const handleToggleExpand = useCallback((e: React.MouseEvent, tableName: string) => {
@@ -463,6 +497,14 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
     setExpandedTables(prev => {
       const newSet = new Set(prev);
       if (newSet.has(tableName)) newSet.delete(tableName); else newSet.add(tableName);
+      return newSet;
+    });
+  }, []);
+
+  const handleToggleSchema = useCallback((schemaName: string) => {
+    setExpandedSchemas(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(schemaName)) newSet.delete(schemaName); else newSet.add(schemaName);
       return newSet;
     });
   }, []);
@@ -522,8 +564,14 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
 
   // Actions
-  const expandAll = () => setExpandedTables(new Set(filteredTables.map(t => t.name)));
-  const collapseAll = () => setExpandedTables(new Set());
+  const expandAll = () => {
+     setExpandedTables(new Set(filteredTables.map(t => t.name)));
+     setExpandedSchemas(new Set(schema.tables.map(t => t.schema || 'public')));
+  };
+  const collapseAll = () => {
+     setExpandedTables(new Set());
+     setExpandedSchemas(new Set());
+  };
 
   // --- Optimization: Pre-calculate Visual State Map ---
   // Instead of recalculating getVisualState() inside the render loop for every item,
@@ -567,9 +615,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
      // If something is focused but this table isn't in the map, it should be dimmed
      return 'dimmed';
   };
-
-  // Virtualization Slice
-  const visibleTables = filteredTables.slice(0, renderLimit);
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 overflow-hidden select-none">
@@ -621,7 +666,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
       <div 
          ref={scrollContainerRef}
          onScroll={handleScroll}
-         className="flex-1 overflow-y-auto p-3 space-y-2 relative scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700" 
+         className="flex-1 overflow-y-auto p-2 space-y-2 relative scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700" 
          onMouseLeave={() => { setHoveredTable(null); setHoveredColumnKey(null); setHoveredColumnRef(null); }}
       >
         {loading ? (
@@ -630,34 +675,82 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
           <div className="text-center py-8 text-slate-400 text-xs italic">Nenhuma tabela encontrada.</div>
         ) : (
           <>
-            {visibleTables.map((table) => (
-              <SchemaTableItem
-                key={table.name}
-                table={table}
-                visualState={getTableState(table.name)}
-                isExpanded={expandedTables.has(table.name)}
-                isSelected={selectedTableIds.includes(table.name)}
-                selectionMode={selectionMode}
-                editingTable={editingTable}
-                tempDesc={tempDesc}
-                debouncedTerm={debouncedTerm}
-                selectedTypeFilter={selectedTypeFilter}
-                sortField={sortField}
-                sortDirection={sortDirection}
-                hoveredColumnKey={deferredHoveredColumnKey}
-                hoveredColumnRef={deferredHoveredColumnRef}
-                onToggleExpand={handleToggleExpand}
-                onTableClick={handleTableClick}
-                onMouseEnter={handleMouseEnterTable}
-                onStartEditing={handleStartEditing}
-                onSaveDescription={handleSaveDescription}
-                onDescChange={handleDescChange}
-                onSetEditing={handleSetEditing}
-                onSortChange={handleSortChange}
-                onColumnHover={handleColumnHover}
-                onColumnHoverOut={handleColumnHoverOut}
-              />
-            ))}
+            {sortedSchemas.map(schemaName => {
+               const tablesInSchema = groupedTables[schemaName];
+               const isSchemaExpanded = expandedSchemas.has(schemaName);
+
+               return (
+                  <div key={schemaName} className="mb-2">
+                     {/* Schema Header / Folder */}
+                     <div 
+                        className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 rounded select-none group sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-transparent ${isSchemaExpanded ? 'border-slate-100 dark:border-slate-800' : ''}`}
+                        onClick={() => handleToggleSchema(schemaName)}
+                     >
+                        {isSchemaExpanded ? 
+                           <FolderOpen className="w-4 h-4 text-indigo-500 dark:text-indigo-400 fill-indigo-100 dark:fill-indigo-900/30" /> : 
+                           <Folder className="w-4 h-4 text-slate-400 fill-slate-100 dark:fill-slate-800" />
+                        }
+                        <span className={`text-xs font-bold ${isSchemaExpanded ? 'text-indigo-800 dark:text-indigo-200' : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200'}`}>
+                           {schemaName}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-auto bg-slate-50 dark:bg-slate-800 px-1.5 rounded-full border border-slate-100 dark:border-slate-700">
+                           {tablesInSchema.length}
+                        </span>
+                     </div>
+                     
+                     {/* Tables in Schema */}
+                     {isSchemaExpanded && (
+                        <div className="pl-3 pr-1 pt-1 space-y-2 border-l border-slate-100 dark:border-slate-800 ml-2">
+                           {tablesInSchema.map((table, index) => {
+                              // Logic for visual separator between selected and unselected tables
+                              const isSelected = selectedTableIds.includes(table.name);
+                              // We only separate if sort order placed selected tables on top (logic in filteredTables)
+                              const prevTable = index > 0 ? tablesInSchema[index-1] : null;
+                              const showSeparator = prevTable && selectedTableIds.includes(prevTable.name) && !isSelected;
+
+                              return (
+                                 <React.Fragment key={table.name}>
+                                    {showSeparator && (
+                                       <div className="flex items-center gap-3 py-2 px-1 animate-in fade-in duration-300">
+                                          <div className="h-px bg-slate-200 dark:bg-slate-700/50 flex-1"></div>
+                                          <span className="text-[9px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-wider">Outras</span>
+                                          <div className="h-px bg-slate-200 dark:bg-slate-700/50 flex-1"></div>
+                                       </div>
+                                    )}
+                                    <SchemaTableItem
+                                       table={table}
+                                       visualState={getTableState(table.name)}
+                                       isExpanded={expandedTables.has(table.name)}
+                                       isSelected={isSelected}
+                                       selectionMode={selectionMode}
+                                       editingTable={editingTable}
+                                       tempDesc={tempDesc}
+                                       debouncedTerm={debouncedTerm}
+                                       selectedTypeFilter={selectedTypeFilter}
+                                       sortField={sortField}
+                                       sortDirection={sortDirection}
+                                       hoveredColumnKey={deferredHoveredColumnKey}
+                                       hoveredColumnRef={deferredHoveredColumnRef}
+                                       onToggleExpand={handleToggleExpand}
+                                       onTableClick={handleTableClick}
+                                       onMouseEnter={handleMouseEnterTable}
+                                       onStartEditing={handleStartEditing}
+                                       onSaveDescription={handleSaveDescription}
+                                       onDescChange={handleDescChange}
+                                       onSetEditing={handleSetEditing}
+                                       onSortChange={handleSortChange}
+                                       onColumnHover={handleColumnHover}
+                                       onColumnHoverOut={handleColumnHoverOut}
+                                    />
+                                 </React.Fragment>
+                              );
+                           })}
+                        </div>
+                     )}
+                  </div>
+               );
+            })}
+            
             {filteredTables.length > renderLimit && (
               <div className="py-4 text-center text-slate-400 flex items-center justify-center gap-2">
                  <Loader2 className="w-4 h-4 animate-spin" />

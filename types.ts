@@ -10,6 +10,7 @@ export interface Column {
 
 export interface Table {
   name: string;
+  schema: string; // New field for categorization
   columns: Column[];
   description?: string;
 }
@@ -32,6 +33,7 @@ export interface ValidationResult {
   isValid: boolean;
   error?: string; // Short technical error
   detailedError?: string; // Longer, helpful explanation
+  errorLine?: number; // The line number where the error likely occurred
   correctedSql?: string;
 }
 
@@ -138,6 +140,7 @@ export const SAMPLE_SCHEMA: DatabaseSchema = {
   tables: [
     {
       name: "users",
+      schema: "public",
       description: "Registered customers",
       columns: [
         { name: "id", type: "SERIAL", isPrimaryKey: true },
@@ -148,6 +151,7 @@ export const SAMPLE_SCHEMA: DatabaseSchema = {
     },
     {
       name: "orders",
+      schema: "public",
       description: "Customer orders",
       columns: [
         { name: "id", type: "SERIAL", isPrimaryKey: true },
@@ -159,6 +163,7 @@ export const SAMPLE_SCHEMA: DatabaseSchema = {
     },
     {
       name: "order_items",
+      schema: "public",
       description: "Items within an order",
       columns: [
         { name: "id", type: "SERIAL", isPrimaryKey: true },
@@ -170,6 +175,7 @@ export const SAMPLE_SCHEMA: DatabaseSchema = {
     },
     {
       name: "products",
+      schema: "public",
       description: "Product inventory",
       columns: [
         { name: "id", type: "SERIAL", isPrimaryKey: true },

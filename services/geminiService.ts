@@ -62,12 +62,14 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
     3. Identifique se alguma coluna usada não existe no schema.
     4. Verifique erros de sintaxe, especialmente palavras/identificadores quebrados ou palavras-chave ausentes.
     5. Verifique erros de lógica específicos do PostgreSQL (ex: requisitos de GROUP BY).
+    6. Se houver erro, tente identificar em qual linha (aproximada) do SQL fornecido o erro ocorre (considere a primeira linha como 1).
 
     Retorne JSON:
     {
       "isValid": boolean,
       "error": string (Um resumo técnico conciso de 1 frase do erro),
       "detailedError": string (Uma explicação educativa e útil em pt-BR. Explique POR QUE está errado e nomeie explicitamente a tabela/coluna causando o problema. Se for erro de Group By, explique a regra.),
+      "errorLine": number (O número da linha onde o erro começa, ou null se não aplicável),
       "correctedSql": string (SQL corrigido opcional. Se encontrar uma correspondência provável para uma coluna mal digitada, use aqui. Se não houver correção possível, null)
     }
   `;
@@ -84,6 +86,7 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
             isValid: { type: Type.BOOLEAN },
             error: { type: Type.STRING },
             detailedError: { type: Type.STRING },
+            errorLine: { type: Type.INTEGER },
             correctedSql: { type: Type.STRING }
           },
           required: ["isValid"]
@@ -341,6 +344,8 @@ export const generateSchemaFromTopic = async (topic: string, context: string): P
     if (response.text) {
       const parsed = JSON.parse(cleanJsonString(response.text)) as DatabaseSchema;
       parsed.connectionSource = 'simulated';
+      // Default missing schemas to 'public' for simulation
+      parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
       return parsed;
     }
     throw new Error("Resposta da IA vazia na simulação.");
@@ -404,6 +409,8 @@ export const parseSchemaFromDDL = async (ddl: string): Promise<DatabaseSchema> =
     if (response.text) {
       const parsed = JSON.parse(cleanJsonString(response.text)) as DatabaseSchema;
       parsed.connectionSource = 'ddl';
+      // Default to public
+      parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
       return parsed;
     }
     throw new Error("Resposta da IA vazia");

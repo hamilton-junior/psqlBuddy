@@ -73,39 +73,41 @@ app.post('/api/connect', async (req, res) => {
     // Instead of one giant join which can be slow on information_schema views,
     // we fetch components separately and stitch them in JS.
     const [tablesRes, columnsRes, pkRes, fkRes] = await Promise.all([
-      // 1. Fetch Tables
+      // 1. Fetch Tables (Exclude system schemas)
       queryWithFallback(client, `
-        SELECT table_name 
+        SELECT table_schema, table_name 
         FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-          AND table_type = 'BASE TABLE'
-        ORDER BY table_name
+        WHERE table_type = 'BASE TABLE'
+          AND table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+        ORDER BY table_schema, table_name
       `),
       
       // 2. Fetch Columns
       queryWithFallback(client, `
-        SELECT table_name, column_name, data_type 
+        SELECT table_schema, table_name, column_name, data_type 
         FROM information_schema.columns 
-        WHERE table_schema = 'public' 
-        ORDER BY ordinal_position
+        WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+        ORDER BY table_schema, table_name, ordinal_position
       `),
 
       // 3. Fetch Primary Keys
       queryWithFallback(client, `
-        SELECT tc.table_name, kcu.column_name
+        SELECT tc.table_schema, tc.table_name, kcu.column_name
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
           ON tc.constraint_name = kcu.constraint_name
           AND tc.table_schema = kcu.table_schema
         WHERE tc.constraint_type = 'PRIMARY KEY'
-          AND tc.table_schema = 'public'
+          AND tc.table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
       `),
 
       // 4. Fetch Foreign Keys
       queryWithFallback(client, `
         SELECT 
+          tc.table_schema,
           tc.table_name, 
           kcu.column_name, 
+          ccu.table_schema AS foreign_table_schema,
           ccu.table_name AS foreign_table_name,
           ccu.column_name AS foreign_column_name
         FROM information_schema.table_constraints tc
@@ -116,17 +118,21 @@ app.post('/api/connect', async (req, res) => {
           ON ccu.constraint_name = tc.constraint_name
           AND ccu.table_schema = tc.table_schema
         WHERE tc.constraint_type = 'FOREIGN KEY'
-          AND tc.table_schema = 'public'
+          AND tc.table_schema NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
       `)
     ]);
 
     // Process & Stitch Logic
+    // Use a unique key for map because table names can repeat across schemas
     const tablesMap = {};
+    const getMapKey = (schema, table) => `${schema}.${table}`;
 
     // Init Tables
     tablesRes.rows.forEach(row => {
-      tablesMap[row.table_name] = {
+      const key = getMapKey(row.table_schema, row.table_name);
+      tablesMap[key] = {
         name: row.table_name,
+        schema: row.table_schema,
         columns: [],
         description: "" 
       };
@@ -134,8 +140,9 @@ app.post('/api/connect', async (req, res) => {
 
     // Populate Columns
     columnsRes.rows.forEach(row => {
-      if (tablesMap[row.table_name]) {
-        tablesMap[row.table_name].columns.push({
+      const key = getMapKey(row.table_schema, row.table_name);
+      if (tablesMap[key]) {
+        tablesMap[key].columns.push({
           name: row.column_name,
           type: row.data_type,
           isPrimaryKey: false,
@@ -146,18 +153,25 @@ app.post('/api/connect', async (req, res) => {
 
     // Mark PKs
     pkRes.rows.forEach(row => {
-      if (tablesMap[row.table_name]) {
-        const col = tablesMap[row.table_name].columns.find(c => c.name === row.column_name);
+      const key = getMapKey(row.table_schema, row.table_name);
+      if (tablesMap[key]) {
+        const col = tablesMap[key].columns.find(c => c.name === row.column_name);
         if (col) col.isPrimaryKey = true;
       }
     });
 
     // Mark FKs
     fkRes.rows.forEach(row => {
-      if (tablesMap[row.table_name]) {
-        const col = tablesMap[row.table_name].columns.find(c => c.name === row.column_name);
+      const key = getMapKey(row.table_schema, row.table_name);
+      if (tablesMap[key]) {
+        const col = tablesMap[key].columns.find(c => c.name === row.column_name);
         if (col) {
           col.isForeignKey = true;
+          // IMPORTANT: If referencing a table in a different schema, prepending might be necessary in queries,
+          // but for now we keep the format simple. The frontend handles logic.
+          // If schemas differ, we might want to store "schema.table", but to keep consistency with existing logic:
+          // We assume simple names for now or update frontend to handle full names.
+          // Let's store simple references for visual clarity, but robust builders need schema.
           col.references = `${row.foreign_table_name}.${row.foreign_column_name}`;
         }
       }
