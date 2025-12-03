@@ -170,17 +170,24 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
 
   // Filter visible tables
   const visibleTables = useMemo(() => {
-     if (!visibleBounds || initializing) return [];
+     if (initializing) return [];
+
+     // OPTIMIZATION: If Searching, strictly filter matches. Ignore viewport culling to allow free exploration of results.
+     if (searchTerm) {
+        return schema.tables.filter(t => {
+           const matches = isMatch(t.name, t.columns);
+           // Only render if it has a position (safety check)
+           return matches && positions[t.name];
+        });
+     }
+
+     // Normal Mode: Viewport Culling
+     if (!visibleBounds) return [];
 
      return schema.tables.filter(t => {
         const pos = positions[t.name];
         if (!pos) return false;
         
-        // Always render if it matches search, even if slightly off screen (to allow pan to work correctly visually)
-        if (searchTerm && isMatch(t.name, t.columns)) {
-           return true;
-        }
-
         // Approx height based on LOD to optimize cull check
         const height = lodLevel === 'high' 
            ? HEADER_HEIGHT + (t.columns.length * ROW_HEIGHT) 
@@ -253,24 +260,21 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
       const startPos = positions[table.name];
       if (!startPos) return;
 
-      const tableMatches = isMatch(table.name, table.columns);
-
       table.columns.forEach((col, colIndex) => {
         if (col.isForeignKey && col.references) {
           const [targetTable, targetCol] = col.references.split('.');
-          const endPos = positions[targetTable];
           
-          // Optimization: If target is not loaded/exists, skip
+          // Optimization: If target is not loaded/visible (filtered out by search), do not draw line
+          // In "Search Mode", non-matching tables are filtered out of visibleTables, 
+          // but we also need to check if the TARGET is visible to know where to draw to.
+          const isTargetVisible = visibleTables.some(t => t.name === targetTable);
+          if (!isTargetVisible) return;
+
+          const endPos = positions[targetTable];
           if (!endPos) return;
 
-          // Check opacity for connection
-          const targetTableDef = schema.tables.find(t => t.name === targetTable);
-          const targetMatches = targetTableDef ? isMatch(targetTable, targetTableDef.columns) : true;
-          
-          // If search is active, dim line unless BOTH ends match
-          const isDimmed = searchTerm && (!tableMatches || !targetMatches);
-          const opacity = isDimmed ? 0.05 : (lodLevel === 'low' ? 0.3 : 0.6);
-          const strokeColor = isDimmed ? "#94a3b8" : "#6366f1";
+          const opacity = lodLevel === 'low' ? 0.3 : 0.6;
+          const strokeColor = "#6366f1";
 
           // Start Point
           const startX = startPos.x + TABLE_WIDTH;
@@ -280,6 +284,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
              : startPos.y + (HEADER_HEIGHT / 2);
           
           // End Point
+          const targetTableDef = schema.tables.find(t => t.name === targetTable);
           const targetColIndex = targetTableDef?.columns.findIndex(c => c.name === targetCol) ?? 0;
           
           const endX = endPos.x;
@@ -303,9 +308,9 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                   strokeWidth={lodLevel === 'low' ? 4 : 2} 
                   fill="none" 
                   opacity={opacity} 
-                  markerEnd={(!isDimmed && lodLevel === 'high') ? "url(#arrowhead)" : undefined}
+                  markerEnd={(lodLevel === 'high') ? "url(#arrowhead)" : undefined}
                />
-               {lodLevel === 'high' && !isDimmed && (
+               {lodLevel === 'high' && (
                  <>
                    <circle cx={startX} cy={startY} r="3" fill={strokeColor} />
                    <circle cx={endX} cy={endY} r="3" fill={strokeColor} />
@@ -317,7 +322,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
       });
     });
     return lines;
-  }, [visibleTables, positions, lodLevel, schema.tables, searchTerm, isMatch]);
+  }, [visibleTables, positions, lodLevel, schema.tables]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
@@ -364,6 +369,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                  <p>• Scroll para zoom</p>
                  <p>• Tabelas visíveis: {visibleTables.length}</p>
                  <p className="capitalize">• Detalhe: {lodLevel}</p>
+                 {searchTerm && <p className="text-indigo-400 font-bold">• Filtro Ativo</p>}
               </div>
            </div>
         </div>
@@ -405,9 +411,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
              {/* Virtualized Nodes */}
              {visibleTables.map(table => {
                 const pos = positions[table.name] || {x: 0, y: 0};
-                const matches = isMatch(table.name, table.columns);
-                const isDimmed = searchTerm && !matches;
-
+                
                 return (
                    <div
                       key={table.name}
@@ -417,18 +421,17 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                          width: TABLE_WIDTH,
                          // Only apply shadow/borders if scale is reasonable to save paint performance on low LOD
                          boxShadow: lodLevel === 'low' ? 'none' : undefined,
-                         opacity: isDimmed ? 0.2 : 1,
                       }}
                       className={`absolute bg-white dark:bg-slate-800 rounded-lg cursor-grab active:cursor-grabbing hover:border-indigo-400 dark:hover:border-indigo-500 transition-all duration-300 z-10 
                          ${lodLevel === 'low' ? 'border border-slate-400 dark:border-slate-600' : 'shadow-xl border-2 border-slate-200 dark:border-slate-700'}
-                         ${matches && searchTerm ? 'ring-4 ring-indigo-500/30 border-indigo-500 dark:border-indigo-400 scale-105 z-20' : ''}
+                         ${searchTerm ? 'ring-4 ring-indigo-500/30 border-indigo-500 dark:border-indigo-400 scale-105 z-20' : ''}
                       `}
                    >
                       {/* Node Header - Adapts to LOD */}
                       <div className={`
                          flex items-center justify-between rounded-t-md overflow-hidden transition-colors
                          ${lodLevel === 'low' ? 'h-full justify-center text-center p-2 bg-indigo-100 dark:bg-indigo-900/50' : 'h-10 bg-slate-100 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 px-3'}
-                         ${matches && searchTerm ? 'bg-indigo-100 dark:bg-indigo-900' : ''}
+                         ${searchTerm ? 'bg-indigo-100 dark:bg-indigo-900' : ''}
                       `}>
                          <span 
                            className={`font-bold text-slate-700 dark:text-slate-200 truncate ${lodLevel === 'low' ? 'text-[10px] whitespace-normal' : 'text-xs'}`} 

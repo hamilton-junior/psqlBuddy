@@ -472,25 +472,43 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
       });
     }
 
-    // Sort: 1. Selected Tables (Pin to Top), 2. Search Relevance, 3. Alphabetical
+    // Sort: 1. Search Relevance (if active) 2. Selected Tables (Pin to Top) 3. Alphabetical
     const sorted = [...tables]; // Copy to avoid mutation
     
     sorted.sort((a, b) => {
-      // 1. Selection Priority (Pin to Top)
+      // 1. Search Relevance (Highest Priority when searching)
+      if (term) {
+        const nameA = a.name.toLowerCase();
+        const nameB = b.name.toLowerCase();
+        
+        // Exact Match
+        if (nameA === term && nameB !== term) return -1;
+        if (nameB === term && nameA !== term) return 1;
+
+        // Starts With
+        const startsA = nameA.startsWith(term);
+        const startsB = nameB.startsWith(term);
+        if (startsA && !startsB) return -1;
+        if (!startsA && startsB) return 1;
+
+        // Contains (Name has more weight than column match)
+        const includesA = nameA.includes(term);
+        const includesB = nameB.includes(term);
+        if (includesA && !includesB) return -1;
+        if (!includesA && includesB) return 1;
+      }
+
+      // 2. Selection Priority (Pin to Top)
       const isSelA = selectedTableIds.includes(a.name);
       const isSelB = selectedTableIds.includes(b.name);
       
-      if (isSelA && !isSelB) return -1;
-      if (!isSelA && isSelB) return 1;
-
-      // 2. Search Relevance (if searching)
-      if (term) {
-        const nameA = a.name.toLowerCase(), nameB = b.name.toLowerCase();
-        let scoreA = nameA === term ? 100 : nameA.startsWith(term) ? 50 : nameA.includes(term) ? 10 : 1;
-        let scoreB = nameB === term ? 100 : nameB.startsWith(term) ? 50 : nameB.includes(term) ? 10 : 1;
-        if (scoreA !== scoreB) return scoreB - scoreA;
+      // Only pin selections if NOT searching (or if search score is tied, which is implied by reaching here)
+      // Actually, standard UX: if searching, relevant results first. If no search, selections first.
+      if (!term) {
+        if (isSelA && !isSelB) return -1;
+        if (!isSelA && isSelB) return 1;
       }
-      
+
       // 3. Alphabetical Fallback
       return a.name.localeCompare(b.name);
     });
@@ -511,7 +529,30 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
     return groups;
   }, [filteredTables, renderLimit]);
 
-  const sortedSchemas = useMemo(() => Object.keys(groupedTables).sort(), [groupedTables]);
+  const sortedSchemas = useMemo(() => {
+     const schemas = Object.keys(groupedTables);
+     
+     // If searching, we want schemas containing the top-ranked tables to appear first.
+     if (debouncedTerm) {
+         // Create a map of "best rank" for each schema
+         const schemaRank: Record<string, number> = {};
+         filteredTables.forEach((t, idx) => {
+            const s = t.schema || 'public';
+            // We only care about the *first* time (lowest index) a schema appears in the sorted results
+            if (schemaRank[s] === undefined) {
+               schemaRank[s] = idx;
+            }
+         });
+         
+         return schemas.sort((a, b) => {
+            const rankA = schemaRank[a] ?? Infinity;
+            const rankB = schemaRank[b] ?? Infinity;
+            return rankA - rankB;
+         });
+     }
+
+     return schemas.sort();
+  }, [groupedTables, filteredTables, debouncedTerm]);
 
 
   // Handlers (Memoized to prevent prop churn on children)
@@ -700,6 +741,9 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
           <>
             {sortedSchemas.map(schemaName => {
                const tablesInSchema = groupedTables[schemaName];
+               // Ensure we have tables before rendering schema group
+               if (!tablesInSchema || tablesInSchema.length === 0) return null;
+               
                const isSchemaExpanded = expandedSchemas.has(schemaName);
 
                return (
@@ -728,8 +772,9 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
                               // Logic for visual separator between selected and unselected tables
                               const isSelected = selectedTableIds.includes(table.name);
                               // We only separate if sort order placed selected tables on top (logic in filteredTables)
+                              // Only show separator if NOT searching (since search reorders based on relevance)
                               const prevTable = index > 0 ? tablesInSchema[index-1] : null;
-                              const showSeparator = prevTable && selectedTableIds.includes(prevTable.name) && !isSelected;
+                              const showSeparator = !debouncedTerm && prevTable && selectedTableIds.includes(prevTable.name) && !isSelected;
 
                               return (
                                  <React.Fragment key={table.name}>
