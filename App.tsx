@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, AppSettings, DEFAULT_SETTINGS } from './types';
 import Sidebar from './components/Sidebar';
@@ -8,11 +7,13 @@ import PreviewStep from './components/steps/PreviewStep';
 import ResultsStep from './components/steps/ResultsStep';
 import SettingsModal from './components/SettingsModal';
 import AiPreferenceModal from './components/AiPreferenceModal';
+import SchemaDiagramModal from './components/SchemaDiagramModal';
 import { generateSqlFromBuilderState, validateSqlQuery, generateMockData } from './services/geminiService';
 import { generateLocalSql } from './services/localSqlService';
 import { initializeSimulation, executeOfflineQuery, SimulationData } from './services/simulationService';
 import { executeQueryReal } from './services/dbService';
-import { AlertTriangle, X, ZapOff } from 'lucide-react';
+import { AlertTriangle, X, ZapOff, History as HistoryIcon, Clock, CheckCircle2, AlertCircle as AlertCircleIcon } from 'lucide-react';
+import { getHistory, clearHistory } from './services/historyService';
 
 function App() {
   // Settings State
@@ -21,6 +22,8 @@ function App() {
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [showDiagram, setShowDiagram] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   
   // Onboarding State
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -191,11 +194,8 @@ function App() {
 
     try {
       // 1. Attempt AI Generation if enabled
-      // Even if quotaExhausted is true, we try (maybe it reset?), but we FORCE disable extras to save cost/errors
       if (settings.enableAiGeneration) {
          try {
-           // Pass granular progress callback
-           // Disable tips if quota is exhausted to try a lighter request
            const includeTips = settings.enableAiTips && !quotaExhausted;
 
            result = await generateSqlFromBuilderState(
@@ -203,18 +203,13 @@ function App() {
              builderState, 
              includeTips, 
              (msg) => {
-               // Only update if this request is still active/latest
                if (generationRequestId.current === currentRequestId) {
                  setProgressMessage(msg);
                }
              }
            );
            
-           // If we have moved on (e.g. user clicked Skip), discard this result
-           if (generationRequestId.current !== currentRequestId) {
-             console.log("Ignorando resultado obsoleto da IA (Skipped)");
-             return; 
-           }
+           if (generationRequestId.current !== currentRequestId) return; 
 
            if (result.sql === 'NO_RELATIONSHIP') {
               throw new Error("NO_RELATIONSHIP");
@@ -222,40 +217,28 @@ function App() {
          } catch (aiError: any) {
            console.warn("AI Generation failed, attempting fallback...", aiError);
            
-           // If request ID changed, we probably skipped already, so don't error out
            if (generationRequestId.current !== currentRequestId) return;
 
            if (aiError.message === "QUOTA_ERROR") {
               setQuotaExhausted(true);
-              
-              // NON-BLOCKING Quota Logic: Warn and Fallback
               if (!hasShownQuotaWarning) {
                  setWarningToast("Cota da API IA excedida. Alternando para modo offline (sem validação/dicas).");
                  setHasShownQuotaWarning(true);
               }
-              // Proceed to local fallback...
            } else if (aiError.message === "NO_RELATIONSHIP") {
               throw new Error("A IA não encontrou relacionamento entre estas tabelas. Defina Joins manualmente.");
-           } else if (aiError.message === "TIMEOUT") {
-              // Timeout handled naturally by fallback
-              console.warn("AI Timeout - switching to local");
            }
-           
-           // Trigger fallback
            usedLocalFallback = true;
          }
       } else {
          usedLocalFallback = true;
       }
 
-      // Check ID again before fallback
       if (generationRequestId.current !== currentRequestId) return;
 
-      // 2. Fallback to Local Engine if AI failed or was disabled
+      // 2. Fallback to Local Engine
       if (usedLocalFallback) {
-         // If we are here because of Quota Error and we didn't return above, we are falling back to local
          setProgressMessage("Gerando SQL com motor local...");
-         // Artificial small delay for UX so user sees the switch
          await new Promise(r => setTimeout(r, 500));
          
          if (generationRequestId.current !== currentRequestId) return;
@@ -264,14 +247,12 @@ function App() {
       
       if (!result) throw new Error("Falha ao gerar SQL.");
 
-      // 3. Update UI Immediately
       setQueryResult(result);
       setCurrentStep('preview');
       setIsProcessing(false);
       setProgressMessage("");
 
-      // 4. Run Validation in Background (ONLY if enabled, allowed, and NOT using local fallback)
-      // If quotaExhausted is true, skip validation to save remaining quota for generations
+      // 4. Run Validation
       if (settings.enableAiGeneration && settings.enableAiValidation && !quotaExhausted && !usedLocalFallback) {
         setIsValidating(true);
         validateSqlQuery(result.sql, schema)
@@ -282,7 +263,6 @@ function App() {
              console.error("Validação em segundo plano falhou:", err);
              if (err.message === "QUOTA_ERROR") {
                 setQuotaExhausted(true);
-                // Fail silently/gracefully on validation error
              }
           })
           .finally(() => {
@@ -312,25 +292,18 @@ function App() {
          if (simulationData) {
             data = executeOfflineQuery(schema, simulationData, builderState);
          } else if (settings.enableAiGeneration && !quotaExhausted) {
-             // Try to use AI to gen data, but handle quota
             try {
                data = await generateMockData(schema, queryResult.sql);
             } catch (mockErr: any) {
                if (mockErr.message === "QUOTA_ERROR") {
                   setQuotaExhausted(true);
-                  // Soft fail to offline data or empty
                   setWarningToast("Cota excedida. Usando dados offline.");
-                  // If simulation data exists we used it, but here we likely dont have it initialized?
-                  // App flow initializes simulationData on Connect if 'simulated'.
-                  // So we should have landed in 'executeOfflineQuery' above unless simData is null.
-                  // If simData is null (e.g. maybe pure AI mode without init), we just return empty with warning
                   data = [];
                } else {
                   throw mockErr;
                }
             }
          } else {
-            // Fallback if no simulation data and no AI
             data = [];
             setWarningToast("Sem dados de simulação disponíveis.");
          }
@@ -344,7 +317,6 @@ function App() {
       console.error(e);
       if (e.message === "QUOTA_ERROR") {
          setQuotaExhausted(true);
-         // Don't block, just show error
          setError({ message: "Cota excedida durante execução." });
       } else {
          setError({ message: "Falha na execução: " + e.message });
@@ -381,6 +353,8 @@ function App() {
         onNavigate={handleNavigate} 
         schema={schema}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenDiagram={() => setShowDiagram(true)}
+        onOpenHistory={() => setShowHistory(true)}
         onRegenerateClick={handleReset}
         onDescriptionChange={handleUpdateSchemaDescription}
       />
@@ -494,6 +468,55 @@ function App() {
           onSave={(newSettings) => setSettings(newSettings)}
           quotaExhausted={quotaExhausted}
         />
+      )}
+
+      {/* Diagram Modal */}
+      {showDiagram && schema && (
+         <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} />
+      )}
+
+      {/* History Modal (Inline here for simplicity, or could be component) */}
+      {showHistory && (
+         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+               <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                     <HistoryIcon className="w-5 h-5 text-indigo-500" />
+                     <h3 className="font-bold text-slate-700 dark:text-slate-200">Histórico de Execuções</h3>
+                  </div>
+                  <button onClick={() => setShowHistory(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+               </div>
+               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50 dark:bg-slate-900">
+                  {getHistory().length === 0 ? (
+                     <p className="text-center text-slate-400 py-10">Nenhuma execução registrada.</p>
+                  ) : (
+                     getHistory().map(item => (
+                        <div key={item.id} className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+                           <div className="flex justify-between items-start mb-2">
+                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${item.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                 {item.status}
+                              </span>
+                              <div className="flex items-center gap-2 text-xs text-slate-400">
+                                 <Clock className="w-3 h-3" />
+                                 {new Date(item.timestamp).toLocaleString()}
+                              </div>
+                           </div>
+                           <code className="block text-xs font-mono text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900 p-2 rounded mb-2 overflow-x-auto">
+                              {item.sql}
+                           </code>
+                           <div className="flex justify-between items-center text-xs text-slate-500">
+                              <span>{item.rowCount} linhas retornadas</span>
+                              <button onClick={() => { navigator.clipboard.writeText(item.sql); setShowHistory(false); }} className="text-indigo-500 hover:underline">Copiar SQL</button>
+                           </div>
+                        </div>
+                     ))
+                  )}
+               </div>
+               <div className="p-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-right">
+                  <button onClick={() => { clearHistory(); setShowHistory(false); }} className="text-xs text-red-500 hover:text-red-700">Limpar Histórico</button>
+               </div>
+            </div>
+         </div>
       )}
     </div>
   );

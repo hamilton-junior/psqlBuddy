@@ -92,6 +92,17 @@ export interface SavedQuery {
   state: BuilderState;
 }
 
+export interface QueryHistoryItem {
+  id: string;
+  timestamp: number;
+  sql: string;
+  rowCount: number;
+  durationMs: number;
+  status: 'success' | 'error';
+  errorMessage?: string;
+  schemaName: string;
+}
+
 export interface AppSettings {
   theme: 'light' | 'dark';
   defaultDbHost: string;

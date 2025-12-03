@@ -1,18 +1,21 @@
-
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
   onNavigate: (step: AppStep) => void;
   schema: DatabaseSchema | null;
   onOpenSettings: () => void;
+  onOpenDiagram?: () => void; // New prop
+  onOpenHistory?: () => void; // New prop
   onRegenerateClick?: () => void;
   onDescriptionChange?: (tableName: string, newDesc: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentStep, onNavigate, schema, onOpenSettings, onRegenerateClick, onDescriptionChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ 
+  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange 
+}) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const toggleSidebar = () => {
@@ -46,7 +49,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentStep, onNavigate, schema, onOp
         
         {!isCollapsed && isActive && <ArrowRight className="w-4 h-4 ml-auto opacity-60" />}
         
-        {/* Tooltip for collapsed state */}
         {isCollapsed && (
            <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-slate-700">
               {label}
@@ -59,7 +61,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentStep, onNavigate, schema, onOp
   return (
     <div className={`${isCollapsed ? 'w-20' : 'w-72'} shrink-0 flex flex-col border-r border-slate-800 bg-slate-900 text-slate-200 h-full transition-all duration-300 ease-in-out relative`}>
       
-      {/* Collapse Toggle */}
       <button 
          onClick={toggleSidebar}
          className="absolute -right-3 top-8 bg-slate-800 border border-slate-700 text-slate-400 hover:text-white rounded-full p-1 shadow-md z-50 hover:bg-slate-700 transition-colors"
@@ -88,11 +89,28 @@ const Sidebar: React.FC<SidebarProps> = ({ currentStep, onNavigate, schema, onOp
           {navItem('preview', 'Visualização', <Terminal className="w-4 h-4" />, currentStep === 'connection' || currentStep === 'builder', "Visualizar SQL")}
           {navItem('results', 'Resultados', <Table className="w-4 h-4" />, currentStep !== 'results', "Ver resultados")}
         </div>
+        
+        {/* Extra Tools Section */}
+        {schema && !isCollapsed && (
+           <div className="mt-8 mb-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ferramentas</div>
+        )}
+        
+        <div className="space-y-2 mt-2">
+           {schema && (
+             <button onClick={onOpenDiagram} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-emerald-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Mapa Visual do Schema">
+                <Map className="w-4 h-4 shrink-0" />
+                {!isCollapsed && <span>Mapa do Schema</span>}
+             </button>
+           )}
+           <button onClick={onOpenHistory} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-amber-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Histórico de Execuções">
+              <History className="w-4 h-4 shrink-0" />
+              {!isCollapsed && <span>Histórico</span>}
+           </button>
+        </div>
       </div>
 
       <div className="flex-1"></div>
 
-      {/* Settings Button */}
       <div className={`px-6 pb-4 shrink-0 ${isCollapsed ? 'px-2' : ''}`}>
         <button 
            onClick={onOpenSettings}

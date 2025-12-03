@@ -1,8 +1,9 @@
-
-
 import React, { useState, useEffect } from 'react';
-import { Table, ArrowLeft, Database, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, Search, Copy, Check } from 'lucide-react';
+import { Table, ArrowLeft, Database, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare } from 'lucide-react';
 import { AppSettings } from '../../types';
+import DataVisualizer from '../DataVisualizer';
+import DataAnalysisChat from '../DataAnalysisChat';
+import { addToHistory } from '../../services/historyService';
 
 interface ResultsStepProps {
   data: any[];
@@ -12,30 +13,42 @@ interface ResultsStepProps {
   settings?: AppSettings;
 }
 
+type ResultTab = 'table' | 'chart' | 'analysis';
+
 const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, onNewConnection, settings }) => {
+  const [activeTab, setActiveTab] = useState<ResultTab>('table');
   const columns = data.length > 0 ? Object.keys(data[0]) : [];
   
-  // Pagination State - use default from settings or fallback to 10
+  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(settings?.defaultRowsPerPage || 10);
   const [localSearch, setLocalSearch] = useState('');
   
-  // Copy SQL State
   const [sqlCopied, setSqlCopied] = useState(false);
 
-  // Reset page when data changes
+  // Auto-save history on mount
+  useEffect(() => {
+     if (data) {
+        addToHistory({
+           sql,
+           rowCount: data.length,
+           durationMs: 0, // Mock duration
+           status: 'success',
+           schemaName: 'Database' 
+        });
+     }
+  }, []);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [data]);
 
-  // Update rows per page if settings change and user hasn't manually interacted (optional, but good for consistency)
   useEffect(() => {
     if (settings?.defaultRowsPerPage) {
        setRowsPerPage(settings.defaultRowsPerPage);
     }
   }, [settings?.defaultRowsPerPage]);
 
-  // Filter Data locally (Visual search)
   const filteredData = data.filter(row => {
      if (!localSearch) return true;
      return Object.values(row).some(val => 
@@ -43,7 +56,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      );
   });
 
-  // Calculate Pagination
   const totalRows = filteredData.length;
   const totalPages = Math.ceil(totalRows / rowsPerPage);
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -58,22 +70,17 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
 
   const downloadCsv = () => {
     if (data.length === 0) return;
-    
     const headers = columns.join(',');
     const rows = data.map(row => 
       columns.map(col => {
         const val = row[col];
-        if (typeof val === 'string' && val.includes(',')) {
-          return `"${val.replace(/"/g, '""')}"`;
-        }
+        if (typeof val === 'string' && val.includes(',')) return `"${val.replace(/"/g, '""')}"`;
         return val;
       }).join(',')
     );
-    
     const csvContent = [headers, ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', 'query_results.csv');
@@ -88,224 +95,154 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
     setTimeout(() => setSqlCopied(false), 2000);
   };
 
-  // Helper function to highlight text matches
   const highlightMatch = (text: string) => {
     if (!localSearch.trim()) return text;
-
-    // Escape regex characters to prevent crashes
     const escapedSearch = localSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const parts = text.split(new RegExp(`(${escapedSearch})`, 'gi'));
-
     return (
       <>
         {parts.map((part, i) => 
           part.toLowerCase() === localSearch.toLowerCase() ? (
-            <span key={i} className="bg-yellow-200 dark:bg-yellow-600/50 text-slate-900 dark:text-white font-semibold rounded px-0.5 box-decoration-clone">
-              {part}
-            </span>
-          ) : (
-            part
-          )
+            <span key={i} className="bg-yellow-200 dark:bg-yellow-600/50 text-slate-900 dark:text-white font-semibold rounded px-0.5 box-decoration-clone">{part}</span>
+          ) : part
         )}
       </>
     );
   };
 
   return (
-    <div className="h-full flex flex-col space-y-6">
+    <div className="h-full flex flex-col space-y-4">
       
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
-            <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
-               <Table className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            Resultados da Query
+          <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
+             Resultados da Query
+             <span className="text-xs font-normal text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">{data.length} linhas</span>
           </h2>
-          <div className="flex items-center gap-3 mt-2">
-             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-               Status: 200 OK
-             </span>
-             <span className="text-sm text-slate-500 dark:text-slate-400">
-               {data.length} registros encontrados
-             </span>
-          </div>
+        </div>
+        
+        {/* Tabs */}
+        <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+           <button onClick={() => setActiveTab('table')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'table' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+              <Table className="w-4 h-4" /> Tabela
+           </button>
+           <button onClick={() => setActiveTab('chart')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'chart' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+              <BarChart2 className="w-4 h-4" /> Gráficos
+           </button>
+           <button onClick={() => setActiveTab('analysis')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'analysis' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+              <MessageSquare className="w-4 h-4" /> AI Analyst
+           </button>
         </div>
 
-        <div className="flex items-center gap-3">
-           <div className="relative group">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-              <input 
-                type="text" 
-                placeholder="Filtrar resultados..." 
-                value={localSearch}
-                onChange={(e) => { setLocalSearch(e.target.value); setCurrentPage(1); }}
-                className="pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-64 shadow-sm"
-              />
-           </div>
-           <button 
-             onClick={downloadCsv}
-             disabled={data.length === 0}
-             className="px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg shadow-sm transition-all flex items-center gap-2 text-sm font-medium disabled:opacity-50" 
-             title="Exportar CSV"
-           >
-             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-             <span className="hidden sm:inline">Exportar CSV</span>
+        <div className="flex items-center gap-2">
+           {activeTab === 'table' && (
+             <div className="relative group">
+                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <input 
+                  type="text" 
+                  placeholder="Filtrar..." 
+                  value={localSearch}
+                  onChange={(e) => { setLocalSearch(e.target.value); setCurrentPage(1); }}
+                  className="pl-8 pr-4 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-48"
+                />
+             </div>
+           )}
+           <button onClick={downloadCsv} disabled={data.length === 0} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" title="Exportar CSV">
+             <FileSpreadsheet className="w-4 h-4" />
            </button>
         </div>
       </div>
 
-      {/* Main Content Card */}
+      {/* Main Content Area */}
       <div className="flex-1 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col relative">
         
         {data.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8">
-             <div className="w-16 h-16 bg-slate-50 dark:bg-slate-900 rounded-full flex items-center justify-center mb-4">
-                <Database className="w-8 h-8 opacity-50" />
-             </div>
-             <p className="text-lg font-medium">Nenhum resultado retornado</p>
-             <p className="text-sm mt-1 max-w-xs text-center">Sua consulta foi executada com sucesso, mas não encontrou registros correspondentes.</p>
+             <Database className="w-12 h-12 opacity-30 mb-4" />
+             <p>Nenhum resultado retornado</p>
           </div>
         ) : (
           <>
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-               <table className="w-full text-left border-collapse">
-                 <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-sm sticky top-0 z-10">
-                   <tr>
-                     {columns.map((col, idx) => (
-                       <th key={col} className={`px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-200 dark:border-slate-700 ${idx === 0 ? 'pl-8' : ''}`}>
-                         {col.replace(/_/g, ' ')}
-                       </th>
-                     ))}
-                   </tr>
-                 </thead>
-                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                   {currentData.map((row, idx) => (
-                     <tr key={idx} className="group hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors">
-                       {columns.map((col, cIdx) => (
-                         <td key={col} className={`px-6 py-3.5 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap group-hover:text-slate-900 dark:group-hover:text-white transition-colors ${cIdx === 0 ? 'pl-8 font-medium' : ''}`}>
-                           {row[col] === null ? (
-                             <span className="text-slate-300 dark:text-slate-600 text-xs uppercase font-bold tracking-wide px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">null</span>
-                           ) : (
-                             typeof row[col] === 'boolean' ? (
-                                row[col] ? <span className="text-emerald-600 font-bold text-xs">TRUE</span> : <span className="text-red-500 font-bold text-xs">FALSE</span>
-                             ) : (
-                                highlightMatch(String(row[col]))
-                             )
-                           )}
-                         </td>
-                       ))}
-                     </tr>
-                   ))}
-                 </tbody>
-               </table>
-            </div>
-            
-            {/* Integrated Pagination Footer */}
-            <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 flex flex-col sm:flex-row items-center justify-between text-sm text-slate-600 dark:text-slate-400 gap-4">
-               
-               <div className="flex items-center gap-6">
-                 <span className="text-slate-500">
-                    Exibindo <span className="font-bold text-slate-900 dark:text-white">{startIndex + 1}</span> - <span className="font-bold text-slate-900 dark:text-white">{endIndex}</span> de <span className="font-bold text-slate-900 dark:text-white">{totalRows}</span>
-                 </span>
-                 
-                 <div className="flex items-center gap-2 pl-6 border-l border-slate-200 dark:border-slate-700">
-                    <span className="text-xs text-slate-400 font-medium uppercase">Linhas:</span>
-                    <select 
-                      value={rowsPerPage} 
-                      onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                      className="bg-slate-50 dark:bg-slate-900 border-none rounded py-1 pl-2 pr-8 text-xs font-bold focus:ring-2 focus:ring-indigo-500 cursor-pointer text-slate-700 dark:text-slate-300"
-                    >
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                 </div>
-               </div>
-
-               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg">
-                  <button 
-                    onClick={() => handlePageChange(1)} 
-                    disabled={currentPage === 1}
-                    className="p-1.5 rounded-md hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm disabled:opacity-30 disabled:hover:shadow-none transition-all"
-                    title="Primeira Página"
-                  >
-                    <ChevronsLeft className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => handlePageChange(currentPage - 1)} 
-                    disabled={currentPage === 1}
-                    className="p-1.5 rounded-md hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm disabled:opacity-30 disabled:hover:shadow-none transition-all"
-                    title="Anterior"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
+            {/* --- TAB: TABLE --- */}
+            {activeTab === 'table' && (
+               <>
+                  <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+                     <table className="w-full text-left border-collapse">
+                     <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-sm sticky top-0 z-10">
+                        <tr>
+                           {columns.map((col, idx) => (
+                           <th key={col} className={`px-6 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-200 dark:border-slate-700 ${idx === 0 ? 'pl-8' : ''}`}>
+                              {col.replace(/_/g, ' ')}
+                           </th>
+                           ))}
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                        {currentData.map((row, idx) => (
+                           <tr key={idx} className="group hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors">
+                           {columns.map((col, cIdx) => (
+                              <td key={col} className={`px-6 py-3 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap group-hover:text-slate-900 dark:group-hover:text-white transition-colors ${cIdx === 0 ? 'pl-8 font-medium' : ''}`}>
+                                 {row[col] === null ? <span className="text-slate-300 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">null</span> : highlightMatch(String(row[col]))}
+                              </td>
+                           ))}
+                           </tr>
+                        ))}
+                     </tbody>
+                     </table>
+                  </div>
                   
-                  <span className="px-3 py-1 font-mono text-xs font-bold text-slate-700 dark:text-slate-300 min-w-[3rem] text-center">
-                    {currentPage} / {totalPages}
-                  </span>
+                  {/* Pagination Footer */}
+                  <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 flex items-center justify-between text-xs text-slate-500">
+                     <div className="flex items-center gap-4 pl-4">
+                        <span>{startIndex + 1}-{endIndex} de {totalRows}</span>
+                        <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="bg-transparent border border-slate-200 dark:border-slate-700 rounded py-0.5 px-1 font-bold">
+                           <option value={10}>10/pág</option>
+                           <option value={50}>50/pág</option>
+                           <option value={100}>100/pág</option>
+                        </select>
+                     </div>
+                     <div className="flex gap-1 pr-2">
+                        <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+                        <span className="px-2 py-1 font-mono">{currentPage}/{totalPages}</span>
+                        <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+                     </div>
+                  </div>
+               </>
+            )}
 
-                  <button 
-                    onClick={() => handlePageChange(currentPage + 1)} 
-                    disabled={currentPage === totalPages}
-                    className="p-1.5 rounded-md hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm disabled:opacity-30 disabled:hover:shadow-none transition-all"
-                    title="Próxima"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => handlePageChange(totalPages)} 
-                    disabled={currentPage === totalPages}
-                    className="p-1.5 rounded-md hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm disabled:opacity-30 disabled:hover:shadow-none transition-all"
-                    title="Última Página"
-                  >
-                    <ChevronsRight className="w-4 h-4" />
-                  </button>
+            {/* --- TAB: CHART --- */}
+            {activeTab === 'chart' && (
+               <div className="p-6 h-full w-full">
+                  <DataVisualizer data={data} />
                </div>
-            </div>
+            )}
+
+            {/* --- TAB: ANALYSIS --- */}
+            {activeTab === 'analysis' && (
+               <div className="flex-1 h-full">
+                  <DataAnalysisChat data={data} sql={sql} />
+               </div>
+            )}
           </>
         )}
       </div>
 
-      {/* SQL Preview Snippet (Full Width & Copy) */}
-      <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl flex items-start gap-4 p-4 shadow-inner relative group">
-         <div className="shrink-0 px-2 py-1 bg-slate-200 dark:bg-slate-800 rounded text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mt-0.5">
-           SQL Executado
-         </div>
-         
-         <div className="flex-1 font-mono text-xs text-slate-600 dark:text-slate-300 break-all whitespace-pre-wrap leading-relaxed select-all">
-            {sql}
-         </div>
-
-         <div className="shrink-0 ml-2">
-           <button 
-             onClick={handleCopySql}
-             className="p-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all shadow-sm"
-             title="Copiar SQL"
-           >
+      {/* Footer / SQL Snippet */}
+      <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-3 p-3 shadow-inner relative group shrink-0">
+         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded">SQL</span>
+         <div className="flex-1 font-mono text-xs text-slate-600 dark:text-slate-300 truncate">{sql}</div>
+         <button onClick={handleCopySql} className="text-slate-400 hover:text-indigo-600 p-1 transition-colors" title="Copiar SQL">
              {sqlCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-           </button>
-         </div>
+         </button>
       </div>
 
-      {/* Footer Actions */}
-      <div className="flex items-center justify-between shrink-0 pt-2">
-         <button 
-           onClick={onNewConnection}
-           className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-sm font-medium flex items-center gap-2 px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-         >
-           <Database className="w-4 h-4" />
-           Nova Conexão
+      <div className="flex items-center justify-between shrink-0">
+         <button onClick={onNewConnection} className="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-2 px-2 py-1">
+           <Database className="w-4 h-4" /> Nova Conexão
          </button>
-
-         <button 
-           onClick={onBackToBuilder}
-           className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 dark:shadow-none hover:shadow-xl transition-all flex items-center gap-2 transform active:scale-95"
-         >
-           <ArrowLeft className="w-4 h-4" />
-           Voltar e Modificar
+         <button onClick={onBackToBuilder} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2">
+           <ArrowLeft className="w-4 h-4" /> Voltar
          </button>
       </div>
     </div>

@@ -45,28 +45,34 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
 
       <div className="space-y-6">
         
-        {/* 1. SQL Code Block (Shown First) with Line Numbers */}
-        <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm bg-slate-900 flex flex-col">
-           <div className="px-4 py-2 bg-slate-800 border-b border-slate-700 flex justify-between items-center shrink-0">
-             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">SQL Gerado</span>
+        {/* 1. SQL Code Block (Improved Editor Look) */}
+        <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-lg bg-[#1e1e1e] flex flex-col group transition-all hover:shadow-xl hover:border-indigo-500/30">
+           <div className="px-4 py-2 bg-[#252526] border-b border-[#333] flex justify-between items-center shrink-0">
+             <div className="flex items-center gap-2">
+                <div className="flex gap-1.5">
+                   <div className="w-2.5 h-2.5 rounded-full bg-red-500/20"></div>
+                   <div className="w-2.5 h-2.5 rounded-full bg-amber-500/20"></div>
+                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/20"></div>
+                </div>
+                <span className="ml-2 text-xs font-mono text-slate-400 tracking-wide">query.sql</span>
+             </div>
              <button 
                onClick={handleCopy}
-               className="text-slate-400 hover:text-white transition-colors flex items-center gap-1 text-xs"
+               className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-xs bg-[#333] hover:bg-[#444] px-2 py-1 rounded"
              >
-               {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                {copied ? 'Copiado!' : 'Copiar'}
              </button>
            </div>
            
-           <div className="flex overflow-x-auto">
+           <div className="flex overflow-x-auto relative">
              {/* Line Numbers Column */}
-             <div className="bg-slate-800/50 py-4 px-2 text-right border-r border-slate-700 select-none shrink-0 min-w-[3rem]">
+             <div className="bg-[#1e1e1e] py-4 px-3 text-right border-r border-[#333] select-none shrink-0 min-w-[3.5rem]">
                 {sqlLines.map((_, i) => (
                   <div 
                     key={i} 
                     className={`font-mono text-xs leading-6 ${
-                       // Highlight line number if error
-                       errorLine === i + 1 ? 'text-red-400 font-bold' : 'text-slate-600'
+                       errorLine === i + 1 ? 'text-red-400 font-bold' : 'text-[#858585]'
                     }`}
                   >
                     {i + 1}
@@ -74,24 +80,39 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
                 ))}
              </div>
              
-             {/* Code Content */}
-             <div className="py-4 px-4 flex-1 min-w-0">
+             {/* Code Content - Syntax Highlighting Simulation with colors */}
+             <div className="py-4 px-4 flex-1 min-w-0 font-mono text-sm leading-6">
                 {sqlLines.map((line, i) => (
                   <div 
                     key={i} 
-                    className={`font-mono text-sm leading-6 whitespace-pre ${
-                       // Highlight line background if error
-                       errorLine === i + 1 ? 'bg-red-900/20 -mx-4 px-4 border-l-2 border-red-500' : 'text-indigo-100'
+                    className={`whitespace-pre ${
+                       errorLine === i + 1 ? 'bg-red-900/20 -mx-4 px-4 border-l-2 border-red-500' : ''
                     }`}
                   >
-                     {line || ' '} {/* Empty lines need content to render height */}
+                     {/* Naive Syntax Highlighting */}
+                     {line.split(' ').map((word, wIdx) => {
+                        const w = word.toUpperCase().replace(/[,;()]/g, '');
+                        let colorClass = 'text-[#d4d4d4]'; // Default
+                        
+                        if (['SELECT', 'FROM', 'WHERE', 'GROUP', 'BY', 'ORDER', 'LIMIT', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'AND', 'OR', 'AS', 'IN', 'IS', 'NULL', 'NOT', 'LIKE', 'ILIKE', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'].includes(w)) {
+                           colorClass = 'text-[#569cd6] font-bold'; // Keywords Blue
+                        } else if (w.match(/^\d+$/)) {
+                           colorClass = 'text-[#b5cea8]'; // Numbers Green
+                        } else if (word.startsWith("'") || word.startsWith('"')) {
+                           colorClass = 'text-[#ce9178]'; // Strings Orange
+                        } else if (word.includes('.')) {
+                           colorClass = 'text-[#4ec9b0]'; // Identifiers Teal
+                        }
+
+                        return <span key={wIdx} className={colorClass}>{word} </span>;
+                     })}
                   </div>
                 ))}
              </div>
            </div>
         </div>
 
-        {/* 2. Validation Status (Shown Second) */}
+        {/* 2. Validation Status */}
         {validationDisabled ? (
            <div className="p-4 rounded-xl border flex items-start gap-3 bg-slate-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700">
              <ShieldOff className="w-5 h-5 text-slate-400 mt-0.5" />
@@ -169,7 +190,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
           </div>
         )}
 
-        {/* 4. Logic Explanation & Tips (Shown Last) */}
+        {/* 4. Logic Explanation & Tips */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
            <div className="flex items-center gap-2 mb-3">
              <Info className="w-4 h-4 text-indigo-500" />
