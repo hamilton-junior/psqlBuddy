@@ -247,6 +247,53 @@ export const executeOfflineQuery = (
               }
            }
         }
+        
+        // 3. Heuristic: Column matches Table Name (e.g. movto.produto -> produto.id)
+        if (!joinColFrom) {
+            const targetSimpleName = targetTableId.split('.')[1]; // 'produto'
+            const joinedTablesIds = selectedTables.slice(0, i);
+            
+            // Check if any joined table has a column named 'produto'
+            for (const joinedId of joinedTablesIds) {
+                const joinedSchema = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === joinedId);
+                const targetSchemaObj = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === targetTableId);
+
+                if (joinedSchema && targetSchemaObj) {
+                    const linkCol = joinedSchema.columns.find(c => c.name.toLowerCase() === targetSimpleName.toLowerCase());
+                    const targetPk = targetSchemaObj.columns.find(c => c.isPrimaryKey) || targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
+
+                    if (linkCol && targetPk) {
+                         joinColFrom = `${joinedId}.${linkCol.name}`;
+                         joinColTo = `${targetTableId}.${targetPk.name}`;
+                         break;
+                    }
+                }
+            }
+        }
+        
+        // 4. Heuristic: Reverse Column Match (e.g. produto.movto -> movto.id)
+        if (!joinColFrom) {
+            const joinedTablesIds = selectedTables.slice(0, i);
+            const targetSchemaObj = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === targetTableId);
+            
+            if (targetSchemaObj) {
+                for (const joinedId of joinedTablesIds) {
+                    const joinedSimpleName = joinedId.split('.')[1]; // 'movto'
+                    const joinedSchema = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === joinedId);
+                    
+                    if (joinedSchema) {
+                        const linkCol = targetSchemaObj.columns.find(c => c.name.toLowerCase() === joinedSimpleName.toLowerCase());
+                        const joinedPk = joinedSchema.columns.find(c => c.isPrimaryKey) || joinedSchema.columns.find(c => c.name.toLowerCase() === 'id');
+                        
+                        if (linkCol && joinedPk) {
+                             joinColFrom = `${joinedId}.${joinedPk.name}`;
+                             joinColTo = `${targetTableId}.${linkCol.name}`;
+                             break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Perform Join Execution

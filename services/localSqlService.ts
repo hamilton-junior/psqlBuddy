@@ -134,7 +134,58 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
           }
        }
 
-       // --- Heuristic: Shared Name Logic (e.g. abast.abastecimento = movto.abastecimento) ---
+       // --- Heuristic 1: Table Name match Column Name (e.g. movto.produto -> produto.id) ---
+       if (!foundLink) {
+           const targetSimpleName = targetTableId.split('.')[1]; // 'produto'
+           const targetSchemaObj = schema.tables.find(t => getTableId(t) === targetTableId);
+
+           if (targetSchemaObj) {
+               // Try to find if any existing table has a column named exactly like the target table
+               for (const existingTableId of Array.from(joinedTables)) {
+                   const existingSchemaObj = schema.tables.find(t => getTableId(t) === existingTableId);
+                   if (existingSchemaObj) {
+                       // Does existing table have column 'produto'?
+                       const linkingCol = existingSchemaObj.columns.find(c => c.name.toLowerCase() === targetSimpleName.toLowerCase());
+                       
+                       // Does target table have a PK or 'id'?
+                       const targetPk = targetSchemaObj.columns.find(c => c.isPrimaryKey) || targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
+
+                       if (linkingCol && targetPk) {
+                           joinClauses.push(`LEFT JOIN ${targetTableId} ON ${existingTableId}.${linkingCol.name} = ${targetTableId}.${targetPk.name}`);
+                           joinedTables.add(targetTableId);
+                           foundLink = true;
+                           break;
+                       }
+                   }
+               }
+           }
+       }
+
+       // --- Heuristic 2: Reverse Table Name match (e.g. produto.movto -> movto.id) ---
+       if (!foundLink) {
+           const targetSchemaObj = schema.tables.find(t => getTableId(t) === targetTableId);
+           if (targetSchemaObj) {
+               for (const existingTableId of Array.from(joinedTables)) {
+                   const existingSimpleName = existingTableId.split('.')[1];
+                   const existingSchemaObj = schema.tables.find(t => getTableId(t) === existingTableId);
+
+                   if (existingSchemaObj) {
+                        // Does target table have column 'movto'?
+                        const linkingCol = targetSchemaObj.columns.find(c => c.name.toLowerCase() === existingSimpleName.toLowerCase());
+                        const existingPk = existingSchemaObj.columns.find(c => c.isPrimaryKey) || existingSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
+
+                        if (linkingCol && existingPk) {
+                            joinClauses.push(`LEFT JOIN ${targetTableId} ON ${targetTableId}.${linkingCol.name} = ${existingTableId}.${existingPk.name}`);
+                            joinedTables.add(targetTableId);
+                            foundLink = true;
+                            break;
+                        }
+                   }
+               }
+           }
+       }
+
+       // --- Heuristic 3: Shared Name Logic (e.g. abast.abastecimento = movto.abastecimento) ---
        if (!foundLink) {
           const targetName = targetTableId.split('.')[1]; // get table name part
           // Find any existing table with the same name but different schema
