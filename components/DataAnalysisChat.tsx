@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, User, Bot, Loader2 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
@@ -78,7 +79,7 @@ const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql }) => {
     }
   };
 
-  // Simple Markdown Parser to avoid external heavy dependencies
+  // Improved Robust Markdown Parser
   const renderFormattedText = (text: string) => {
     // 1. Safe HTML encoding (basic)
     let html = text
@@ -86,23 +87,45 @@ const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql }) => {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
 
-    // 2. Bold (**text**)
+    // 2. Tokenize Code Blocks to protect them from other formatting
+    const codeBlocks: string[] = [];
+    html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
+       codeBlocks.push(code);
+       return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+    });
+
+    // 3. Headers
+    html = html.replace(/^### (.*$)/gm, '<h3 class="text-sm font-bold text-slate-800 dark:text-white mt-3 mb-1">$1</h3>');
+    html = html.replace(/^## (.*$)/gm, '<h2 class="text-base font-bold text-slate-800 dark:text-white mt-4 mb-2">$1</h2>');
+
+    // 4. Bold (**text**)
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-indigo-900 dark:text-indigo-200">$1</strong>');
     
-    // 3. Italic (*text*)
+    // 5. Italic (*text*)
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-    // 4. Code (`text`)
+    // 6. Inline Code (`text`)
     html = html.replace(/`([^`]+)`/g, '<code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded font-mono text-xs text-rose-600 dark:text-rose-300">$1</code>');
 
-    // 5. Code Blocks (```...```) - Simplified
-    html = html.replace(/```([\s\S]*?)```/g, '<pre class="bg-slate-900 text-slate-50 p-3 rounded-lg my-2 overflow-x-auto text-xs font-mono">$1</pre>');
+    // 7. Lists (- item)
+    // Convert newlines followed by "- " into list items
+    html = html.replace(/^\s*-\s+(.*)$/gm, '<li class="ml-4 list-disc marker:text-slate-400">$1</li>');
 
-    // 6. Lists (- item)
-    html = html.replace(/^\s*-\s+(.*)$/gm, '<li class="ml-4 list-disc">$1</li>');
+    // 8. Restore Code Blocks (formatted)
+    html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, index) => {
+       const code = codeBlocks[parseInt(index)];
+       return `<pre class="bg-slate-900 text-slate-50 p-3 rounded-lg my-3 overflow-x-auto text-xs font-mono border border-slate-700 shadow-sm">${code.trim()}</pre>`;
+    });
     
-    // 7. Newlines to <br> (wrap in paragraph logic handled by styling, but <br> helps)
+    // 9. Newlines to <br> (only if not inside a tag)
+    // We do a simple pass to convert remaining \n to <br> but tricky to not break tags.
+    // Instead, we rely on the styling 'whitespace-pre-wrap' in the container or minimal brs.
+    // However, for Chat bubbles, explicit BRs are often safer for parsing:
     html = html.replace(/\n/g, '<br />');
+
+    // Clean up excessive breaks after block elements
+    html = html.replace(/(<\/h2>|<\/h3>|<\/pre>|<\/li>)\s*<br \/>/g, '$1');
+    html = html.replace(/<br \/>\s*(<h2|<h3|<pre|<li)/g, '$1');
 
     return { __html: html };
   };

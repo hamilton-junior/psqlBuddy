@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DatabaseSchema, Table } from '../types';
 import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search } from 'lucide-react';
@@ -15,6 +16,8 @@ interface NodePosition {
 const TABLE_WIDTH = 200;
 const HEADER_HEIGHT = 40;
 const ROW_HEIGHT = 24;
+const COL_SPACING = 300;
+const ROW_SPACING_GAP = 80;
 
 const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose }) => {
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
@@ -40,22 +43,40 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     return () => clearTimeout(timer);
   }, [inputValue]);
 
-  // 2. Layout Calculation Engine
+  // 2. Layout Calculation Engine (Dynamic Height)
   const calculateLayout = useCallback((tablesToLayout: Table[]) => {
       const newPositions: Record<string, NodePosition> = {};
       const count = tablesToLayout.length;
       
       // Calculate optimized grid
       const cols = Math.ceil(Math.sqrt(count));
-      const spacingX = 300; 
-      const spacingY = 400; 
+      
+      // Track the max height for each row to determine Y offset of next row
+      const rowMaxHeights: number[] = [];
+      
+      // First pass: Group into visual rows and find max height per row
+      tablesToLayout.forEach((table, index) => {
+        const row = Math.floor(index / cols);
+        const tableHeight = HEADER_HEIGHT + (table.columns.length * ROW_HEIGHT);
+        
+        if (!rowMaxHeights[row]) rowMaxHeights[row] = 0;
+        if (tableHeight > rowMaxHeights[row]) rowMaxHeights[row] = tableHeight;
+      });
 
+      // Second pass: Position them using the calculated row heights
       tablesToLayout.forEach((table, index) => {
         const col = index % cols;
         const row = Math.floor(index / cols);
+
+        // Calculate Y based on previous rows' heights
+        let currentY = 50;
+        for (let r = 0; r < row; r++) {
+           currentY += rowMaxHeights[r] + ROW_SPACING_GAP;
+        }
+
         newPositions[table.name] = {
-          x: col * spacingX + 50,
-          y: row * spacingY + 50
+          x: col * COL_SPACING + 50,
+          y: currentY
         };
       });
       return newPositions;
@@ -147,17 +168,16 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const visibleTables = useMemo(() => {
      if (!isLayoutReady) return [];
 
-     // If we are searching, we already filtered the positions in the Layout Effect.
-     // So we just need to iterate over the keys in `positions` to know what to render.
-     // However, we still want Viewport Culling for performance if the result set is still huge.
-     
-     const tablesWithName = schema.tables.filter(t => !!positions[t.name]);
+     // If searching, show all matches (virtualization disabled for filtered set to avoid glitch)
+     if (debouncedTerm.trim()) {
+        return schema.tables.filter(t => !!positions[t.name]);
+     }
 
+     const tablesWithName = schema.tables.filter(t => !!positions[t.name]);
      if (!visibleBounds) return tablesWithName;
 
      return tablesWithName.filter(t => {
         const pos = positions[t.name];
-        // Should not happen given filter above, but safe check
         if (!pos) return false;
         
         const height = lodLevel === 'high' 
@@ -172,7 +192,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
            pos.y < visibleBounds.yMax
         );
      });
-  }, [positions, visibleBounds, isLayoutReady, lodLevel, schema.tables]);
+  }, [positions, visibleBounds, isLayoutReady, lodLevel, schema.tables, debouncedTerm]);
 
 
   // --- INTERACTION HANDLERS ---
@@ -233,14 +253,8 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
           const [targetTable, targetCol] = col.references.split('.');
           
           // CRITICAL: Only draw if target is also in the current layout/positions
-          // If we filtered it out via search, positions[targetTable] will be undefined.
           const endPos = positions[targetTable];
           if (!endPos) return;
-
-          // Check visibility of target (optimization)
-          // We can skip drawing if start is visible but end is way off screen? 
-          // Not strictly necessary but good for perf.
-          // For now, drawing lines is cheap enough if node count is low.
 
           const opacity = lodLevel === 'low' ? 0.3 : 0.6;
           const strokeColor = "#6366f1";

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { DatabaseSchema, DbCredentials, AppSettings, SAMPLE_SCHEMA } from '../../types';
 import { connectToDatabase } from '../../services/dbService';
 import { generateSchemaFromTopic } from '../../services/geminiService';
-import { Server, Shield, Info, Loader2, Database, AlertCircle, Bot, Wand2, HardDrive } from 'lucide-react';
+import { Server, Shield, Info, Loader2, Database, AlertCircle, Bot, Wand2, HardDrive, Save, Trash2, Bookmark } from 'lucide-react';
 
 interface ConnectionStepProps {
   onSchemaLoaded: (schema: DatabaseSchema, credentials: DbCredentials) => void;
@@ -11,6 +11,15 @@ interface ConnectionStepProps {
 }
 
 type ConnectMode = 'real' | 'simulation';
+
+interface SavedConnection {
+  id: string;
+  name: string;
+  host: string;
+  port: string;
+  user: string;
+  database: string;
+}
 
 const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, settings }) => {
   const [mode, setMode] = useState<ConnectMode>('real');
@@ -23,19 +32,85 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
   const [user, setUser] = useState(settings.defaultDbUser);
   const [password, setPassword] = useState('');
   const [dbName, setDbName] = useState(settings.defaultDbName);
+  
+  // Saved Connections State
+  const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
 
   // Simulation State
   const [simName, setSimName] = useState('');
   const [simDescription, setSimDescription] = useState('');
   const [useOfflineSample, setUseOfflineSample] = useState(false);
   
+  // Load saved connections on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('psql-buddy-saved-connections');
+      if (saved) {
+        setSavedConnections(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Failed to load saved connections", e);
+    }
+  }, []);
+
   // Update fields if settings change externally (e.g. reset)
   useEffect(() => {
-    setHost(settings.defaultDbHost);
-    setPort(settings.defaultDbPort);
-    setUser(settings.defaultDbUser);
-    setDbName(settings.defaultDbName);
-  }, [settings]);
+    if (!selectedProfileId) {
+        setHost(settings.defaultDbHost);
+        setPort(settings.defaultDbPort);
+        setUser(settings.defaultDbUser);
+        setDbName(settings.defaultDbName);
+    }
+  }, [settings, selectedProfileId]);
+
+  const handleSaveProfile = () => {
+    if (!dbName || !host || !user) {
+        alert("Preencha Host, Usuário e Nome do Banco para salvar.");
+        return;
+    }
+    
+    const name = prompt("Nome para esta conexão (ex: Produção, Local):", dbName);
+    if (!name) return;
+
+    const newProfile: SavedConnection = {
+        id: crypto.randomUUID(),
+        name,
+        host,
+        port,
+        user,
+        database: dbName
+    };
+
+    const updatedList = [...savedConnections, newProfile];
+    setSavedConnections(updatedList);
+    localStorage.setItem('psql-buddy-saved-connections', JSON.stringify(updatedList));
+    setSelectedProfileId(newProfile.id);
+  };
+
+  const handleDeleteProfile = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (confirm("Remover esta conexão salva?")) {
+        const updatedList = savedConnections.filter(c => c.id !== id);
+        setSavedConnections(updatedList);
+        localStorage.setItem('psql-buddy-saved-connections', JSON.stringify(updatedList));
+        if (selectedProfileId === id) setSelectedProfileId('');
+    }
+  };
+
+  const handleSelectProfile = (id: string) => {
+    setSelectedProfileId(id);
+    if (!id) return;
+    
+    const profile = savedConnections.find(c => c.id === id);
+    if (profile) {
+        setHost(profile.host);
+        setPort(profile.port);
+        setUser(profile.user);
+        setDbName(profile.database);
+        setPassword(''); // Always clear password for security
+    }
+  };
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,6 +221,38 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         <form onSubmit={handleConnect} className="p-8 space-y-6">
           {mode === 'real' ? (
             <div className="grid grid-cols-2 gap-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              
+              {/* Saved Connections Dropdown */}
+              <div className="col-span-2">
+                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <Bookmark className="w-3.5 h-3.5" /> Conexões Salvas
+                 </label>
+                 <div className="flex gap-2">
+                     <select 
+                        value={selectedProfileId} 
+                        onChange={(e) => handleSelectProfile(e.target.value)}
+                        className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 text-sm outline-none"
+                     >
+                        <option value="">-- Nova Conexão --</option>
+                        {savedConnections.map(c => (
+                           <option key={c.id} value={c.id}>{c.name} ({c.user}@{c.host}/{c.database})</option>
+                        ))}
+                     </select>
+                     {selectedProfileId && (
+                        <button 
+                           type="button"
+                           onClick={(e) => handleDeleteProfile(e, selectedProfileId)}
+                           className="p-2.5 text-slate-400 hover:text-red-500 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl transition-colors"
+                           title="Excluir conexão salva"
+                        >
+                           <Trash2 className="w-4 h-4" />
+                        </button>
+                     )}
+                 </div>
+              </div>
+
+              <div className="col-span-2 border-t border-slate-100 dark:border-slate-700 my-1"></div>
+
               <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Host</label>
                 <input 
@@ -189,6 +296,9 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
                   placeholder="••••••••" 
                 />
+                <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                  <Shield className="w-3 h-3" /> Nunca salva
+                </p>
               </div>
               <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Porta</label>
@@ -199,6 +309,17 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
                   placeholder="5432" 
                 />
+              </div>
+
+              {/* Save Button Row */}
+              <div className="col-span-2 flex justify-end">
+                 <button 
+                   type="button" 
+                   onClick={handleSaveProfile}
+                   className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                 >
+                    <Save className="w-3.5 h-3.5" /> Salvar Perfil (Sem Senha)
+                 </button>
               </div>
             </div>
           ) : (
