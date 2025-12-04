@@ -81,6 +81,8 @@ export const initializeSimulation = (schema: DatabaseSchema): SimulationData => 
   const rowCount = 20;
 
   schema.tables.forEach(table => {
+    // Use schema-qualified name as key to ensure uniqueness in simulation store
+    const tableKey = `${table.schema || 'public'}.${table.name}`;
     const rows = [];
     for (let i = 0; i < rowCount; i++) {
       const row: any = {};
@@ -89,7 +91,7 @@ export const initializeSimulation = (schema: DatabaseSchema): SimulationData => 
       });
       rows.push(row);
     }
-    data[table.name] = rows;
+    data[tableKey] = rows;
   });
 
   return data;
@@ -100,8 +102,18 @@ export const initializeSimulation = (schema: DatabaseSchema): SimulationData => 
 // Check if a row matches the filters
 const rowMatchesFilters = (row: any, filters: any[]): boolean => {
   return filters.every(filter => {
-    const [tbl, col] = filter.column.split('.');
-    const rowVal = row[col] !== undefined ? row[col] : row[`${tbl}.${col}`]; // Handle aliased or flat keys
+    const [schema, tbl, col] = filter.column.split('.'); 
+    // Handle 3-part keys (schema.table.col) which is the standard now
+    // row keys are stored as "schema.table.col"
+    
+    let rowVal = row[filter.column];
+    
+    // Fallback for legacy keys if any
+    if (rowVal === undefined) {
+        // Try without schema if missing
+        const shortKey = `${tbl}.${col}`;
+        rowVal = row[shortKey];
+    }
     
     // Safety check for null/undefined
     if (rowVal === undefined || rowVal === null) {
@@ -132,93 +144,153 @@ export const executeOfflineQuery = (
   data: SimulationData,
   state: BuilderState
 ): any[] => {
-  const { selectedTables, selectedColumns, limit, aggregations, filters, groupBy, orderBy } = state;
+  const { selectedTables, selectedColumns, limit, aggregations, filters, groupBy, orderBy, joins } = state;
   
   if (selectedTables.length === 0) return [];
 
   // 1. Flatten / Join Data
   // Start with primary table rows
-  const primaryTable = selectedTables[0];
-  let resultRows = data[primaryTable].map(row => {
-    // Prefix keys with table name to avoid collisions
+  const primaryTableId = selectedTables[0]; // "schema.table"
+  
+  if (!data[primaryTableId]) {
+      console.warn(`Data for ${primaryTableId} not found in simulation.`);
+      return [];
+  }
+
+  let resultRows = data[primaryTableId].map(row => {
+    // Prefix keys with full table ID to avoid collisions
     const newRow: any = {};
-    Object.keys(row).forEach(k => newRow[`${primaryTable}.${k}`] = row[k]);
-    // Also keep short keys for primary table if unique, but prefixing is safer for joins
+    Object.keys(row).forEach(k => newRow[`${primaryTableId}.${k}`] = row[k]);
     return newRow;
   });
 
-  // Simple Nested Loop Join for subsequent tables (Mock Logic)
-  // Real implementation would look for FKs. Here we try to find a link.
+  // Handle explicit joins first if any
+  // (In offline mode, we rely heavily on auto-detection if explicit joins are missing, but respect them if present)
+  
+  // We iterate through remaining selected tables and try to join them
   for (let i = 1; i < selectedTables.length; i++) {
-    const targetTable = selectedTables[i];
-    const targetData = data[targetTable] || [];
+    const targetTableId = selectedTables[i]; // "schema.table"
+    const targetData = data[targetTableId] || [];
     
-    // Find relationship in schema
+    // Check if there is an Explicit Join defined for this table
+    const explicitJoin = joins.find(j => 
+       (j.toTable === targetTableId && selectedTables.includes(j.fromTable)) ||
+       (j.fromTable === targetTableId && selectedTables.includes(j.toTable))
+    );
+
     let joinColFrom = '';
     let joinColTo = '';
-    
-    // Check Forward: Primary (or previous) -> Target
-    // Simple check: Look at all schema tables to find a FK link between any already joined table and target
-    const joinedTables = selectedTables.slice(0, i);
-    
-    // Simplified Join Logic: Try to find common ID naming or schema FK definition
-    // 1. Look for FK in Target pointing to Joined
-    const targetSchema = schema.tables.find(t => t.name === targetTable);
-    if (targetSchema) {
-       for (const joinedT of joinedTables) {
-          const fk = targetSchema.columns.find(c => c.isForeignKey && c.references?.startsWith(`${joinedT}.`));
-          if (fk) {
-             joinColTo = `${targetTable}.${fk.name}`; // foreign key in target
-             joinColFrom = fk.references!; // primary key in source
-             break;
-          }
+    let joinType = 'LEFT';
+
+    if (explicitJoin) {
+       if (explicitJoin.toTable === targetTableId) {
+          joinColFrom = `${explicitJoin.fromTable}.${explicitJoin.fromColumn}`;
+          joinColTo = `${explicitJoin.toTable}.${explicitJoin.toColumn}`;
+       } else {
+          joinColFrom = `${explicitJoin.toTable}.${explicitJoin.toColumn}`;
+          joinColTo = `${explicitJoin.fromTable}.${explicitJoin.fromColumn}`;
        }
+       joinType = explicitJoin.type;
+    } else {
+        // AUTO-JOIN LOGIC (Implicit)
+        // Find relationship in schema using Fully Qualified Names
+        
+        // 1. Look for FK in Target pointing to any Joined Table
+        const targetSchema = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === targetTableId);
+        
+        if (targetSchema) {
+           // Iterate all previously processed tables to find a match
+           const joinedTablesIds = selectedTables.slice(0, i);
+           
+           for (const joinedId of joinedTablesIds) {
+              const fk = targetSchema.columns.find(c => {
+                  if (!c.isForeignKey || !c.references) return false;
+                  // ref is "schema.table.col"
+                  // check if ref starts with joinedId
+                  const refParts = c.references.split('.');
+                  if (refParts.length === 3) {
+                      const refTableId = `${refParts[0]}.${refParts[1]}`;
+                      return refTableId === joinedId;
+                  }
+                  return false;
+              });
+
+              if (fk) {
+                 joinColTo = `${targetTableId}.${fk.name}`; // foreign key in target
+                 joinColFrom = fk.references!; // primary key in source (full schema.table.col)
+                 break;
+              }
+           }
+        }
+
+        // 2. If not found, look for FK in any Joined Table pointing to Target
+        if (!joinColFrom) {
+           const joinedTablesIds = selectedTables.slice(0, i);
+           for (const joinedId of joinedTablesIds) {
+              const joinedSchema = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === joinedId);
+              if (joinedSchema) {
+                 const fk = joinedSchema.columns.find(c => {
+                    if (!c.isForeignKey || !c.references) return false;
+                    const refParts = c.references.split('.');
+                    if (refParts.length === 3) {
+                        const refTableId = `${refParts[0]}.${refParts[1]}`;
+                        return refTableId === targetTableId;
+                    }
+                    return false;
+                 });
+
+                 if (fk) {
+                    joinColFrom = `${joinedId}.${fk.name}`;
+                    joinColTo = fk.references!;
+                    break;
+                 }
+              }
+           }
+        }
     }
 
-    // 2. Look for FK in Joined pointing to Target
-    if (!joinColFrom) {
-       for (const joinedT of joinedTables) {
-          const joinedSchema = schema.tables.find(t => t.name === joinedT);
-          if (joinedSchema) {
-             const fk = joinedSchema.columns.find(c => c.isForeignKey && c.references?.startsWith(`${targetTable}.`));
-             if (fk) {
-                joinColFrom = `${joinedT}.${fk.name}`;
-                joinColTo = fk.references!;
-                break;
-             }
-          }
-       }
-    }
-
-    // Perform Join
+    // Perform Join Execution
     if (joinColFrom && joinColTo) {
-      const [tblFrom, colFrom] = joinColFrom.split('.');
-      const [tblTo, colTo] = joinColTo.split('.');
+      const [tblFromS, tblFromT, colFrom] = joinColFrom.split('.'); // likely schema.table.col
+      const [tblToS, tblToT, colTo] = joinColTo.split('.'); 
 
-      // Nested Loop Left Join
+      // Reconstruct ID for safety
+      const fullTblFrom = joinColFrom.substring(0, joinColFrom.lastIndexOf('.'));
+      // const fullTblTo = joinColTo.substring(0, joinColTo.lastIndexOf('.'));
+
       resultRows = resultRows.map(existingRow => {
-         const valFrom = existingRow[`${tblFrom}.${colFrom}`];
-         const match = targetData.find(r => String(r[colTo]) === String(valFrom));
+         const valFrom = existingRow[joinColFrom];
+         
+         // Find match in target data
+         // Target data keys are raw column names inside the array objects
+         // We need to match targetData[x][colName]
+         const targetColName = joinColTo.split('.').pop()!;
+         
+         const match = targetData.find(r => String(r[targetColName]) === String(valFrom));
          
          if (match) {
             const joinedRow = { ...existingRow };
-            Object.keys(match).forEach(k => joinedRow[`${targetTable}.${k}`] = match[k]);
+            Object.keys(match).forEach(k => joinedRow[`${targetTableId}.${k}`] = match[k]);
             return joinedRow;
          } else {
             // Nulls for left join
             const joinedRow = { ...existingRow };
-            const targetCols = targetSchema?.columns || [];
-            targetCols.forEach(c => joinedRow[`${targetTable}.${c.name}`] = null);
+            // Populate nulls
+            const tSchema = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === targetTableId);
+            if (tSchema) {
+                tSchema.columns.forEach(c => joinedRow[`${targetTableId}.${c.name}`] = null);
+            }
             return joinedRow;
          }
       });
     } else {
-       // Cartesian Product / Index Match Fallback (Simulated)
-       // If no relation found, we just zip by index to show *something* rather than exploding results
+       // Cartesian Product Fallback
        resultRows = resultRows.map((existingRow, idx) => {
-          const match = targetData[idx % targetData.length]; // Loop around
+          const match = targetData[idx % targetData.length]; 
           const joinedRow = { ...existingRow };
-          Object.keys(match).forEach(k => joinedRow[`${targetTable}.${k}`] = match[k]);
+          if (match) {
+             Object.keys(match).forEach(k => joinedRow[`${targetTableId}.${k}`] = match[k]);
+          }
           return joinedRow;
        });
     }
@@ -239,7 +311,7 @@ export const executeOfflineQuery = (
      resultRows.forEach(row => {
         const groupKey = groupBy.length > 0 
            ? groupBy.map(g => row[g]).join('::') 
-           : 'ALL'; // Aggregate whole set if no group by
+           : 'ALL'; 
         
         if (!groups[groupKey]) groups[groupKey] = [];
         groups[groupKey].push(row);
@@ -255,18 +327,18 @@ export const executeOfflineQuery = (
            resultRow[g] = rows[0][g];
         });
 
-        // Add Aggregated Columns OR Non-Aggregated selected columns (take first)
+        // Add Aggregated Columns OR Non-Aggregated selected columns
         selectedColumns.forEach(fullCol => {
            const agg = aggregations[fullCol];
-           const [tbl, col] = fullCol.split('.');
-           const dataKey = `${tbl}.${col}`;
+           // fullCol is "schema.table.col"
+           const colName = fullCol.split('.').pop()!;
 
            if (!agg || agg === 'NONE') {
-              if (!resultRow[fullCol] && !resultRow[dataKey]) {
-                 resultRow[fullCol] = rows[0][dataKey]; // Take first value
+              if (!resultRow[fullCol]) {
+                 resultRow[fullCol] = rows[0][fullCol]; 
               }
            } else {
-              const values = rows.map(r => r[dataKey]).filter(v => v !== null && v !== undefined);
+              const values = rows.map(r => r[fullCol]).filter(v => v !== null && v !== undefined);
               let val: any = 0;
               
               if (agg === 'COUNT') val = values.length;
@@ -280,7 +352,7 @@ export const executeOfflineQuery = (
                  val = parseFloat(val.toFixed(2));
               }
 
-              resultRow[`${agg.toLowerCase()}_${col}`] = val;
+              resultRow[`${agg.toLowerCase()}_${colName}`] = val;
            }
         });
         
@@ -298,26 +370,27 @@ export const executeOfflineQuery = (
      resultRows = resultRows.map(row => {
         const cleanRow: any = {};
         targetCols.forEach(fullCol => {
-           const [tbl, col] = fullCol.includes('.') ? fullCol.split('.') : [primaryTable, fullCol];
-           const dataKey = fullCol.includes('.') ? fullCol : `${primaryTable}.${fullCol}`;
+           // fullCol is "schema.table.col"
+           const colName = fullCol.split('.').pop()!;
            
-           cleanRow[col] = row[dataKey] !== undefined ? row[dataKey] : row[col];
+           cleanRow[colName] = row[fullCol] !== undefined ? row[fullCol] : null;
         });
         return cleanRow;
      });
   }
   
-  // 4. Order By (Simple)
+  // 4. Order By
   if (orderBy.length > 0) {
-     const sort = orderBy[0]; // Simple single column sort for offline mode
-     const colKey = aggregations[sort.column] 
-        ? `${aggregations[sort.column]!.toLowerCase()}_${sort.column.split('.')[1]}` 
-        : (sort.column.includes('.') ? sort.column.split('.')[1] : sort.column); // Try to match output key
+     const sort = orderBy[0];
+     // determine the output key for the sort column
+     let sortKey = sort.column.split('.').pop()!; 
+     if (aggregations[sort.column]) {
+        sortKey = `${aggregations[sort.column]!.toLowerCase()}_${sortKey}`;
+     }
      
-     // Note: If grouping changed keys, sorting might be tricky. This is a best effort.
      resultRows.sort((a, b) => {
-        const valA = a[colKey] !== undefined ? a[colKey] : a[sort.column];
-        const valB = b[colKey] !== undefined ? b[colKey] : b[sort.column];
+        const valA = a[sortKey];
+        const valB = b[sortKey];
         
         if (valA < valB) return sort.direction === 'ASC' ? -1 : 1;
         if (valA > valB) return sort.direction === 'ASC' ? 1 : -1;

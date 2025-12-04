@@ -46,7 +46,6 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
   const tablesToAutoJoin = selectedTables.filter(t => !joinedTables.has(t) && t !== primaryTableId);
   
   // Also check if any of the "joinedTables" need to be linked to each other but weren't explicit
-  // Simple Strategy: Try to link remaining tables to the primary table or already joined tables
   const remainingTables = selectedTables.filter(t => t !== primaryTableId);
   
   remainingTables.forEach(targetTableId => {
@@ -61,21 +60,20 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
        let foundLink = false;
        
        // Try to find a link from an existing table TO the target table
-       // Note: schema.tables contains raw Table objects, we need to match via ID construction
        for (const existingTableId of Array.from(joinedTables)) {
-          // Find actual Table object
+          // Find actual Table object using fully qualified match
           const tSchema = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === existingTableId);
           if (tSchema) {
              const fkCol = tSchema.columns.find(c => {
                  if (!c.isForeignKey || !c.references) return false;
                  
-                 // Handle new 3-part references (schema.table.col) and legacy 2-part (table.col)
+                 // Handle new 3-part references (schema.table.col)
                  const parts = c.references.split('.');
                  
                  if (parts.length === 3) {
                     const [refSchema, refTable] = parts;
                     const refTableId = `${refSchema}.${refTable}`;
-                    // Exact match on Fully Qualified ID
+                    // Exact match on Fully Qualified ID to avoid schema collision
                     return refTableId === targetTableId;
                  } else {
                     // Legacy/Simulated fallback
@@ -110,6 +108,7 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
                    if (parts.length === 3) {
                       const [refSchema, refTable] = parts;
                       const refTableId = `${refSchema}.${refTable}`;
+                      // Check if this FK points to the existing table
                       return refTableId === existingTableId;
                    } else {
                       const [refTable] = parts;
