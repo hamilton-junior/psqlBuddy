@@ -45,6 +45,12 @@ const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql }) => {
       const context = `
         CONTEXTO SQL: "${sql}"
         
+        REGRAS DE NEGÓCIO E SCHEMA DO SISTEMA:
+        1. Identificação de IDs: A coluna chamada 'grid' é utilizada como Chave Primária (PK) padrão das tabelas neste sistema.
+        2. Relacionamentos Implícitos: Se uma tabela (ex: 'movto') possui uma coluna com o mesmo nome de outra tabela (ex: 'produto'), isso representa uma Chave Estrangeira.
+        3. Exemplo de Join: O valor em 'movto.produto' referencia 'produto.grid'.
+        4. Ao analisar os dados, considere que colunas com nomes de tabelas são IDs apontando para o 'grid' daquela tabela.
+
         AMOSTRA DE DADOS (JSON):
         ${JSON.stringify(dataSample)}
         
@@ -52,7 +58,7 @@ const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql }) => {
         
         PERGUNTA DO USUÁRIO: "${userMsg.text}"
         
-        INSTRUÇÃO: Aja como um Analista de Dados Sênior. Responda à pergunta do usuário com base nos dados fornecidos. 
+        INSTRUÇÃO: Aja como um Analista de Dados Sênior. Responda à pergunta do usuário com base nos dados fornecidos e nas regras de negócio acima. 
         Use Markdown para formatar sua resposta (negrito, listas, código).
         Seja perspicaz, aponte curiosidades se houver, e seja conciso. Responda em Português.
       `;

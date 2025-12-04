@@ -14,13 +14,13 @@ const generateValue = (col: Column, index: number, rowCount: number): any => {
   const name = col.name.toLowerCase();
   const type = col.type.toLowerCase();
 
-  // Handle IDs
-  if (name === 'id') {
+  // Handle IDs and Grid
+  if (name === 'id' || name === 'grid') {
     return index + 1;
   }
 
   // Handle Foreign Keys (Simulate relationship to other tables usually size 20)
-  if (name.endsWith('_id')) {
+  if (name.endsWith('_id') || name.endsWith('_grid')) {
     // Return a random ID between 1 and rowCount (assuming 20 rows for other tables)
     return Math.floor(Math.random() * 20) + 1;
   }
@@ -248,7 +248,7 @@ export const executeOfflineQuery = (
            }
         }
         
-        // 3. Heuristic: Column matches Table Name (e.g. movto.produto -> produto.id)
+        // 3. Heuristic: Column matches Table Name (e.g. movto.produto -> produto.grid)
         if (!joinColFrom) {
             const targetSimpleName = targetTableId.split('.')[1]; // 'produto'
             const joinedTablesIds = selectedTables.slice(0, i);
@@ -260,7 +260,11 @@ export const executeOfflineQuery = (
 
                 if (joinedSchema && targetSchemaObj) {
                     const linkCol = joinedSchema.columns.find(c => c.name.toLowerCase() === targetSimpleName.toLowerCase());
-                    const targetPk = targetSchemaObj.columns.find(c => c.isPrimaryKey) || targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
+                    
+                    // Priority: 'grid' > PK > 'id'
+                    const targetPk = targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'grid') 
+                                  || targetSchemaObj.columns.find(c => c.isPrimaryKey) 
+                                  || targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
 
                     if (linkCol && targetPk) {
                          joinColFrom = `${joinedId}.${linkCol.name}`;
@@ -271,7 +275,7 @@ export const executeOfflineQuery = (
             }
         }
         
-        // 4. Heuristic: Reverse Column Match (e.g. produto.movto -> movto.id)
+        // 4. Heuristic: Reverse Column Match (e.g. produto.movto -> movto.grid)
         if (!joinColFrom) {
             const joinedTablesIds = selectedTables.slice(0, i);
             const targetSchemaObj = schema.tables.find(t => `${t.schema || 'public'}.${t.name}` === targetTableId);
@@ -283,7 +287,11 @@ export const executeOfflineQuery = (
                     
                     if (joinedSchema) {
                         const linkCol = targetSchemaObj.columns.find(c => c.name.toLowerCase() === joinedSimpleName.toLowerCase());
-                        const joinedPk = joinedSchema.columns.find(c => c.isPrimaryKey) || joinedSchema.columns.find(c => c.name.toLowerCase() === 'id');
+                        
+                        // Priority: 'grid' > PK > 'id'
+                        const joinedPk = joinedSchema.columns.find(c => c.name.toLowerCase() === 'grid') 
+                                      || joinedSchema.columns.find(c => c.isPrimaryKey)
+                                      || joinedSchema.columns.find(c => c.name.toLowerCase() === 'id');
                         
                         if (linkCol && joinedPk) {
                              joinColFrom = `${joinedId}.${joinedPk.name}`;

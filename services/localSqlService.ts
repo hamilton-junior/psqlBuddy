@@ -134,7 +134,7 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
           }
        }
 
-       // --- Heuristic 1: Table Name match Column Name (e.g. movto.produto -> produto.id) ---
+       // --- Heuristic 1: Table Name match Column Name (e.g. movto.produto -> produto.grid) ---
        if (!foundLink) {
            const targetSimpleName = targetTableId.split('.')[1]; // 'produto'
            const targetSchemaObj = schema.tables.find(t => getTableId(t) === targetTableId);
@@ -147,8 +147,10 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
                        // Does existing table have column 'produto'?
                        const linkingCol = existingSchemaObj.columns.find(c => c.name.toLowerCase() === targetSimpleName.toLowerCase());
                        
-                       // Does target table have a PK or 'id'?
-                       const targetPk = targetSchemaObj.columns.find(c => c.isPrimaryKey) || targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
+                       // Priority: 'grid' > PK > 'id'
+                       const targetPk = targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'grid') 
+                                     || targetSchemaObj.columns.find(c => c.isPrimaryKey) 
+                                     || targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
 
                        if (linkingCol && targetPk) {
                            joinClauses.push(`LEFT JOIN ${targetTableId} ON ${existingTableId}.${linkingCol.name} = ${targetTableId}.${targetPk.name}`);
@@ -161,7 +163,7 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
            }
        }
 
-       // --- Heuristic 2: Reverse Table Name match (e.g. produto.movto -> movto.id) ---
+       // --- Heuristic 2: Reverse Table Name match (e.g. produto.movto -> movto.grid) ---
        if (!foundLink) {
            const targetSchemaObj = schema.tables.find(t => getTableId(t) === targetTableId);
            if (targetSchemaObj) {
@@ -172,7 +174,11 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
                    if (existingSchemaObj) {
                         // Does target table have column 'movto'?
                         const linkingCol = targetSchemaObj.columns.find(c => c.name.toLowerCase() === existingSimpleName.toLowerCase());
-                        const existingPk = existingSchemaObj.columns.find(c => c.isPrimaryKey) || existingSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
+                        
+                        // Priority: 'grid' > PK > 'id'
+                        const existingPk = existingSchemaObj.columns.find(c => c.name.toLowerCase() === 'grid')
+                                        || existingSchemaObj.columns.find(c => c.isPrimaryKey)
+                                        || existingSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
 
                         if (linkingCol && existingPk) {
                             joinClauses.push(`LEFT JOIN ${targetTableId} ON ${targetTableId}.${linkingCol.name} = ${existingTableId}.${existingPk.name}`);
@@ -196,22 +202,31 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
              const existingSchemaObj = schema.tables.find(t => getTableId(t) === existingMatchId);
 
              if (targetSchemaObj && existingSchemaObj) {
-                // Try finding common 'id' or PK
-                const hasIdTarget = targetSchemaObj.columns.some(c => c.name.toLowerCase() === 'id');
-                const hasIdExisting = existingSchemaObj.columns.some(c => c.name.toLowerCase() === 'id');
+                // Try finding common 'grid', 'id' or PK
+                const hasGridTarget = targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'grid');
+                const hasGridExisting = existingSchemaObj.columns.find(c => c.name.toLowerCase() === 'grid');
 
-                if (hasIdTarget && hasIdExisting) {
-                    joinClauses.push(`INNER JOIN ${targetTableId} ON ${existingMatchId}.id = ${targetTableId}.id`);
+                if (hasGridTarget && hasGridExisting) {
+                    joinClauses.push(`INNER JOIN ${targetTableId} ON ${existingMatchId}.grid = ${targetTableId}.grid`);
                     joinedTables.add(targetTableId);
                     foundLink = true;
                 } else {
-                    // Try PKs
-                    const targetPk = targetSchemaObj.columns.find(c => c.isPrimaryKey);
-                    const existingPk = existingSchemaObj.columns.find(c => c.isPrimaryKey);
-                    if (targetPk && existingPk && targetPk.name === existingPk.name) {
-                         joinClauses.push(`INNER JOIN ${targetTableId} ON ${existingMatchId}.${existingPk.name} = ${targetTableId}.${targetPk.name}`);
-                         joinedTables.add(targetTableId);
-                         foundLink = true;
+                    const hasIdTarget = targetSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
+                    const hasIdExisting = existingSchemaObj.columns.find(c => c.name.toLowerCase() === 'id');
+
+                    if (hasIdTarget && hasIdExisting) {
+                        joinClauses.push(`INNER JOIN ${targetTableId} ON ${existingMatchId}.id = ${targetTableId}.id`);
+                        joinedTables.add(targetTableId);
+                        foundLink = true;
+                    } else {
+                        // Try PKs
+                        const targetPk = targetSchemaObj.columns.find(c => c.isPrimaryKey);
+                        const existingPk = existingSchemaObj.columns.find(c => c.isPrimaryKey);
+                        if (targetPk && existingPk && targetPk.name === existingPk.name) {
+                            joinClauses.push(`INNER JOIN ${targetTableId} ON ${existingMatchId}.${existingPk.name} = ${targetTableId}.${targetPk.name}`);
+                            joinedTables.add(targetTableId);
+                            foundLink = true;
+                        }
                     }
                 }
              }
