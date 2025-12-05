@@ -44,7 +44,7 @@ export interface QueryResult {
   validation?: ValidationResult;
 }
 
-export type AppStep = 'connection' | 'builder' | 'preview' | 'results';
+export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'dashboard';
 
 export type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'ILIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL';
 export type JoinType = 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
@@ -71,11 +71,18 @@ export interface OrderBy {
   direction: 'ASC' | 'DESC';
 }
 
+export interface CalculatedColumn {
+  id: string;
+  alias: string;
+  expression: string; // e.g. "price * quantity"
+}
+
 export type AggregateFunction = 'NONE' | 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
 
 export interface BuilderState {
   selectedTables: string[];
   selectedColumns: string[]; // Format: "tableName.columnName"
+  calculatedColumns: CalculatedColumn[]; // NEW: Feature #5
   aggregations: Record<string, AggregateFunction>; // Format: { "tableName.columnName": "COUNT" }
   joins: ExplicitJoin[];
   filters: Filter[];
@@ -101,6 +108,32 @@ export interface QueryHistoryItem {
   status: 'success' | 'error';
   errorMessage?: string;
   schemaName: string;
+}
+
+// NEW: Feature #3 Dashboard
+export interface DashboardItem {
+  id: string;
+  title: string;
+  type: 'bar' | 'line' | 'area' | 'kpi';
+  data: any[];
+  config: {
+    xAxis: string;
+    yKeys: string[];
+  };
+  sql: string;
+  createdAt: number;
+}
+
+// NEW: Feature #2 Explain Plan
+export interface ExplainNode {
+  type: string; // e.g. "Seq Scan", "Index Scan"
+  relation?: string;
+  cost: { startup: number; total: number };
+  rows: number;
+  width: number;
+  actual_rows?: number;
+  actual_loops?: number;
+  children?: ExplainNode[];
 }
 
 export interface AppSettings {

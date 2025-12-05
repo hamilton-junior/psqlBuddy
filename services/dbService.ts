@@ -1,6 +1,10 @@
-import { DatabaseSchema, DbCredentials } from "../types";
+
+
+import { DatabaseSchema, DbCredentials, ExplainNode } from "../types";
 
 const API_URL = 'http://localhost:3000/api';
+
+// ... (Existing Connect/Execute) ...
 
 export const connectToDatabase = async (creds: DbCredentials): Promise<DatabaseSchema> => {
   try {
@@ -44,4 +48,51 @@ export const executeQueryReal = async (creds: DbCredentials, sql: string): Promi
     }
     throw error;
   }
+};
+
+// NEW: Feature #2 Explain Plan
+export const explainQueryReal = async (creds: DbCredentials, sql: string): Promise<ExplainNode> => {
+   if (creds.host === 'simulated') {
+      // Return a Mock Plan for offline mode
+      await new Promise(r => setTimeout(r, 600));
+      return {
+         type: "Result",
+         cost: { startup: 0.00, total: 10.00 },
+         rows: 100,
+         width: 4,
+         children: [
+            {
+               type: "Seq Scan",
+               relation: "simulated_table",
+               cost: { startup: 0.00, total: 10.00 },
+               rows: 100,
+               width: 4
+            }
+         ]
+      };
+   }
+
+   const explainSql = `EXPLAIN (FORMAT JSON, ANALYZE) ${sql}`;
+   
+   try {
+      const result = await executeQueryReal(creds, explainSql);
+      // Postgres returns: [ { "QUERY PLAN": [ { ... } ] } ]
+      // We need to parse this safely
+      if (result && result.length > 0) {
+         // The key might differ depending on driver/version, usually "QUERY PLAN" or "Plan"
+         const planRow = result[0];
+         const planJson = planRow['QUERY PLAN'] || planRow['Plan']; // Check both
+         if (planJson && planJson[0] && planJson[0].Plan) {
+            return planJson[0].Plan as ExplainNode;
+         }
+         // Sometimes it returns the array directly
+         if (Array.isArray(planJson) && planJson[0].Plan) {
+            return planJson[0].Plan;
+         }
+      }
+      throw new Error("Formato de plano inválido retornado pelo banco.");
+   } catch (e: any) {
+      console.error("Explain Error:", e);
+      throw new Error("Falha ao gerar plano de execução: " + e.message);
+   }
 };

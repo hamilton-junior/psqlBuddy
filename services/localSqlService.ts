@@ -1,20 +1,23 @@
 
+
 import { BuilderState, DatabaseSchema, QueryResult, ExplicitJoin } from '../types';
 
 // Helper to ensure consistent ID generation
 const getTableId = (t: any) => `${t.schema || 'public'}.${t.name}`;
 
 export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): QueryResult => {
-  const { selectedTables, selectedColumns, aggregations, joins, filters, groupBy, orderBy, limit } = state;
+  const { selectedTables, selectedColumns, calculatedColumns, aggregations, joins, filters, groupBy, orderBy, limit } = state;
 
   if (selectedTables.length === 0) {
     throw new Error("Nenhuma tabela selecionada.");
   }
 
   // --- 1. SELECT Clause ---
-  let selectClause = "*";
+  let selectItems: string[] = [];
+
+  // Standard Columns
   if (selectedColumns.length > 0) {
-    selectClause = selectedColumns.map(col => {
+    selectItems = selectedColumns.map(col => {
       const agg = aggregations[col];
       if (agg && agg !== 'NONE') {
         // extract col name from "schema.table.col"
@@ -24,8 +27,20 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
         return `${agg}(${col}) AS ${alias}`;
       }
       return col;
-    }).join(',\n  ');
+    });
+  } else {
+    selectItems.push('*');
   }
+
+  // Calculated Columns (Feature #5)
+  if (calculatedColumns && calculatedColumns.length > 0) {
+    calculatedColumns.forEach(calc => {
+      // Ensure formula doesn't break SQL (basic sanitation)
+      selectItems.push(`(${calc.expression}) AS "${calc.alias}"`);
+    });
+  }
+
+  const selectClause = selectItems.join(',\n  ');
 
   // --- 2. FROM & JOIN Clause ---
   // selectedTables contains strings like "schema.table"
@@ -45,10 +60,8 @@ export const generateLocalSql = (schema: DatabaseSchema, state: BuilderState): Q
   });
 
   // 2b. Implicit Auto-Join (Local FK Logic) for tables not yet joined
-  // If user didn't specify a join but selected multiple tables, try to find a FK link
+  // ... (Keep existing Auto-Join logic, it is good) ...
   const tablesToAutoJoin = selectedTables.filter(t => !joinedTables.has(t) && t !== primaryTableId);
-  
-  // Also check if any of the "joinedTables" need to be linked to each other but weren't explicit
   const remainingTables = selectedTables.filter(t => t !== primaryTableId);
   
   remainingTables.forEach(targetTableId => {

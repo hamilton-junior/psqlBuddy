@@ -1,18 +1,21 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
-import { DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, AppSettings, DEFAULT_SETTINGS } from './types';
+import { DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, AppSettings, DEFAULT_SETTINGS, DashboardItem } from './types';
 import Sidebar from './components/Sidebar';
 import ConnectionStep from './components/steps/ConnectionStep';
 import BuilderStep from './components/steps/BuilderStep';
 import PreviewStep from './components/steps/PreviewStep';
 import ResultsStep from './components/steps/ResultsStep';
+import DashboardStep from './components/steps/DashboardStep'; // NEW
 import SettingsModal from './components/SettingsModal';
 import AiPreferenceModal from './components/AiPreferenceModal';
 import SchemaDiagramModal from './components/SchemaDiagramModal';
-import { generateSqlFromBuilderState, validateSqlQuery, generateMockData } from './services/geminiService';
+import { generateSqlFromBuilderState, validateSqlQuery, generateMockData, fixSqlError } from './services/geminiService';
 import { generateLocalSql } from './services/localSqlService';
 import { initializeSimulation, executeOfflineQuery, SimulationData } from './services/simulationService';
 import { executeQueryReal } from './services/dbService';
-import { AlertTriangle, X, ZapOff, History as HistoryIcon, Clock, CheckCircle2, AlertCircle as AlertCircleIcon } from 'lucide-react';
+import { AlertTriangle, X, ZapOff, History as HistoryIcon, Clock, CheckCircle2, AlertCircle as AlertCircleIcon, Wand2 } from 'lucide-react';
 import { getHistory, clearHistory } from './services/historyService';
 
 // Helper for safe storage loading
@@ -82,6 +85,7 @@ function App() {
   const [builderState, setBuilderState] = useState<BuilderState>(() => loadFromStorage('psql-buddy-builder', {
     selectedTables: [],
     selectedColumns: [],
+    calculatedColumns: [],
     aggregations: {},
     joins: [],
     filters: [],
@@ -90,11 +94,14 @@ function App() {
     limit: settings.defaultLimit
   }));
   
-  // Persisted Results State (Added to survive reload)
+  // Persisted Results State
   const [queryResult, setQueryResult] = useState<QueryResult | null>(() => loadFromStorage('psql-buddy-query-result', null));
   const [dbResults, setDbResults] = useState<any[]>(() => loadFromStorage('psql-buddy-db-results', []));
   
-  // Transient State (Not persisted heavily)
+  // Dashboard State (Persisted)
+  const [dashboards, setDashboards] = useState<DashboardItem[]>(() => loadFromStorage('psql-buddy-dashboards', []));
+
+  // Transient State
   const [isProcessing, setIsProcessing] = useState(false); 
   const [progressMessage, setProgressMessage] = useState<string>(''); 
   const [isValidating, setIsValidating] = useState(false); 
@@ -124,10 +131,12 @@ function App() {
        if (dbResults && dbResults.length > 0) localStorage.setItem('psql-buddy-db-results', JSON.stringify(dbResults));
        else localStorage.removeItem('psql-buddy-db-results');
 
-    }, 500); // Debounce saves
+       localStorage.setItem('psql-buddy-dashboards', JSON.stringify(dashboards));
+
+    }, 500); 
 
     return () => clearTimeout(saveTimeout);
-  }, [currentStep, schema, credentials, simulationData, builderState, queryResult, dbResults]);
+  }, [currentStep, schema, credentials, simulationData, builderState, queryResult, dbResults, dashboards]);
 
 
   // --- Handlers ---
@@ -144,10 +153,11 @@ function App() {
        setSimulationData(null);
     }
 
-    // Reset downstream state (New Connection usually implies reset)
+    // Reset downstream state
     const cleanBuilderState = { 
       selectedTables: [], 
-      selectedColumns: [], 
+      selectedColumns: [],
+      calculatedColumns: [],
       aggregations: {},
       joins: [],
       filters: [],
@@ -289,11 +299,36 @@ function App() {
     }
   };
 
-  const handleExecuteQuery = async () => {
+  const handleExecuteQuery = async (sqlOverride?: string) => {
     if (!schema || !queryResult || !credentials) return;
     setError(null);
     setIsProcessing(true);
     setProgressMessage(credentials.host === 'simulated' ? "Consultando dados simulados..." : "Executando no banco...");
+
+    let sqlToExecute = sqlOverride || queryResult.sql;
+
+    if (sqlOverride && sqlOverride !== queryResult.sql) {
+        setQueryResult({ ...queryResult, sql: sqlOverride });
+    }
+    
+    // Feature #8: Dynamic Parameters
+    const paramRegex = /:([a-zA-Z0-9_]+)/g;
+    const paramsFound = [...sqlToExecute.matchAll(paramRegex)];
+    if (paramsFound.length > 0) {
+       // Simple prompt loop for parameters (can be improved with a Modal)
+       const uniqueParams = Array.from(new Set(paramsFound.map(m => m[1])));
+       let tempSql = sqlToExecute;
+       for (const param of uniqueParams) {
+          const val = prompt(`Informe valor para o parâmetro '${param}':`);
+          if (val === null) {
+             setIsProcessing(false);
+             return; // User cancelled
+          }
+          // Basic replacement logic, could be more robust
+          tempSql = tempSql.replaceAll(`:${param}`, `'${val}'`);
+       }
+       sqlToExecute = tempSql;
+    }
 
     try {
       let data: any[] = [];
@@ -303,7 +338,7 @@ function App() {
             data = executeOfflineQuery(schema, simulationData, builderState);
          } else if (settings.enableAiGeneration && !quotaExhausted) {
             try {
-               data = await generateMockData(schema, queryResult.sql);
+               data = await generateMockData(schema, sqlToExecute);
             } catch (mockErr: any) {
                if (mockErr.message === "QUOTA_ERROR") {
                   setQuotaExhausted(true);
@@ -318,14 +353,35 @@ function App() {
             setWarningToast("Sem dados de simulação disponíveis.");
          }
       } else {
-         data = await executeQueryReal(credentials, queryResult.sql);
+         data = await executeQueryReal(credentials, sqlToExecute);
       }
 
       setDbResults(data);
       setCurrentStep('results');
     } catch (e: any) {
       console.error(e);
-      if (e.message === "QUOTA_ERROR") {
+      // Feature #6: AI Auto-Fix
+      if (e.message !== "QUOTA_ERROR" && settings.enableAiGeneration) {
+         setError({ 
+            message: "Falha na execução: " + e.message,
+            action: {
+               label: "Corrigir com IA",
+               handler: async () => {
+                  setIsProcessing(true);
+                  setProgressMessage("Tentando corrigir SQL com IA...");
+                  try {
+                     const fixedSql = await fixSqlError(sqlToExecute, e.message, schema);
+                     setQueryResult({ ...queryResult, sql: fixedSql });
+                     alert("SQL Corrigido! Tente executar novamente.");
+                  } catch (fixErr) {
+                     alert("Não foi possível corrigir automaticamente.");
+                  } finally {
+                     setIsProcessing(false);
+                  }
+               }
+            }
+         });
+      } else if (e.message === "QUOTA_ERROR") {
          setQuotaExhausted(true);
          setError({ message: "Cota excedida durante execução." });
       } else {
@@ -335,6 +391,19 @@ function App() {
       setIsProcessing(false);
       setProgressMessage("");
     }
+  };
+
+  const handleAddToDashboard = (item: Omit<DashboardItem, 'id' | 'createdAt'>) => {
+     const newItem: DashboardItem = {
+        ...item,
+        id: crypto.randomUUID(),
+        createdAt: Date.now()
+     };
+     setDashboards([...dashboards, newItem]);
+  };
+  
+  const handleRemoveDashboardItem = (id: string) => {
+     setDashboards(dashboards.filter(i => i.id !== id));
   };
 
   const handleReset = () => {
@@ -380,9 +449,10 @@ function App() {
           <div 
             className="h-full bg-indigo-600 transition-all duration-500 ease-out"
             style={{ 
-              width: currentStep === 'connection' ? '25%' : 
-                     currentStep === 'builder' ? '50%' : 
-                     currentStep === 'preview' ? '75%' : '100%' 
+              width: currentStep === 'connection' ? '20%' : 
+                     currentStep === 'builder' ? '40%' : 
+                     currentStep === 'preview' ? '60%' : 
+                     currentStep === 'results' ? '80%' : '100%' 
             }}
           />
         </div>
@@ -396,9 +466,9 @@ function App() {
                  {error.action && (
                     <button 
                        onClick={error.action.handler}
-                       className="text-xs bg-red-100 hover:bg-red-200 dark:bg-red-800 dark:hover:bg-red-700 text-red-800 dark:text-red-100 px-2 py-1 rounded font-bold transition-colors"
+                       className="text-xs bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-800 dark:hover:bg-indigo-700 text-indigo-800 dark:text-indigo-100 px-3 py-1.5 rounded font-bold transition-colors flex items-center gap-1"
                     >
-                       {error.action.label}
+                       <Wand2 className="w-3 h-3" /> {error.action.label}
                     </button>
                  )}
               </div>
@@ -466,7 +536,17 @@ function App() {
               onBackToBuilder={() => handleNavigate('builder')}
               onNewConnection={handleReset}
               settings={settings}
+              onAddToDashboard={handleAddToDashboard}
+              credentials={credentials}
             />
+          )}
+
+          {currentStep === 'dashboard' && (
+             <DashboardStep 
+               items={dashboards} 
+               onRemoveItem={handleRemoveDashboardItem} 
+               onClearAll={() => setDashboards([])}
+             />
           )}
         </div>
       </main>

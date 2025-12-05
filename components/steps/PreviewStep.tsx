@@ -1,12 +1,11 @@
-
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QueryResult } from '../../types';
 import { Terminal, Play, ArrowLeft, CheckCircle2, ShieldAlert, Info, Copy, Check, Loader2, Lightbulb, ShieldOff, AlertCircle } from 'lucide-react';
+import Editor from '@monaco-editor/react';
 
 interface PreviewStepProps {
   queryResult: QueryResult;
-  onExecute: () => void;
+  onExecute: (sqlOverride?: string) => void;
   onBack: () => void;
   isExecuting: boolean;
   isValidating: boolean;
@@ -15,7 +14,13 @@ interface PreviewStepProps {
 
 const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBack, isExecuting, isValidating, validationDisabled }) => {
   const [copied, setCopied] = useState(false);
+  const [editedSql, setEditedSql] = useState(queryResult.sql);
   
+  // Sync state if prop changes (e.g. from new generation)
+  useEffect(() => {
+    setEditedSql(queryResult.sql);
+  }, [queryResult.sql]);
+
   // If validation is undefined yet, assume valid until proven otherwise, but show loader
   const isValid = queryResult.validation?.isValid ?? true;
   const validationError = queryResult.validation?.error;
@@ -24,29 +29,29 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
   const errorLine = queryResult.validation?.errorLine;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(queryResult.sql);
+    navigator.clipboard.writeText(editedSql);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const sqlLines = queryResult.sql.split('\n');
+  const isDarkMode = document.documentElement.classList.contains('dark');
 
   return (
-    <div className="w-full h-full">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="w-full h-full flex flex-col">
+      <div className="mb-4 flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <Terminal className="w-6 h-6 text-indigo-600" />
-            Visualização da Query
+            Editor SQL
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Revise o SQL gerado antes da execução</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Revise e edite o SQL antes da execução.</p>
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="flex-1 flex flex-col min-h-0 space-y-4">
         
-        {/* 1. SQL Code Block (Improved Editor Look) */}
-        <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-lg bg-[#1e1e1e] flex flex-col group transition-all hover:shadow-xl hover:border-indigo-500/30">
+        {/* 1. Monaco Editor */}
+        <div className="flex-1 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-lg bg-[#1e1e1e] flex flex-col group min-h-[300px]">
            <div className="px-4 py-2 bg-[#252526] border-b border-[#333] flex justify-between items-center shrink-0">
              <div className="flex items-center gap-2">
                 <div className="flex gap-1.5">
@@ -55,6 +60,9 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/20"></div>
                 </div>
                 <span className="ml-2 text-xs font-mono text-slate-400 tracking-wide">query.sql</span>
+                {editedSql !== queryResult.sql && (
+                   <span className="text-[10px] text-amber-400 bg-amber-900/30 px-1.5 rounded ml-2">Modificado</span>
+                )}
              </div>
              <button 
                onClick={handleCopy}
@@ -65,56 +73,29 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
              </button>
            </div>
            
-           <div className="flex overflow-x-auto relative">
-             {/* Line Numbers Column */}
-             <div className="bg-[#1e1e1e] py-4 px-3 text-right border-r border-[#333] select-none shrink-0 min-w-[3.5rem]">
-                {sqlLines.map((_, i) => (
-                  <div 
-                    key={i} 
-                    className={`font-mono text-xs leading-6 ${
-                       errorLine === i + 1 ? 'text-red-400 font-bold' : 'text-[#858585]'
-                    }`}
-                  >
-                    {i + 1}
-                  </div>
-                ))}
-             </div>
-             
-             {/* Code Content - Syntax Highlighting Simulation with colors */}
-             <div className="py-4 px-4 flex-1 min-w-0 font-mono text-sm leading-6">
-                {sqlLines.map((line, i) => (
-                  <div 
-                    key={i} 
-                    className={`whitespace-pre ${
-                       errorLine === i + 1 ? 'bg-red-900/20 -mx-4 px-4 border-l-2 border-red-500' : ''
-                    }`}
-                  >
-                     {/* Naive Syntax Highlighting */}
-                     {line.split(' ').map((word, wIdx) => {
-                        const w = word.toUpperCase().replace(/[,;()]/g, '');
-                        let colorClass = 'text-[#d4d4d4]'; // Default
-                        
-                        if (['SELECT', 'FROM', 'WHERE', 'GROUP', 'BY', 'ORDER', 'LIMIT', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'AND', 'OR', 'AS', 'IN', 'IS', 'NULL', 'NOT', 'LIKE', 'ILIKE', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'].includes(w)) {
-                           colorClass = 'text-[#569cd6] font-bold'; // Keywords Blue
-                        } else if (w.match(/^\d+$/)) {
-                           colorClass = 'text-[#b5cea8]'; // Numbers Green
-                        } else if (word.startsWith("'") || word.startsWith('"')) {
-                           colorClass = 'text-[#ce9178]'; // Strings Orange
-                        } else if (word.includes('.')) {
-                           colorClass = 'text-[#4ec9b0]'; // Identifiers Teal
-                        }
-
-                        return <span key={wIdx} className={colorClass}>{word} </span>;
-                     })}
-                  </div>
-                ))}
-             </div>
+           <div className="flex-1 relative">
+             <Editor
+               height="100%"
+               defaultLanguage="sql"
+               theme={isDarkMode ? "vs-dark" : "light"} // Use "light" for light mode, "vs-dark" for dark
+               value={editedSql}
+               onChange={(value) => setEditedSql(value || '')}
+               options={{
+                 minimap: { enabled: false },
+                 fontSize: 13,
+                 padding: { top: 16, bottom: 16 },
+                 lineNumbers: 'on',
+                 scrollBeyondLastLine: false,
+                 automaticLayout: true,
+                 fontFamily: "'Fira Code', monospace",
+               }}
+             />
            </div>
         </div>
 
         {/* 2. Validation Status */}
         {validationDisabled ? (
-           <div className="p-4 rounded-xl border flex items-start gap-3 bg-slate-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+           <div className="p-4 rounded-xl border flex items-start gap-3 bg-slate-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700 shrink-0">
              <ShieldOff className="w-5 h-5 text-slate-400 mt-0.5" />
              <div>
                <h4 className="font-bold text-sm text-slate-600 dark:text-slate-300">Validação Desativada</h4>
@@ -122,7 +103,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
              </div>
            </div>
         ) : (
-          <div className={`rounded-xl border overflow-hidden transition-all duration-300 ${
+          <div className={`rounded-xl border overflow-hidden transition-all duration-300 shrink-0 ${
             isValidating 
               ? 'bg-indigo-50 border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800' 
               : isValid 
@@ -190,11 +171,11 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
           </div>
         )}
 
-        {/* 4. Logic Explanation & Tips */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+        {/* 3. Logic Explanation & Tips */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
            <div className="flex items-center gap-2 mb-3">
              <Info className="w-4 h-4 text-indigo-500" />
-             <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm uppercase tracking-wider">Explicação da Lógica</h4>
+             <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm uppercase tracking-wider">Explicação da Lógica (Original)</h4>
            </div>
            <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-sm">{queryResult.explanation}</p>
            
@@ -211,7 +192,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-between pt-4 pb-10">
+        <div className="flex items-center justify-between pt-4 pb-10 shrink-0">
            <button 
              onClick={onBack}
              className="px-6 py-3 text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-2"
@@ -221,8 +202,8 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
            </button>
 
            <button 
-             onClick={onExecute}
-             disabled={(!isValid && !validationDisabled) || isExecuting || isValidating}
+             onClick={() => onExecute(editedSql)}
+             disabled={(!isValid && !validationDisabled && editedSql === queryResult.sql) || isExecuting || isValidating || !editedSql.trim()}
              className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-red-200 dark:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
            >
              {isExecuting ? 'Executando...' : 'Executar Query'}

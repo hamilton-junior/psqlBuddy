@@ -26,6 +26,8 @@ const formatSchemaForPrompt = (schema: DatabaseSchema): string => {
   return JSON.stringify(simplifiedStructure, null, 2);
 };
 
+// ... (Existing Generate Builder State & Validate SQL functions) ...
+
 /**
  * Converts a natural language user request into a structured BuilderState object.
  * This allows the UI to be auto-filled based on a sentence like "Show sales by country".
@@ -146,11 +148,7 @@ export const generateBuilderStateFromPrompt = async (
 
 /**
  * Validates a generated SQL query against a database schema using AI.
- * Checks for syntax errors, column existence, invalid joins, and best practices.
- *
- * @param sql - The SQL query string to validate.
- * @param schema - The database schema to validate against (optional).
- * @returns A Promise resolving to a ValidationResult object containing validity status, errors, and corrected SQL if applicable.
+ * ...
  */
 export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Promise<ValidationResult> => {
   
@@ -234,14 +232,58 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
   }
 };
 
+
 /**
- * Generates a SQL query based on the user's builder state (selected tables, columns, joins, etc.) using AI.
- *
- * @param schema - The database schema definition.
- * @param state - The current state of the visual query builder.
- * @param includeTips - Whether to request optimization tips from the AI.
- * @param onProgress - Optional callback function to report progress messages.
- * @returns A Promise resolving to a QueryResult containing the generated SQL, explanation, and tips.
+ * Automatically fixes a SQL query based on a provided error message using AI.
+ * (Feature #6)
+ */
+export const fixSqlError = async (sql: string, errorMessage: string, schema: DatabaseSchema): Promise<string> => {
+   const schemaContext = formatSchemaForPrompt(schema);
+   
+   const prompt = `
+     Você é um especialista em corrigir erros de SQL PostgreSQL.
+     
+     SCHEMA:
+     ${schemaContext}
+     
+     QUERY QUE FALHOU:
+     "${sql}"
+     
+     MENSAGEM DE ERRO DO BANCO:
+     "${errorMessage}"
+     
+     TAREFA:
+     Analise o erro e o schema. Corrija o SQL para funcionar corretamente.
+     - Se for erro de coluna inexistente, procure uma com nome similar no schema.
+     - Se for erro de tipo (ex: integer vs string), faça o cast apropriado.
+     - Se for erro de GROUP BY, adicione as colunas faltantes.
+     - Se for divisão por zero, adicione NULLIF.
+     
+     Retorne APENAS a string do SQL corrigido, sem markdown, sem explicações.
+   `;
+
+   try {
+     const response = await ai.models.generateContent({
+       model: 'gemini-2.5-flash',
+       contents: prompt
+     });
+     
+     if (response.text) {
+        let fixed = response.text.trim();
+        // Remove markdown block if present
+        fixed = fixed.replace(/^```sql\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
+        return fixed;
+     }
+     throw new Error("Não foi possível gerar correção.");
+   } catch (e) {
+      console.error("Fix SQL Error:", e);
+      throw e;
+   }
+};
+
+/**
+ * Generates a SQL query based on the user's builder state...
+ * (Existing function kept mostly same, but adding Calculated Column support in prompt)
  */
 export const generateSqlFromBuilderState = async (
   schema: DatabaseSchema,
@@ -295,6 +337,9 @@ export const generateSqlFromBuilderState = async (
      }
      return col;
   });
+  
+  // Inject calculated columns into context
+  const calculatedContext = state.calculatedColumns?.map(c => `Calculated Column: "${c.alias}" = ${c.expression}`).join('\n') || '';
 
   const prompt = `
     SCHEMA DO BANCO DE DADOS (Use APENAS estas colunas):
@@ -303,6 +348,7 @@ export const generateSqlFromBuilderState = async (
     SOLICITAÇÃO DO USUÁRIO:
     - Tabelas: ${state.selectedTables.join(', ')}
     - Colunas Solicitadas (com agregações): ${formattedColumns.join(', ')}
+    - Colunas Calculadas (fórmulas): ${calculatedContext}
     - Joins Explícitos: ${JSON.stringify(state.joins)}
     - Filtros: ${JSON.stringify(state.filters)}
     - Agrupamento (GroupBy): ${state.groupBy.join(', ')}
@@ -395,14 +441,7 @@ export const generateSqlFromBuilderState = async (
   }
 };
 
-/**
- * Generates a realistic database schema simulation based on a topic description using AI.
- * Used for the "Simulation Mode" feature.
- *
- * @param topic - The main topic or name of the database (e.g., "E-commerce").
- * @param context - Additional context or business rules to guide schema generation.
- * @returns A Promise resolving to a generated DatabaseSchema object.
- */
+// ... (Other exports: generateSchemaFromTopic, parseSchemaFromDDL, generateMockData kept as is) ...
 export const generateSchemaFromTopic = async (topic: string, context: string): Promise<DatabaseSchema> => {
   const prompt = `
     Gere um Schema de Banco de Dados PostgreSQL realista para um sistema sobre: "${topic}".
@@ -484,12 +523,6 @@ export const generateSchemaFromTopic = async (topic: string, context: string): P
   }
 };
 
-/**
- * Parses raw SQL DDL (Data Definition Language) text into a structured DatabaseSchema object using AI.
- *
- * @param ddl - The raw SQL CREATE TABLE statements.
- * @returns A Promise resolving to a DatabaseSchema object.
- */
 export const parseSchemaFromDDL = async (ddl: string): Promise<DatabaseSchema> => {
   const prompt = `Faça o parse deste SQL DDL para JSON: ${ddl}`;
   const schemaStructure: Schema = {
@@ -548,14 +581,6 @@ export const parseSchemaFromDDL = async (ddl: string): Promise<DatabaseSchema> =
   }
 };
 
-/**
- * Generates realistic mock data for a given SQL query based on the database schema using AI.
- * Used when running queries in simulation mode.
- *
- * @param schema - The database schema to provide context.
- * @param sql - The SQL query for which to generate results.
- * @returns A Promise resolving to an array of objects representing the query result rows.
- */
 export const generateMockData = async (schema: DatabaseSchema, sql: string): Promise<any[]> => {
   const prompt = `
     Gere dados fictícios (Mock Data) para o seguinte cenário.

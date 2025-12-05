@@ -399,10 +399,10 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                 
                 // Calculate magnification scale to counteract global zoom out
                 // We clamp it so it doesn't get ridiculously huge
-                // Formula: 1/scale attempts to restore 1:1 view. We multiply to make it even bigger/smaller.
-                // Cap between 1.5x (minimum pop) and 6.0x (max explosion)
+                // Formula: 3.0/scale makes it render at 3x native resolution on screen
+                // Cap between 2.0x (minimum pop) and 20.0x (max explosion)
                 const hoverScale = shouldMagnify 
-                   ? Math.min(Math.max(1 / scale, 1.5), 6.0) 
+                   ? Math.min(Math.max(3.0 / scale, 2.0), 20.0) 
                    : 1;
                 
                 return (

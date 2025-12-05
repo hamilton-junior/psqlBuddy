@@ -1,6 +1,8 @@
+
+
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
@@ -88,6 +90,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {navItem('builder', 'Construtor', <Layers className="w-4 h-4" />, !schema, "Construir queries")}
           {navItem('preview', 'Visualização', <Terminal className="w-4 h-4" />, currentStep === 'connection' || currentStep === 'builder', "Visualizar SQL")}
           {navItem('results', 'Resultados', <Table className="w-4 h-4" />, currentStep !== 'results', "Ver resultados")}
+          {navItem('dashboard', 'Dashboard', <LayoutGrid className="w-4 h-4" />, !schema, "Painel de Gráficos")}
         </div>
         
         {/* Extra Tools Section */}
