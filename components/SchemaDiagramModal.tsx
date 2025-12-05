@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DatabaseSchema, Table } from '../types';
-import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search, Activity, Key, Link, Target, CornerDownRight, Copy, Eye, Table as TableIcon, Download, Map as MapIcon, Palette, FileCode, Upload, Save, Trash2, Tag } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search, Activity, Key, Link, Target, CornerDownRight, Copy, Eye, Table as TableIcon, Download, Map as MapIcon, Palette, FileCode, Upload, Save, Trash2, Tag, Filter, Eraser } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 interface SchemaDiagramModalProps {
@@ -169,7 +168,8 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   
   // Customization State
   const [tableColors, setTableColors] = useState<Record<string, string>>({});
-  const [columnColors, setColumnColors] = useState<Record<string, string>>({}); // New: Column Tags
+  const [columnColors, setColumnColors] = useState<Record<string, string>>({}); 
+  const [activeColorFilter, setActiveColorFilter] = useState<string | null>(null); // New: Filter by tag
   
   // Interaction States
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
@@ -265,17 +265,22 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     setIsLayoutReady(false);
     const timer = setTimeout(() => {
       let tablesToRender = schema.tables;
+      
       if (debouncedTerm.trim()) {
         const term = debouncedTerm.toLowerCase();
         tablesToRender = schema.tables.filter(t => 
           t.name.toLowerCase().includes(term) || 
           t.columns.some(c => c.name.toLowerCase().includes(term))
         );
+      } else if (activeColorFilter) {
+         // Apply Color Filter
+         tablesToRender = schema.tables.filter(t => tableColors[t.name] === activeColorFilter);
       }
+
       const newPos = calculateLayout(tablesToRender);
       setPositions(newPos);
       
-      if (debouncedTerm.trim()) {
+      if (debouncedTerm.trim() || activeColorFilter) {
          setPan({ x: 50, y: 50 });
          setScale(1);
       }
@@ -283,7 +288,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [debouncedTerm, schema.tables, calculateLayout]);
+  }, [debouncedTerm, activeColorFilter, schema.tables, calculateLayout, tableColors]);
 
   // Update container size
   useEffect(() => {
@@ -314,9 +319,9 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
 
   const visibleTables = useMemo(() => {
      if (!isLayoutReady) return [];
-     if (debouncedTerm.trim()) return schema.tables.filter(t => !!positions[t.name]);
+     if (debouncedTerm.trim() || activeColorFilter) return schema.tables.filter(t => !!positions[t.name]);
      return schema.tables.filter(t => !!positions[t.name]);
-  }, [positions, isLayoutReady, schema.tables, debouncedTerm]);
+  }, [positions, isLayoutReady, schema.tables, debouncedTerm, activeColorFilter]);
 
   // --- INTERACTION HANDLERS ---
   const handleMouseDown = (e: React.MouseEvent, tableName?: string) => {
@@ -436,6 +441,14 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      setContextMenu(null);
   };
 
+  const handleClearTableColor = (tableName: string) => {
+     setTableColors(prev => {
+        const next = { ...prev };
+        delete next[tableName];
+        return next;
+     });
+  };
+
   const handleExportImage = async () => {
      if (!containerRef.current) return;
      try {
@@ -485,6 +498,10 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     };
     reader.readAsText(file);
   };
+
+  const usedColors = useMemo(() => {
+     return [...new Set(Object.values(tableColors))];
+  }, [tableColors]);
 
   // --- SMART PATH CALCULATION ---
   const getSmartPath = (start: {x: number, y: number}, end: {x: number, y: number}) => {
@@ -680,17 +697,41 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
               <button onClick={handleExportImage} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Exportar como Imagem (PNG)"><Download className="w-5 h-5" /></button>
            </div>
            
-           <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex items-center gap-2 w-64 pointer-events-auto">
-              <Search className={`w-4 h-4 ${inputValue !== debouncedTerm ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`} />
-              <input 
-                type="text" 
-                placeholder="Buscar tabela..." 
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                className="bg-transparent border-none outline-none text-xs text-slate-700 dark:text-slate-200 w-full placeholder-slate-400"
-              />
-              {inputValue && (
-                 <button onClick={() => setInputValue('')} className="text-slate-400 hover:text-slate-600"><X className="w-3 h-3" /></button>
+           <div className="flex gap-2 pointer-events-auto">
+              <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex items-center gap-2 w-64">
+                 <Search className={`w-4 h-4 ${inputValue !== debouncedTerm ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`} />
+                 <input 
+                   type="text" 
+                   placeholder="Buscar tabela..." 
+                   value={inputValue}
+                   onChange={(e) => { setInputValue(e.target.value); setActiveColorFilter(null); }}
+                   className="bg-transparent border-none outline-none text-xs text-slate-700 dark:text-slate-200 w-full placeholder-slate-400"
+                 />
+                 {inputValue && (
+                    <button onClick={() => setInputValue('')} className="text-slate-400 hover:text-slate-600"><X className="w-3 h-3" /></button>
+                 )}
+              </div>
+              
+              {/* Tag Filter */}
+              {usedColors.length > 0 && (
+                 <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex items-center gap-2 relative group">
+                    <Filter className="w-4 h-4 text-slate-400" />
+                    <select 
+                       value={activeColorFilter || ''}
+                       onChange={(e) => { setActiveColorFilter(e.target.value || null); setInputValue(''); }}
+                       className="bg-transparent border-none outline-none text-xs text-slate-700 dark:text-slate-200 w-24 cursor-pointer appearance-none"
+                    >
+                       <option value="">Todas as tags</option>
+                       {usedColors.map(colorId => (
+                          <option key={colorId} value={colorId}>
+                             {colorId.charAt(0).toUpperCase() + colorId.slice(1)}
+                          </option>
+                       ))}
+                    </select>
+                    {activeColorFilter && (
+                       <button onClick={() => setActiveColorFilter(null)} className="text-slate-400 hover:text-slate-600"><X className="w-3 h-3" /></button>
+                    )}
+                 </div>
               )}
            </div>
         </div>
@@ -736,6 +777,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                 const displayLOD = isTableHovered || selectedRelationship ? 'high' : lodLevel;
                 const colorId = tableColors[table.name] || 'default';
                 const style = TABLE_COLORS.find(c => c.id === colorId) || TABLE_COLORS[0];
+                const hasColor = tableColors[table.name] !== undefined;
                 
                 let opacity = 1;
                 if (selectedRelationship) {
@@ -783,11 +825,22 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                       ) : (
                          <>
                             <div className={`
-                               flex items-center justify-between px-3 py-2 border-b h-[42px] transition-colors
+                               flex items-center justify-between px-3 py-2 border-b h-[42px] transition-colors relative group/header
                                ${style.bg} ${style.darkBg} ${style.border}
                             `}>
                                <span className={`font-bold text-sm truncate ${style.text}`} title={table.name}>{table.name}</span>
-                               <span className={`text-[9px] opacity-70 ${style.text}`}>{table.schema}</span>
+                               <div className="flex items-center gap-1">
+                                  {hasColor && (
+                                     <button 
+                                       onClick={(e) => { e.stopPropagation(); handleClearTableColor(table.name); }}
+                                       className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-500 dark:text-slate-300"
+                                       title="Limpar Tag/Cor"
+                                     >
+                                        <Eraser className="w-3 h-3" />
+                                     </button>
+                                  )}
+                                  <span className={`text-[9px] opacity-70 ${style.text}`}>{table.schema}</span>
+                               </div>
                             </div>
                             
                             {displayLOD === 'high' && (

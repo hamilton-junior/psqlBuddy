@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, memo, useDeferredValue, useRef } from 'react';
 import { DatabaseSchema, Table, Column } from '../types';
-import { Database, Table as TableIcon, Key, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight, Loader2, ArrowRight, Folder, FolderOpen } from 'lucide-react';
+import { Database, Table as TableIcon, Key, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight, Loader2, ArrowRight, Folder, FolderOpen, Play, Info } from 'lucide-react';
 
 interface SchemaViewerProps {
   schema: DatabaseSchema;
@@ -10,6 +10,7 @@ interface SchemaViewerProps {
   selectionMode?: boolean;
   selectedTableIds?: string[];
   onToggleTable?: (tableId: string) => void;
+  onPreviewTable?: (tableName: string) => void;
 }
 
 type SortField = 'name' | 'type' | 'key';
@@ -71,17 +72,36 @@ const SchemaColumnItem = memo(({
        </span>
      );
   }
+
+  // Enhanced Tooltip Generation
+  const getTooltip = () => {
+    let lines = [`Coluna: ${col.name}`, `Tipo: ${col.type.toUpperCase()}`];
+    
+    if (col.isPrimaryKey) lines.push("Constraint: PRIMARY KEY (PK)");
+    if (col.isForeignKey) {
+       lines.push("Constraint: FOREIGN KEY (FK)");
+       lines.push(`References: ${col.references}`);
+    }
+    
+    // Simulate index info if it's a key
+    if (col.isPrimaryKey || col.isForeignKey) {
+       lines.push(`Index: idx_${tableName}_${col.name}`);
+    }
+
+    return lines.join('\n');
+  };
   
   return (
     <div 
-       className={`flex items-center text-xs py-1.5 px-2 rounded group transition-all duration-75
+       className={`flex items-center text-xs py-1.5 px-2 rounded group transition-all duration-75 cursor-help
           ${bgClass || `text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 ${col.isForeignKey ? 'hover:bg-amber-50 dark:hover:bg-amber-900/20' : ''}`}
           ${isMatch && !bgClass ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}
        `}
        onMouseEnter={() => onHover(tableId, col.name, col.references)}
        onMouseLeave={onHoverOut}
+       title={getTooltip()}
     >
-      <div className="w-5 mr-1 flex justify-center shrink-0" title={col.isPrimaryKey ? "Primary Key" : undefined}>
+      <div className="w-5 mr-1 flex justify-center shrink-0">
         {col.isPrimaryKey && (
           <Key className="w-3.5 h-3.5 text-amber-500 transform rotate-45" />
         )}
@@ -98,7 +118,7 @@ const SchemaColumnItem = memo(({
                 {col.name}
               </span>
               {col.isForeignKey && (
-                <span title={`Referencia ${col.references}`} className="flex items-center shrink-0">
+                <span className="flex items-center shrink-0">
                   <Link className={`w-3 h-3 ml-1.5 opacity-70 ${isRelSource ? 'text-emerald-600' : 'text-blue-500'}`} aria-label="Foreign Key" />
                 </span>
               )}
@@ -149,12 +169,13 @@ interface SchemaTableItemProps {
   onSortChange: (field: SortField) => void;
   onColumnHover: (tableId: string, col: string, ref?: string) => void;
   onColumnHoverOut: () => void;
+  onPreview?: (tableName: string) => void;
 }
 
 const SchemaTableItem = memo(({
   table, visualState, isExpanded, isSelected, selectionMode, editingTable, tempDesc, 
   debouncedTerm, selectedTypeFilter, sortField, sortDirection, hoveredColumnKey, hoveredColumnRef,
-  onToggleExpand, onTableClick, onMouseEnter, onStartEditing, onSaveDescription, onDescChange, onSetEditing, onSortChange, onColumnHover, onColumnHoverOut
+  onToggleExpand, onTableClick, onMouseEnter, onStartEditing, onSaveDescription, onDescChange, onSetEditing, onSortChange, onColumnHover, onColumnHoverOut, onPreview
 }: SchemaTableItemProps) => {
 
   const tableId = getTableId(table);
@@ -228,7 +249,7 @@ const SchemaTableItem = memo(({
 
   return (
     <div 
-      className={`border rounded-lg transition-all duration-200 relative ${containerClass} ${isExpanded ? 'bg-white dark:bg-slate-800' : ''} ${!isSelected && visualState === 'normal' ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700' : ''}`}
+      className={`border rounded-lg transition-all duration-200 relative group/table ${containerClass} ${isExpanded ? 'bg-white dark:bg-slate-800' : ''} ${!isSelected && visualState === 'normal' ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700' : ''}`}
       onMouseEnter={() => onMouseEnter(tableId)}
     >
       {label}
@@ -245,9 +266,19 @@ const SchemaTableItem = memo(({
           {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </div>
         <TableIcon className={`w-4 h-4 shrink-0 ${isSelected || isExpanded ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
-        <div className="flex-1 min-w-0 pr-6">
+        <div className="flex-1 min-w-0 pr-2">
            <div className="flex items-center gap-2">
               <span className={`font-medium text-sm truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-700 dark:text-slate-200'}`}>{table.name}</span>
+              {/* Preview Button Action */}
+              {onPreview && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onPreview(table.name); }}
+                  className="p-1 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded opacity-0 group-hover/table:opacity-100 transition-opacity"
+                  title="Visualizar 10 primeiros registros"
+                >
+                  <Play className="w-3 h-3 fill-current" />
+                </button>
+              )}
            </div>
            <div className="flex items-center gap-2 mt-0.5 min-h-[16px]">
               {isEditing ? (
@@ -374,7 +405,7 @@ const SchemaTableItem = memo(({
 
 const SchemaViewer: React.FC<SchemaViewerProps> = ({ 
   schema, onRegenerateClick, loading = false, onDescriptionChange,
-  selectionMode = false, selectedTableIds = [], onToggleTable
+  selectionMode = false, selectedTableIds = [], onToggleTable, onPreviewTable
 }) => {
   // Search State
   const [inputValue, setInputValue] = useState('');
@@ -836,6 +867,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
                                        onSortChange={handleSortChange}
                                        onColumnHover={handleColumnHover}
                                        onColumnHoverOut={handleColumnHoverOut}
+                                       onPreview={onPreviewTable}
                                     />
                                  </React.Fragment>
                               );
