@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DatabaseSchema, Table } from '../types';
-import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search, Activity, HelpCircle, Key, Link, Target, CornerDownRight, Copy, Eye, Table as TableIcon, Download, Map as MapIcon } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search, Activity, Key, Link, Target, CornerDownRight, Copy, Eye, Table as TableIcon, Download, Map as MapIcon, Palette, FileCode, Upload, Save, Trash2, Tag } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 interface SchemaDiagramModalProps {
@@ -32,6 +32,7 @@ interface ContextMenuState {
   x: number;
   y: number;
   tableName: string;
+  columnName?: string; // Optional: specific column context
 }
 
 const TABLE_WIDTH = 220;
@@ -40,6 +41,37 @@ const ROW_HEIGHT = 28;
 const COL_SPACING = 300;
 const ROW_SPACING_GAP = 60;
 
+// Predefined colors for table grouping
+const TABLE_COLORS = [
+  { id: 'default', bg: 'bg-slate-50', darkBg: 'dark:bg-slate-900/50', border: 'border-slate-100', text: 'text-slate-700' },
+  { id: 'red', bg: 'bg-red-50', darkBg: 'dark:bg-red-900/30', border: 'border-red-200', text: 'text-red-800' },
+  { id: 'orange', bg: 'bg-orange-50', darkBg: 'dark:bg-orange-900/30', border: 'border-orange-200', text: 'text-orange-800' },
+  { id: 'amber', bg: 'bg-amber-50', darkBg: 'dark:bg-amber-900/30', border: 'border-amber-200', text: 'text-amber-800' },
+  { id: 'green', bg: 'bg-emerald-50', darkBg: 'dark:bg-emerald-900/30', border: 'border-emerald-200', text: 'text-emerald-800' },
+  { id: 'blue', bg: 'bg-blue-50', darkBg: 'dark:bg-blue-900/30', border: 'border-blue-200', text: 'text-blue-800' },
+  { id: 'indigo', bg: 'bg-indigo-50', darkBg: 'dark:bg-indigo-900/30', border: 'border-indigo-200', text: 'text-indigo-800' },
+  { id: 'violet', bg: 'bg-violet-50', darkBg: 'dark:bg-violet-900/30', border: 'border-violet-200', text: 'text-violet-800' },
+];
+
+// --- DDL Helper ---
+const generateDDL = (t: Table) => {
+   let sql = `-- Tabela: ${t.schema}.${t.name}\n`;
+   sql += `CREATE TABLE ${t.schema}.${t.name} (\n`;
+   const cols = t.columns.map(c => {
+      let line = `  ${c.name} ${c.type}`;
+      if (c.isPrimaryKey) line += ' PRIMARY KEY';
+      return line;
+   });
+   sql += cols.join(',\n');
+   sql += `\n);\n\n`;
+   
+   if (t.description) {
+      sql += `COMMENT ON TABLE ${t.schema}.${t.name} IS '${t.description.replace(/'/g, "''")}';\n`;
+   }
+   
+   return sql;
+};
+
 // --- Minimap Component ---
 const Minimap = ({ 
    positions, 
@@ -47,16 +79,17 @@ const Minimap = ({
    containerSize, 
    pan, 
    scale,
-   tables 
+   tables,
+   tableColors 
 }: { 
    positions: Record<string, NodePosition>, 
    visibleTables: Table[], 
    containerSize: {w: number, h: number}, 
    pan: {x: number, y: number},
    scale: number,
-   tables: Table[]
+   tables: Table[],
+   tableColors: Record<string, string>
 }) => {
-   // Calculate bounding box of the entire diagram
    const bounds = useMemo(() => {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       if (visibleTables.length === 0) return { minX: 0, minY: 0, w: 100, h: 100 };
@@ -70,7 +103,6 @@ const Minimap = ({
             maxY = Math.max(maxY, p.y + (t.columns.length * ROW_HEIGHT) + HEADER_HEIGHT);
          }
       });
-      // Add padding
       return { minX: minX - 100, minY: minY - 100, w: (maxX - minX) + 200, h: (maxY - minY) + 200 };
    }, [positions, visibleTables]);
 
@@ -80,8 +112,6 @@ const Minimap = ({
    const mapScale = mapWidth / bounds.w;
    const mapHeight = bounds.h * mapScale;
 
-   // Calculate Viewport Rect
-   // The viewport is defined by: pan.x/y and containerSize, inversely scaled by 'scale'
    const viewportX = (-pan.x / scale - bounds.minX) * mapScale;
    const viewportY = (-pan.y / scale - bounds.minY) * mapScale;
    const viewportW = (containerSize.w / scale) * mapScale;
@@ -93,21 +123,26 @@ const Minimap = ({
             {visibleTables.map(t => {
                const p = positions[t.name];
                if (!p) return null;
-               // Map coordinates
                const mx = (p.x - bounds.minX) * mapScale;
                const my = (p.y - bounds.minY) * mapScale;
                const mw = TABLE_WIDTH * mapScale;
                const mh = ((t.columns.length * ROW_HEIGHT) + HEADER_HEIGHT) * mapScale;
                
+               const colorId = tableColors[t.name] || 'default';
+               const colorClass = colorId === 'default' ? 'bg-slate-300 dark:bg-slate-600' : 
+                                  colorId === 'red' ? 'bg-red-400' :
+                                  colorId === 'blue' ? 'bg-blue-400' :
+                                  colorId === 'green' ? 'bg-emerald-400' : 
+                                  'bg-indigo-400';
+
                return (
                   <div 
                      key={t.name}
-                     className="absolute bg-indigo-200 dark:bg-indigo-700/50 rounded-sm"
+                     className={`absolute rounded-[1px] ${colorClass}`}
                      style={{ left: mx, top: my, width: mw, height: mh }}
                   />
                );
             })}
-            {/* Viewport Indicator */}
             <div 
                className="absolute border-2 border-red-500 bg-red-500/10 cursor-move"
                style={{ 
@@ -132,16 +167,22 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   
+  // Customization State
+  const [tableColors, setTableColors] = useState<Record<string, string>>({});
+  const [columnColors, setColumnColors] = useState<Record<string, string>>({}); // New: Column Tags
+  
   // Interaction States
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [hoveredColumn, setHoveredColumn] = useState<HoveredColumnState | null>(null);
   const [selectedRelationship, setSelectedRelationship] = useState<SelectedRelationship | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  
+  // DDL Viewer State
+  const [viewingDDL, setViewingDDL] = useState<Table | null>(null);
 
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [isLayoutReady, setIsLayoutReady] = useState(false);
   
-  // Interaction Performance State
   const [isInteracting, setIsInteracting] = useState(false);
   const interactionTimeout = useRef<any>(null);
   
@@ -150,6 +191,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const [debouncedTerm, setDebouncedTerm] = useState('');
   
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
 
   // 1. Debounce Search Input
@@ -194,15 +236,12 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const calculateLayout = useCallback((tablesToLayout: Table[]) => {
       const newPositions: Record<string, NodePosition> = {};
       const count = tablesToLayout.length;
-      
       const cols = Math.ceil(Math.sqrt(count * 1.5)); 
       const rowMaxHeights: number[] = [];
       
       tablesToLayout.forEach((table, index) => {
         const row = Math.floor(index / cols);
-        // Estimate height
         const tableHeight = HEADER_HEIGHT + (Math.min(table.columns.length, 15) * ROW_HEIGHT); 
-        
         if (!rowMaxHeights[row]) rowMaxHeights[row] = 0;
         if (tableHeight > rowMaxHeights[row]) rowMaxHeights[row] = tableHeight;
       });
@@ -210,12 +249,10 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
       tablesToLayout.forEach((table, index) => {
         const col = index % cols;
         const row = Math.floor(index / cols);
-
         let currentY = 50;
         for (let r = 0; r < row; r++) {
            currentY += rowMaxHeights[r] + ROW_SPACING_GAP;
         }
-
         newPositions[table.name] = {
           x: col * COL_SPACING + 50,
           y: currentY
@@ -228,7 +265,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     setIsLayoutReady(false);
     const timer = setTimeout(() => {
       let tablesToRender = schema.tables;
-
       if (debouncedTerm.trim()) {
         const term = debouncedTerm.toLowerCase();
         tablesToRender = schema.tables.filter(t => 
@@ -236,7 +272,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
           t.columns.some(c => c.name.toLowerCase().includes(term))
         );
       }
-
       const newPos = calculateLayout(tablesToRender);
       setPositions(newPos);
       
@@ -244,7 +279,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
          setPan({ x: 50, y: 50 });
          setScale(1);
       }
-      
       setIsLayoutReady(true);
     }, 50);
 
@@ -287,36 +321,35 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   // --- INTERACTION HANDLERS ---
   const handleMouseDown = (e: React.MouseEvent, tableName?: string) => {
     e.stopPropagation();
-    // Left click only
     if (e.button !== 0) return;
     
-    // Close context menu if clicking elsewhere
     setContextMenu(null);
-    
-    // Clear selected relationship if clicking empty space
-    if (!tableName) {
-       setSelectedRelationship(null);
-    }
+    if (!tableName) setSelectedRelationship(null);
 
     lastMousePos.current = { x: e.clientX, y: e.clientY };
     if (tableName) setDraggedNode(tableName);
     else setIsDraggingCanvas(true);
   };
   
-  const handleContextMenu = (e: React.MouseEvent, tableName: string) => {
+  const handleContextMenu = (e: React.MouseEvent, tableName: string, columnName?: string) => {
      e.preventDefault();
      e.stopPropagation();
-     // Set menu position
      setContextMenu({
         x: e.clientX,
         y: e.clientY,
-        tableName
+        tableName,
+        columnName
      });
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent, tableName: string) => {
+    e.stopPropagation();
+    const table = schema.tables.find(t => t.name === tableName);
+    if (table) setViewingDDL(table);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDraggingCanvas && !draggedNode) return;
-    
     triggerInteraction(); 
     
     const dx = e.clientX - lastMousePos.current.x;
@@ -350,11 +383,12 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     setScale(newScale);
   };
   
-  const handleContextMenuAction = (action: 'copy' | 'focus' | 'reset') => {
+  const handleContextMenuAction = (action: 'copy' | 'focus' | 'reset' | 'ddl' | 'color', color?: string) => {
      if (!contextMenu) return;
      
      if (action === 'copy') {
-        navigator.clipboard.writeText(contextMenu.tableName);
+        const text = contextMenu.columnName || contextMenu.tableName;
+        navigator.clipboard.writeText(text);
      } else if (action === 'focus') {
         const pos = positions[contextMenu.tableName];
         if (pos && containerRef.current) {
@@ -368,15 +402,43 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
         }
      } else if (action === 'reset') {
         if (inputValue === contextMenu.tableName) setInputValue('');
+        
+        // Handle Color Reset
+        if (contextMenu.columnName) {
+           setColumnColors(prev => {
+              const next = { ...prev };
+              delete next[`${contextMenu.tableName}.${contextMenu.columnName}`];
+              return next;
+           });
+        } else {
+           setTableColors(prev => {
+              const next = { ...prev };
+              delete next[contextMenu.tableName];
+              return next;
+           });
+        }
+
+     } else if (action === 'ddl') {
+        const table = schema.tables.find(t => t.name === contextMenu.tableName);
+        if (table) setViewingDDL(table);
+     
+     } else if (action === 'color' && color) {
+        if (contextMenu.columnName) {
+           setColumnColors(prev => ({
+              ...prev,
+              [`${contextMenu.tableName}.${contextMenu.columnName}`]: color
+           }));
+        } else {
+           setTableColors(prev => ({ ...prev, [contextMenu.tableName]: color }));
+        }
      }
+     
      setContextMenu(null);
   };
 
   const handleExportImage = async () => {
      if (!containerRef.current) return;
      try {
-        // Reset transform temporarily for capture if needed, or just capture visible
-        // Capture visible is easiest.
         const canvas = await html2canvas(containerRef.current, {
            backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f1f5f9',
            ignoreElements: (element) => element.classList.contains('minimap-ignore')
@@ -391,19 +453,47 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      }
   };
 
+  const handleSaveLayout = () => {
+    const layout = {
+      name: schema.name,
+      positions,
+      tableColors,
+      columnColors,
+      timestamp: Date.now()
+    };
+    const blob = new Blob([JSON.stringify(layout, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `layout_${schema.name}.json`;
+    link.click();
+  };
+
+  const handleLoadLayout = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const layout = JSON.parse(event.target?.result as string);
+        if (layout.positions) setPositions(layout.positions);
+        if (layout.tableColors) setTableColors(layout.tableColors);
+        if (layout.columnColors) setColumnColors(layout.columnColors);
+        alert("Layout carregado com sucesso!");
+      } catch (err) {
+        alert("Arquivo de layout inválido.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   // --- SMART PATH CALCULATION ---
-  const getSmartPath = (
-    start: {x: number, y: number}, 
-    end: {x: number, y: number}
-  ) => {
+  const getSmartPath = (start: {x: number, y: number}, end: {x: number, y: number}) => {
     const isTargetRight = end.x > start.x + TABLE_WIDTH;
     const isTargetLeft = end.x + TABLE_WIDTH < start.x;
     
-    // Anchors
     let startX: number, endX: number;
     let cp1x: number, cp2x: number;
     
-    // Default curve strength
     const distX = Math.abs(end.x - start.x);
     let curve = Math.max(distX * 0.4, 80);
 
@@ -439,7 +529,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   // --- RENDER CONNECTIONS ---
   const connections = useMemo(() => {
     if (isInteracting && visibleTables.length > 50) return []; 
-    // If selecting a relationship, show it!
     if (visibleTables.length > 200 && !hoveredNode && !hoveredColumn && !selectedRelationship) return []; 
 
     const lines: React.ReactElement[] = [];
@@ -449,9 +538,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
       const startPos = positions[table.name];
       if (!startPos) return;
       
-      // Filter logic for focus mode
       if (selectedRelationship) {
-         // If a relationship is selected, ONLY show lines related to the two involved tables
          const isRelated = table.name === selectedRelationship.source || table.name === selectedRelationship.target;
          if (!isRelated) return;
       } else if (hoveredNode) {
@@ -467,7 +554,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
           
           if (!visibleSet.has(targetTable) && !hoveredNode && !selectedRelationship) return;
 
-          // Relationship Filter Logic
           if (selectedRelationship) {
              const matchesSelected = (table.name === selectedRelationship.source && col.name === selectedRelationship.colName) && targetTable === selectedRelationship.target;
              if (!matchesSelected) return;
@@ -478,7 +564,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
 
           let isHighlighted = false;
           if (selectedRelationship) {
-             isHighlighted = true; // If we made it here in selected mode, it IS the selected line
+             isHighlighted = true;
           } else if (hoveredColumn) {
              if (hoveredColumn.isPk && hoveredColumn.table === targetTable && hoveredColumn.col === targetColName) {
                 isHighlighted = true;
@@ -500,28 +586,23 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
           }
 
           const sourceAnchorY = startPos.y + HEADER_HEIGHT + (colIndex * ROW_HEIGHT) + (ROW_HEIGHT / 2);
-          
           let targetAnchorY = endPos.y + (HEADER_HEIGHT / 2);
           if (lodLevel === 'high' || hoveredNode || selectedRelationship) {
               targetAnchorY = endPos.y + HEADER_HEIGHT + (targetColIndex * ROW_HEIGHT) + (ROW_HEIGHT / 2);
           }
 
-          const pathD = getSmartPath(
-             {x: startPos.x, y: sourceAnchorY}, 
-             {x: endPos.x, y: targetAnchorY}
-          );
+          const pathD = getSmartPath({x: startPos.x, y: sourceAnchorY}, {x: endPos.x, y: targetAnchorY});
           
-          // Color Logic
           let strokeColor = "#94a3b8";
           let strokeWidth = 1.5;
           let opacity = 0.35;
 
           if (isHighlighted || selectedRelationship) {
-             strokeColor = "#f59e0b"; // Amber
+             strokeColor = "#f59e0b";
              strokeWidth = 3;
              opacity = 1;
           } else if (hoveredNode) {
-             strokeColor = "#6366f1"; // Indigo
+             strokeColor = "#6366f1";
              strokeWidth = 2;
              opacity = 0.8;
           }
@@ -530,7 +611,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
 
           lines.push(
             <g key={relKey}>
-               {/* Invisible Hitbox for easier clicking */}
                <path 
                   d={pathD}
                   stroke="transparent"
@@ -540,7 +620,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                   onClick={(e) => {
                      e.stopPropagation();
                      if (selectedRelationship && selectedRelationship.source === table.name && selectedRelationship.colName === col.name) {
-                        setSelectedRelationship(null); // Toggle off
+                        setSelectedRelationship(null);
                      } else {
                         setSelectedRelationship({
                            source: table.name,
@@ -553,7 +633,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                >
                   <title>Click to focus relationship</title>
                </path>
-               {/* Visible Path */}
                <path 
                   d={pathD} 
                   stroke={strokeColor} 
@@ -589,7 +668,16 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
               <button onClick={() => setScale(s => Math.max(s - 0.1, 0.05))} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Zoom Out"><ZoomOut className="w-5 h-5" /></button>
               <button onClick={() => { setScale(1); setPan({x:0, y:0}); setSelectedRelationship(null); }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Resetar Visualização"><Maximize className="w-5 h-5" /></button>
               <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 self-center"></div>
-              <button onClick={handleExportImage} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Exportar como Imagem"><Download className="w-5 h-5" /></button>
+              
+              {/* Import/Export Tools */}
+              <button onClick={handleSaveLayout} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Salvar Layout (JSON)"><Save className="w-5 h-5" /></button>
+              <label className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 cursor-pointer" title="Carregar Layout (JSON)">
+                 <Upload className="w-5 h-5" />
+                 <input type="file" ref={fileInputRef} onChange={handleLoadLayout} accept=".json" className="hidden" />
+              </label>
+              
+              <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 self-center"></div>
+              <button onClick={handleExportImage} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Exportar como Imagem (PNG)"><Download className="w-5 h-5" /></button>
            </div>
            
            <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex items-center gap-2 w-64 pointer-events-auto">
@@ -604,19 +692,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
               {inputValue && (
                  <button onClick={() => setInputValue('')} className="text-slate-400 hover:text-slate-600"><X className="w-3 h-3" /></button>
               )}
-           </div>
-
-           <div className="bg-white/90 dark:bg-slate-800/90 px-3 py-2 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 pointer-events-auto">
-              <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
-                 {isInteracting ? <Activity className="w-3 h-3 text-amber-500 animate-pulse" /> : <MousePointer2 className="w-3 h-3" />}
-                 <span>Estatísticas</span>
-              </div>
-              <div className="text-[10px] text-slate-400 space-y-1">
-                 <p>• Visíveis: {visibleTables.length}</p>
-                 <p className="capitalize">• Detalhe: {lodLevel}</p>
-                 <p>• Zoom: {(scale * 100).toFixed(0)}%</p>
-                 {selectedRelationship && <p className="text-amber-500 font-bold">• Foco em Relacionamento</p>}
-              </div>
            </div>
         </div>
 
@@ -659,18 +734,15 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                 const isTableHovered = hoveredNode === table.name;
                 const isRelated = !hoveredNode || hoveredNode === table.name || relationshipGraph[hoveredNode]?.has(table.name);
                 const displayLOD = isTableHovered || selectedRelationship ? 'high' : lodLevel;
+                const colorId = tableColors[table.name] || 'default';
+                const style = TABLE_COLORS.find(c => c.id === colorId) || TABLE_COLORS[0];
                 
-                // Opacity Logic
                 let opacity = 1;
                 if (selectedRelationship) {
-                   // Focus Mode: Only selected source/target are fully visible
                    const isSelected = table.name === selectedRelationship.source || table.name === selectedRelationship.target;
                    opacity = isSelected ? 1 : 0.05;
                 } else {
-                   // Standard Hover Mode
                    opacity = isRelated ? 1 : 0.2;
-                   
-                   // Hover Column specific dimming
                    if (hoveredColumn) {
                       const isSource = hoveredColumn.table === table.name;
                       let isTarget = false;
@@ -693,6 +765,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                       onMouseEnter={() => !isInteracting && setHoveredNode(table.name)}
                       onMouseLeave={() => setHoveredNode(null)}
                       onContextMenu={(e) => handleContextMenu(e, table.name)}
+                      onDoubleClick={(e) => handleDoubleClick(e, table.name)}
                       style={{
                          transform: `translate(${pos.x}px, ${pos.y}px)`,
                          width: TABLE_WIDTH,
@@ -710,11 +783,11 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                       ) : (
                          <>
                             <div className={`
-                               flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700/50 h-[42px]
-                               ${debouncedTerm ? 'bg-indigo-50 dark:bg-indigo-900/50' : 'bg-slate-50 dark:bg-slate-900/50'}
+                               flex items-center justify-between px-3 py-2 border-b h-[42px] transition-colors
+                               ${style.bg} ${style.darkBg} ${style.border}
                             `}>
-                               <span className="font-bold text-sm text-slate-700 dark:text-slate-200 truncate" title={table.name}>{table.name}</span>
-                               <span className="text-[9px] text-slate-400">{table.schema}</span>
+                               <span className={`font-bold text-sm truncate ${style.text}`} title={table.name}>{table.name}</span>
+                               <span className={`text-[9px] opacity-70 ${style.text}`}>{table.schema}</span>
                             </div>
                             
                             {displayLOD === 'high' && (
@@ -723,8 +796,9 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                                      let colBgClass = 'hover:bg-slate-50 dark:hover:bg-slate-700/50';
                                      let colTextClass = 'text-slate-600 dark:text-slate-400';
                                      let showBadge = false;
-                                     
-                                     // Highlight Logic for Selected Relationship
+                                     let hasTag = false;
+                                     let tagColorStyle = null;
+
                                      if (selectedRelationship) {
                                         if (table.name === selectedRelationship.source && col.name === selectedRelationship.colName) {
                                             colBgClass = 'bg-emerald-100 dark:bg-emerald-900/40';
@@ -752,19 +826,33 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                                               showBadge = true;
                                            }
                                         }
+                                     } else {
+                                        const colTagKey = `${table.name}.${col.name}`;
+                                        const tagColorId = columnColors[colTagKey];
+                                        if (tagColorId) {
+                                           hasTag = true;
+                                           tagColorStyle = TABLE_COLORS.find(c => c.id === tagColorId) || TABLE_COLORS[0];
+                                           colBgClass = `${tagColorStyle.bg} dark:bg-opacity-10 dark:${tagColorStyle.darkBg}`;
+                                           colTextClass = `${tagColorStyle.text} font-medium`;
+                                        }
                                      }
 
                                      return (
                                        <div 
                                           key={col.name} 
-                                          className={`px-3 flex items-center justify-between text-[11px] cursor-pointer transition-colors h-[28px] ${colBgClass}`}
+                                          className={`px-3 flex items-center justify-between text-[11px] cursor-pointer transition-colors h-[28px] ${colBgClass} relative`}
                                           onMouseEnter={(e) => {
                                              if (selectedRelationship) return;
                                              e.stopPropagation();
                                              setHoveredColumn({ table: table.name, col: col.name, isPk: !!col.isPrimaryKey, ref: col.references });
                                           }}
                                           onMouseLeave={() => setHoveredColumn(null)}
-                                       >
+                                          onContextMenu={(e) => handleContextMenu(e, table.name, col.name)}
+                                       >  
+                                          {hasTag && !showBadge && !hoveredColumn && tagColorStyle && (
+                                             <div className={`absolute left-0 top-0 bottom-0 w-1 ${tagColorStyle.bg.replace('50', '400')}`}></div>
+                                          )}
+
                                           <div className={`flex items-center gap-1.5 overflow-hidden ${colTextClass}`}>
                                              {col.isPrimaryKey && <Key className="w-3 h-3 text-amber-500 shrink-0" />}
                                              {col.isForeignKey && <Link className="w-3 h-3 text-blue-500 shrink-0" />}
@@ -802,23 +890,79 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
         {contextMenu && (
            <div 
               style={{ top: contextMenu.y, left: contextMenu.x }}
-              className="fixed z-[80] bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 min-w-[150px] animate-in fade-in zoom-in-95 duration-100 origin-top-left"
+              className="fixed z-[80] bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-2 min-w-[180px] animate-in fade-in zoom-in-95 duration-100 origin-top-left"
               onClick={(e) => e.stopPropagation()}
            >
-              <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-700/50 mb-1">
-                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{contextMenu.tableName}</span>
+              <div className="px-3 py-1 border-b border-slate-100 dark:border-slate-700/50 mb-1">
+                 <div className="flex items-center gap-1">
+                    {contextMenu.columnName && <Tag className="w-3 h-3 text-indigo-500" />}
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
+                       {contextMenu.columnName ? contextMenu.columnName : contextMenu.tableName}
+                    </span>
+                 </div>
+                 {contextMenu.columnName && <span className="text-[9px] text-slate-400">{contextMenu.tableName}</span>}
               </div>
-              <button onClick={() => handleContextMenuAction('focus')} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
-                 <Eye className="w-3 h-3 text-indigo-500" /> Focar nesta tabela
-              </button>
+              
+              <div className="px-3 py-2 flex gap-1.5 flex-wrap border-b border-slate-100 dark:border-slate-700/50 mb-1">
+                 <span className="text-[9px] text-slate-400 w-full mb-1 flex items-center gap-1">
+                    <Palette className="w-3 h-3" /> Cor {contextMenu.columnName ? 'da Coluna' : 'da Tabela'}
+                 </span>
+                 {TABLE_COLORS.map(c => (
+                    <button 
+                       key={c.id} 
+                       onClick={() => handleContextMenuAction('color', c.id)}
+                       className={`w-4 h-4 rounded-full ${c.id === 'default' ? 'bg-slate-200 border border-slate-300' : c.bg.replace('50', '400')}`}
+                       title={c.id}
+                    />
+                 ))}
+              </div>
+
+              {!contextMenu.columnName && (
+                 <>
+                   <button onClick={() => handleContextMenuAction('focus')} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
+                      <Eye className="w-3 h-3 text-indigo-500" /> Focar nesta tabela
+                   </button>
+                   <button onClick={() => handleContextMenuAction('ddl')} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
+                      <FileCode className="w-3 h-3 text-emerald-500" /> Ver SQL (DDL)
+                   </button>
+                 </>
+              )}
+              
               <button onClick={() => handleContextMenuAction('copy')} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
                  <Copy className="w-3 h-3 text-slate-400" /> Copiar Nome
               </button>
-              {inputValue === contextMenu.tableName && (
-                 <button onClick={() => handleContextMenuAction('reset')} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700/50 mt-1 pt-1">
-                    <TableIcon className="w-3 h-3 text-slate-400" /> Limpar Filtro
+              
+              {((contextMenu.columnName && columnColors[`${contextMenu.tableName}.${contextMenu.columnName}`]) || 
+               (!contextMenu.columnName && tableColors[contextMenu.tableName])) && (
+                 <button onClick={() => handleContextMenuAction('reset')} className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 border-t border-slate-100 dark:border-slate-700/50 mt-1 pt-1">
+                    <Trash2 className="w-3 h-3" /> Remover Cor
                  </button>
               )}
+           </div>
+        )}
+        
+        {/* DDL Modal */}
+        {viewingDDL && (
+           <div className="absolute inset-0 z-[90] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setViewingDDL(null)}>
+              <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                 <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800">
+                    <h3 className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-slate-200">
+                       <FileCode className="w-4 h-4 text-emerald-500" /> DDL: {viewingDDL.name}
+                    </h3>
+                    <button onClick={() => setViewingDDL(null)}><X className="w-5 h-5 text-slate-400" /></button>
+                 </div>
+                 <div className="flex-1 overflow-auto bg-slate-900 p-4">
+                    <pre className="font-mono text-xs text-emerald-400 whitespace-pre-wrap">{generateDDL(viewingDDL)}</pre>
+                 </div>
+                 <div className="p-3 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                    <button 
+                       onClick={() => { navigator.clipboard.writeText(generateDDL(viewingDDL)); setViewingDDL(null); }}
+                       className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+                    >
+                       <Copy className="w-3 h-3" /> Copiar Código
+                    </button>
+                 </div>
+              </div>
            </div>
         )}
 
@@ -831,6 +975,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                pan={pan} 
                scale={scale} 
                tables={schema.tables}
+               tableColors={tableColors}
             />
         </div>
       </div>
