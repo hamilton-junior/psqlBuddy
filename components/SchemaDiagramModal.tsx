@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DatabaseSchema, Table } from '../types';
-import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search, Activity } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search, Activity, HelpCircle } from 'lucide-react';
 
 interface SchemaDiagramModalProps {
   schema: DatabaseSchema;
@@ -54,10 +54,29 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      if (interactionTimeout.current) clearTimeout(interactionTimeout.current);
      interactionTimeout.current = setTimeout(() => {
         setIsInteracting(false);
-     }, 250); // Wait 250ms after last event to restore details
+     }, 150); // Reduced from 250ms for snappier detail restoration
   }, [isInteracting]);
 
-  // 3. Layout Calculation Engine
+  // 3. Pre-calculate Relationship Graph for Highlighting
+  const relationshipGraph = useMemo(() => {
+    const adj: Record<string, Set<string>> = {};
+    schema.tables.forEach(t => {
+       if (!adj[t.name]) adj[t.name] = new Set();
+       t.columns.forEach(c => {
+          if (c.isForeignKey && c.references) {
+             const [target] = c.references.split('.'); // assume schema.table.col or table.col
+             if (!adj[t.name]) adj[t.name] = new Set();
+             if (!adj[target]) adj[target] = new Set();
+             
+             adj[t.name].add(target); // Outgoing
+             adj[target].add(t.name); // Incoming (undirected for highlighting)
+          }
+       });
+    });
+    return adj;
+  }, [schema.tables]);
+
+  // 4. Layout Calculation Engine
   const calculateLayout = useCallback((tablesToLayout: Table[]) => {
       const newPositions: Record<string, NodePosition> = {};
       const count = tablesToLayout.length;
@@ -91,7 +110,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
       return newPositions;
   }, []);
 
-  // 4. Effect: Recalculate Layout
+  // 5. Effect: Recalculate Layout
   useEffect(() => {
     setIsLayoutReady(false);
     const timer = setTimeout(() => {
@@ -148,10 +167,17 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   }, [pan, scale, containerSize]);
 
   const lodLevel = useMemo(() => {
-    if (isInteracting && scale < 0.8) return 'low'; // Force low detail during interaction
-    if (scale < 0.3) return 'low';
-    if (scale < 0.6) return 'medium';
-    return 'high';
+    // During interaction, we degrade quality to maintain FPS, but not too aggressively if zoomed in.
+    if (isInteracting) {
+        if (scale < 0.4) return 'low';    // Box only
+        if (scale < 0.8) return 'medium'; // Headers + Count
+        return 'high';                    // Full detail (if very close)
+    }
+
+    // Static State Thresholds (Relaxed to show details earlier)
+    if (scale < 0.35) return 'low';       // Box only (zoomed far out)
+    if (scale < 0.5) return 'medium';     // Headers + Count
+    return 'high';                        // Full detail (zoomed in > 0.5)
   }, [scale, isInteracting]);
 
   const visibleTables = useMemo(() => {
@@ -220,9 +246,10 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
 
   // Generate Connections (Optimized)
   const connections = useMemo(() => {
-    // 1. Performance Gate: If interacting or too many tables, hide connections
+    // 1. Performance Gate: If interacting or too many tables, hide connections unless specifically focused
     if (isInteracting && visibleTables.length > 50) return []; 
-    if (visibleTables.length > 300) return []; 
+    // If not hovering anything, and massive amount of tables, hide connections to prevent hairball
+    if (visibleTables.length > 300 && !hoveredNode) return []; 
 
     const lines: React.ReactElement[] = [];
     // Fast lookup for visibility
@@ -231,32 +258,47 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     visibleTables.forEach(table => {
       const startPos = positions[table.name];
       if (!startPos) return;
+      
+      // If focusing on a specific node, skip others to reduce noise
+      if (hoveredNode) {
+         const isRelated = table.name === hoveredNode || relationshipGraph[hoveredNode]?.has(table.name);
+         if (!isRelated) return;
+      }
 
       table.columns.forEach((col, colIndex) => {
         if (col.isForeignKey && col.references) {
-          const [targetTable, targetCol] = col.references.split('.');
+          const [targetTable] = col.references.split('.');
           
-          // CRITICAL OPTIMIZATION: Only draw if target is ALSO visible
-          if (!visibleSet.has(targetTable)) return;
+          // Optimization: Only draw if target is visible OR if we are focused on this relationship
+          if (!visibleSet.has(targetTable) && !hoveredNode) return;
+
+          // Focus filter again for the specific line
+          if (hoveredNode) {
+             const isLineRelevant = table.name === hoveredNode || targetTable === hoveredNode;
+             if (!isLineRelevant) return;
+          }
 
           const endPos = positions[targetTable];
-          const opacity = lodLevel === 'low' ? 0.3 : 0.6;
-          const strokeColor = "#6366f1";
+          if (!endPos) return;
+
+          const opacity = hoveredNode ? 0.8 : (lodLevel === 'low' ? 0.3 : 0.6);
+          const strokeColor = hoveredNode ? "#6366f1" : "#94a3b8"; // Indigo if focused, slate if not
+          const strokeWidth = hoveredNode ? 3 : (lodLevel === 'low' ? 1 : 2);
 
           const startX = startPos.x + TABLE_WIDTH;
-          const startY = lodLevel === 'high' 
+          const startY = lodLevel === 'high' || hoveredNode 
              ? startPos.y + HEADER_HEIGHT + (colIndex * ROW_HEIGHT) + (ROW_HEIGHT / 2)
              : startPos.y + (HEADER_HEIGHT / 2);
           
           const endX = endPos.x;
-          // Approximate target Y to save loop time in low detail
+          // Approximate target Y to save loop time in low detail, unless focused
           const endY = endPos.y + (HEADER_HEIGHT / 2);
 
           const dist = Math.abs(endX - startX);
           const controlOffset = Math.max(dist * 0.5, 50);
           
           // Simplify path calculation
-          const pathD = lodLevel === 'low' 
+          const pathD = lodLevel === 'low' && !hoveredNode
             ? `M ${startX} ${startY} L ${endX} ${endY}`
             : `M ${startX} ${startY} C ${startX + controlOffset} ${startY}, ${endX - controlOffset} ${endY}, ${endX} ${endY}`;
 
@@ -265,21 +307,21 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
               key={`${table.name}-${col.name}`}
               d={pathD} 
               stroke={strokeColor} 
-              strokeWidth={lodLevel === 'low' ? 2 : 2} 
+              strokeWidth={strokeWidth} 
               fill="none" 
               opacity={opacity} 
-              className="pointer-events-none"
-              markerEnd={lodLevel === 'high' ? "url(#arrowhead)" : undefined}
+              className="pointer-events-none transition-all duration-300"
+              markerEnd={lodLevel === 'high' || hoveredNode ? "url(#arrowhead)" : undefined}
             />
           );
         }
       });
     });
     return lines;
-  }, [visibleTables, positions, lodLevel, isInteracting, schema.tables]);
+  }, [visibleTables, positions, lodLevel, isInteracting, schema.tables, hoveredNode, relationshipGraph]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[70] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-slate-100 dark:bg-slate-900 w-full h-full rounded-xl shadow-2xl overflow-hidden relative border border-slate-700 flex flex-col">
         
         {!isLayoutReady && (
@@ -292,16 +334,16 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
         {/* Toolbar */}
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-none">
            <div className="bg-white dark:bg-slate-800 p-1.5 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex gap-1 pointer-events-auto">
-              <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><ZoomIn className="w-5 h-5" /></button>
-              <button onClick={() => setScale(s => Math.max(s - 0.1, 0.05))} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><ZoomOut className="w-5 h-5" /></button>
-              <button onClick={() => { setScale(1); setPan({x:0, y:0}); }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><Maximize className="w-5 h-5" /></button>
+              <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Zoom In"><ZoomIn className="w-5 h-5" /></button>
+              <button onClick={() => setScale(s => Math.max(s - 0.1, 0.05))} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Zoom Out"><ZoomOut className="w-5 h-5" /></button>
+              <button onClick={() => { setScale(1); setPan({x:0, y:0}); }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="Resetar Visualização"><Maximize className="w-5 h-5" /></button>
            </div>
            
            <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex items-center gap-2 w-64 pointer-events-auto">
               <Search className={`w-4 h-4 ${inputValue !== debouncedTerm ? 'text-indigo-500 animate-pulse' : 'text-slate-400'}`} />
               <input 
                 type="text" 
-                placeholder="Buscar e isolar tabela..." 
+                placeholder="Buscar tabela..." 
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 className="bg-transparent border-none outline-none text-xs text-slate-700 dark:text-slate-200 w-full placeholder-slate-400"
@@ -314,13 +356,22 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
            <div className="bg-white/90 dark:bg-slate-800/90 px-3 py-2 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 pointer-events-auto">
               <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
                  {isInteracting ? <Activity className="w-3 h-3 text-amber-500 animate-pulse" /> : <MousePointer2 className="w-3 h-3" />}
-                 <span>Stats</span>
+                 <span>Estatísticas</span>
               </div>
               <div className="text-[10px] text-slate-400 space-y-1">
                  <p>• Visíveis: {visibleTables.length}</p>
                  <p className="capitalize">• Detalhe: {lodLevel}</p>
-                 {visibleTables.length > 300 && <p className="text-amber-500">• Conexões ocultas (+300)</p>}
+                 <p>• Zoom: {(scale * 100).toFixed(0)}%</p>
+                 {hoveredNode && <p className="text-indigo-400 font-bold">• Foco: {hoveredNode}</p>}
+                 {visibleTables.length > 300 && !hoveredNode && <p className="text-amber-500">• Conexões ocultas (+300)</p>}
               </div>
+           </div>
+
+           <div className="bg-indigo-50 dark:bg-indigo-900/30 px-3 py-2 rounded-lg shadow-sm border border-indigo-100 dark:border-indigo-800 pointer-events-auto flex gap-2 items-start max-w-[260px]">
+              <HelpCircle className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+              <p className="text-[10px] text-indigo-800 dark:text-indigo-200">
+                 Passe o mouse sobre uma tabela para entrar no <strong>Modo Foco</strong> e ver apenas as conexões relacionadas.
+              </p>
            </div>
         </div>
 
@@ -344,14 +395,14 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                transformOrigin: '0 0',
                width: '100%',
                height: '100%',
-               willChange: 'transform'
+               // willChange: 'transform' // Disabled to prevent blurriness on non-retina displays
              }}
              className={`relative w-full h-full ${isInteracting ? '' : 'transition-transform duration-200 ease-out'}`}
           >
              <svg className="absolute inset-0 pointer-events-none overflow-visible w-full h-full" style={{ zIndex: 0 }}>
                <defs>
                   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                    <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
+                    <polygon points="0 0, 10 3.5, 0 7" fill={hoveredNode ? "#6366f1" : "#94a3b8"} />
                   </marker>
                </defs>
                {connections}
@@ -362,8 +413,11 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                 if (!pos) return null;
                 
                 const isHovered = hoveredNode === table.name;
+                const isRelated = !hoveredNode || hoveredNode === table.name || relationshipGraph[hoveredNode]?.has(table.name);
+                
+                // Determine display mode: Hover always high, otherwise use LOD
                 const displayLOD = isHovered ? 'high' : lodLevel;
-                const isVeryLowDetail = lodLevel === 'low';
+                const isVeryLowDetail = lodLevel === 'low' && !isHovered;
                 
                 return (
                    <div
@@ -374,11 +428,12 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                       style={{
                          transform: `translate(${pos.x}px, ${pos.y}px)`,
                          width: TABLE_WIDTH,
-                         zIndex: isHovered ? 100 : 10,
+                         zIndex: isHovered ? 100 : (isRelated ? 20 : 10),
                       }}
-                      className={`absolute rounded-lg cursor-grab active:cursor-grabbing transition-shadow
+                      className={`absolute rounded-lg cursor-grab active:cursor-grabbing transition-transform duration-200
+                         ${!isRelated ? 'opacity-20 grayscale filter' : 'opacity-100'}
                          ${isVeryLowDetail ? 'bg-indigo-200 dark:bg-indigo-900 border border-indigo-300 dark:border-indigo-800 h-8 flex items-center justify-center' : 'bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700'}
-                         ${isHovered ? 'border-indigo-500 ring-2 ring-indigo-500 shadow-xl' : ''}
+                         ${isHovered ? 'border-indigo-500 ring-2 ring-indigo-500 shadow-xl scale-105' : ''}
                       `}
                    >
                       {isVeryLowDetail ? (
@@ -386,6 +441,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                          <span className="text-[10px] font-bold text-indigo-900 dark:text-indigo-200 truncate px-2">{table.name}</span>
                       ) : (
                          <>
+                            {/* Header */}
                             <div className={`
                                flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700/50
                                ${debouncedTerm ? 'bg-indigo-50 dark:bg-indigo-900/50' : 'bg-slate-50 dark:bg-slate-900/50'}
@@ -394,6 +450,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                                <span className="text-[9px] text-slate-400">{table.schema}</span>
                             </div>
                             
+                            {/* Columns - HIGH DETAIL */}
                             {displayLOD === 'high' && (
                                <div className="py-1">
                                   {table.columns.slice(0, 15).map(col => (
@@ -410,6 +467,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                                </div>
                             )}
 
+                            {/* Info - MEDIUM DETAIL */}
                             {displayLOD === 'medium' && (
                                <div className="px-3 py-2 text-[10px] text-slate-400 flex justify-between">
                                   <span>{table.columns.length} cols</span>
