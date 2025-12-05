@@ -1,7 +1,5 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin } from 'lucide-react';
+import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle } from 'lucide-react';
 import { AppSettings, DashboardItem, ExplainNode } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
@@ -79,8 +77,19 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, localSearch,
 };
 
 // --- EXPLAIN VISUALIZER ---
-const ExplainVisualizer: React.FC<{ plan: ExplainNode | null, loading: boolean }> = ({ plan, loading }) => {
+const ExplainVisualizer: React.FC<{ plan: ExplainNode | null, loading: boolean, error: string | null }> = ({ plan, loading, error }) => {
    if (loading) return <div className="p-10 text-center"><div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div><p className="text-slate-500">Analisando performance...</p></div>;
+   
+   if (error) return (
+      <div className="p-10 text-center flex flex-col items-center justify-center text-slate-400">
+         <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4">
+            <AlertCircle className="w-8 h-8 text-red-500" />
+         </div>
+         <h3 className="text-slate-700 dark:text-slate-200 font-bold mb-1">Falha na Análise</h3>
+         <p className="text-sm max-w-md">{error}</p>
+      </div>
+   );
+
    if (!plan) return <div className="p-10 text-center text-slate-400">Nenhum plano disponível.</div>;
 
    const renderNode = (node: ExplainNode, depth: number = 0) => (
@@ -124,6 +133,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   const [sqlCopied, setSqlCopied] = useState(false);
   const [explainPlan, setExplainPlan] = useState<ExplainNode | null>(null);
   const [loadingExplain, setLoadingExplain] = useState(false);
+  const [explainError, setExplainError] = useState<string | null>(null);
 
   // Auto-save history on mount
   useEffect(() => {
@@ -194,13 +204,15 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
 
   const handleExplain = async () => {
      setActiveTab('explain');
+     setExplainError(null);
      if (!explainPlan && credentials) {
         setLoadingExplain(true);
         try {
            const plan = await explainQueryReal(credentials, sql);
            setExplainPlan(plan);
-        } catch (e) {
+        } catch (e: any) {
            console.error(e);
+           setExplainError(e.message || "Erro desconhecido ao analisar performance.");
         } finally {
            setLoadingExplain(false);
         }
@@ -283,7 +295,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
             
             {activeTab === 'analysis' && <div className="flex-1 h-full"><DataAnalysisChat data={data} sql={sql} /></div>}
             
-            {activeTab === 'explain' && <ExplainVisualizer plan={explainPlan} loading={loadingExplain} />}
+            {activeTab === 'explain' && <ExplainVisualizer plan={explainPlan} loading={loadingExplain} error={explainError} />}
           </>
         )}
       </div>

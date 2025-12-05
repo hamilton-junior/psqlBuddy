@@ -1,5 +1,3 @@
-
-
 import { DatabaseSchema, DbCredentials, ExplainNode } from "../types";
 
 const API_URL = 'http://localhost:3000/api';
@@ -76,19 +74,37 @@ export const explainQueryReal = async (creds: DbCredentials, sql: string): Promi
    
    try {
       const result = await executeQueryReal(creds, explainSql);
-      // Postgres returns: [ { "QUERY PLAN": [ { ... } ] } ]
-      // We need to parse this safely
+      
       if (result && result.length > 0) {
-         // The key might differ depending on driver/version, usually "QUERY PLAN" or "Plan"
          const planRow = result[0];
-         const planJson = planRow['QUERY PLAN'] || planRow['Plan']; // Check both
-         if (planJson && planJson[0] && planJson[0].Plan) {
-            return planJson[0].Plan as ExplainNode;
+         
+         // Robustly find the plan column (case-insensitive search for 'QUERY PLAN' or 'JSON')
+         // Postgres usually returns "QUERY PLAN", but node-postgres might lower-case it depending on config
+         const key = Object.keys(planRow).find(k => 
+            k.toUpperCase() === 'QUERY PLAN' || 
+            k.toUpperCase() === 'JSON' || 
+            k.toUpperCase().includes('PLAN')
+         );
+
+         if (!key) throw new Error("Coluna 'QUERY PLAN' não encontrada no resultado do banco.");
+
+         let planData = planRow[key];
+
+         // If node-postgres didn't parse the JSON column automatically, it comes as a string
+         if (typeof planData === 'string') {
+            try {
+               planData = JSON.parse(planData);
+            } catch (e) {
+               throw new Error("Falha ao decodificar JSON do plano de execução.");
+            }
          }
-         // Sometimes it returns the array directly
-         if (Array.isArray(planJson) && planJson[0].Plan) {
-            return planJson[0].Plan;
+
+         // Postgres Explain JSON structure is usually: [ { "Plan": { ... } } ]
+         if (Array.isArray(planData) && planData.length > 0 && planData[0].Plan) {
+            return planData[0].Plan as ExplainNode;
          }
+         
+         console.warn("Estrutura de plano desconhecida:", planData);
       }
       throw new Error("Formato de plano inválido retornado pelo banco.");
    } catch (e: any) {
