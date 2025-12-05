@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { DatabaseSchema, Table } from '../types';
-import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search, Activity, HelpCircle } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize, MousePointer2, Loader2, Search, Activity, HelpCircle, Key, Link, Target, CornerDownRight } from 'lucide-react';
 
 interface SchemaDiagramModalProps {
   schema: DatabaseSchema;
@@ -13,10 +13,17 @@ interface NodePosition {
   y: number;
 }
 
-const TABLE_WIDTH = 200;
+interface HoveredColumnState {
+  table: string;
+  col: string;
+  isPk: boolean;
+  ref?: string;
+}
+
+const TABLE_WIDTH = 220; // Slightly wider for column details
 const HEADER_HEIGHT = 40;
 const ROW_HEIGHT = 24;
-const COL_SPACING = 300;
+const COL_SPACING = 350; // Increased spacing for cleaner arrows
 const ROW_SPACING_GAP = 80;
 
 const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose }) => {
@@ -25,7 +32,11 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
+  
+  // Interaction States
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [hoveredColumn, setHoveredColumn] = useState<HoveredColumnState | null>(null);
+
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [isLayoutReady, setIsLayoutReady] = useState(false);
   
@@ -54,7 +65,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      if (interactionTimeout.current) clearTimeout(interactionTimeout.current);
      interactionTimeout.current = setTimeout(() => {
         setIsInteracting(false);
-     }, 150); // Reduced from 250ms for snappier detail restoration
+     }, 150);
   }, [isInteracting]);
 
   // 3. Pre-calculate Relationship Graph for Highlighting
@@ -64,12 +75,15 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
        if (!adj[t.name]) adj[t.name] = new Set();
        t.columns.forEach(c => {
           if (c.isForeignKey && c.references) {
-             const [target] = c.references.split('.'); // assume schema.table.col or table.col
-             if (!adj[t.name]) adj[t.name] = new Set();
-             if (!adj[target]) adj[target] = new Set();
+             const parts = c.references.split('.'); 
+             // Handle schema.table.col (length 3) or table.col (length 2)
+             const targetTable = parts.length === 3 ? parts[1] : parts[0];
              
-             adj[t.name].add(target); // Outgoing
-             adj[target].add(t.name); // Incoming (undirected for highlighting)
+             if (!adj[t.name]) adj[t.name] = new Set();
+             if (!adj[targetTable]) adj[targetTable] = new Set();
+             
+             adj[t.name].add(targetTable); // Outgoing
+             adj[targetTable].add(t.name); // Incoming (undirected for highlighting)
           }
        });
     });
@@ -81,13 +95,13 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
       const newPositions: Record<string, NodePosition> = {};
       const count = tablesToLayout.length;
       
-      const cols = Math.ceil(Math.sqrt(count * 1.5)); // Slightly wider aspect ratio
+      const cols = Math.ceil(Math.sqrt(count * 1.2)); 
       const rowMaxHeights: number[] = [];
       
       tablesToLayout.forEach((table, index) => {
         const row = Math.floor(index / cols);
         // Estimate height roughly to avoid DOM measurement
-        const tableHeight = HEADER_HEIGHT + (Math.min(table.columns.length, 15) * ROW_HEIGHT); // Cap height calc for layout
+        const tableHeight = HEADER_HEIGHT + (Math.min(table.columns.length, 15) * ROW_HEIGHT); 
         
         if (!rowMaxHeights[row]) rowMaxHeights[row] = 0;
         if (tableHeight > rowMaxHeights[row]) rowMaxHeights[row] = tableHeight;
@@ -167,17 +181,15 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   }, [pan, scale, containerSize]);
 
   const lodLevel = useMemo(() => {
-    // During interaction, we degrade quality to maintain FPS, but not too aggressively if zoomed in.
     if (isInteracting) {
-        if (scale < 0.4) return 'low';    // Box only
-        if (scale < 0.8) return 'medium'; // Headers + Count
-        return 'high';                    // Full detail (if very close)
+        if (scale < 0.4) return 'low';    
+        if (scale < 0.8) return 'medium'; 
+        return 'high';                    
     }
 
-    // Static State Thresholds (Relaxed to show details earlier)
-    if (scale < 0.35) return 'low';       // Box only (zoomed far out)
-    if (scale < 0.5) return 'medium';     // Headers + Count
-    return 'high';                        // Full detail (zoomed in > 0.5)
+    if (scale < 0.35) return 'low';       
+    if (scale < 0.5) return 'medium';     
+    return 'high';                        
   }, [scale, isInteracting]);
 
   const visibleTables = useMemo(() => {
@@ -190,11 +202,10 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      return tablesWithName.filter(t => {
         const pos = positions[t.name];
         if (!pos) return false;
-        // Simple point check is faster than full rect intersection for culling
         return (
            pos.x + TABLE_WIDTH > visibleBounds.xMin &&
            pos.x < visibleBounds.xMax &&
-           pos.y + 100 > visibleBounds.yMin && // Assume 100px min height for culling
+           pos.y + 100 > visibleBounds.yMin && 
            pos.y < visibleBounds.yMax
         );
      });
@@ -212,7 +223,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDraggingCanvas && !draggedNode) return;
     
-    triggerInteraction(); // Mark as interacting
+    triggerInteraction(); 
     
     const dx = e.clientX - lastMousePos.current.x;
     const dy = e.clientY - lastMousePos.current.y;
@@ -244,22 +255,20 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     setScale(newScale);
   };
 
-  // Generate Connections (Optimized)
+  // --- ARROW GENERATION (Adaptive) ---
   const connections = useMemo(() => {
-    // 1. Performance Gate: If interacting or too many tables, hide connections unless specifically focused
+    // Hide connections if clutter is too high
     if (isInteracting && visibleTables.length > 50) return []; 
-    // If not hovering anything, and massive amount of tables, hide connections to prevent hairball
-    if (visibleTables.length > 300 && !hoveredNode) return []; 
+    if (visibleTables.length > 300 && !hoveredNode && !hoveredColumn) return []; 
 
     const lines: React.ReactElement[] = [];
-    // Fast lookup for visibility
     const visibleSet = new Set(visibleTables.map(t => t.name));
 
     visibleTables.forEach(table => {
       const startPos = positions[table.name];
       if (!startPos) return;
       
-      // If focusing on a specific node, skip others to reduce noise
+      // Filter lines based on focus
       if (hoveredNode) {
          const isRelated = table.name === hoveredNode || relationshipGraph[hoveredNode]?.has(table.name);
          if (!isRelated) return;
@@ -267,40 +276,70 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
 
       table.columns.forEach((col, colIndex) => {
         if (col.isForeignKey && col.references) {
-          const [targetTable] = col.references.split('.');
+          const parts = col.references.split('.');
+          const targetTable = parts.length === 3 ? parts[1] : parts[0];
           
-          // Optimization: Only draw if target is visible OR if we are focused on this relationship
           if (!visibleSet.has(targetTable) && !hoveredNode) return;
 
-          // Focus filter again for the specific line
+          // Focus logic
           if (hoveredNode) {
              const isLineRelevant = table.name === hoveredNode || targetTable === hoveredNode;
              if (!isLineRelevant) return;
           }
 
+          // Specific Column Highlight Logic
+          let isHighlighted = false;
+          if (hoveredColumn) {
+             // Case 1: Hovering PK -> Highlight outgoing lines to this PK? No, highlight incoming lines (FKs)
+             if (hoveredColumn.isPk && hoveredColumn.table === targetTable) {
+                // If the target of this FK line IS the hovered PK table
+                // And specifically, does this FK reference the exact column? 
+                // We simplified graph earlier, let's assume table-level for broader visibility or check column
+                // Checking exact column match:
+                const targetColName = parts.length === 3 ? parts[2] : parts[1];
+                if (targetColName === hoveredColumn.col) {
+                   isHighlighted = true;
+                }
+             }
+             // Case 2: Hovering FK -> Highlight this specific line to its target
+             else if (!hoveredColumn.isPk && hoveredColumn.table === table.name && hoveredColumn.col === col.name) {
+                isHighlighted = true;
+             }
+             else {
+                // If hovering a column, fade out non-related lines significantly
+                return;
+             }
+          }
+
           const endPos = positions[targetTable];
           if (!endPos) return;
 
-          const opacity = hoveredNode ? 0.8 : (lodLevel === 'low' ? 0.3 : 0.6);
-          const strokeColor = hoveredNode ? "#6366f1" : "#94a3b8"; // Indigo if focused, slate if not
-          const strokeWidth = hoveredNode ? 3 : (lodLevel === 'low' ? 1 : 2);
+          // --- ADAPTIVE ROUTING ---
+          const isTargetRight = endPos.x > startPos.x;
 
-          const startX = startPos.x + TABLE_WIDTH;
+          // Exit points based on direction
+          const startX = isTargetRight ? startPos.x + TABLE_WIDTH : startPos.x;
+          const endX = isTargetRight ? endPos.x : endPos.x + TABLE_WIDTH;
+
           const startY = lodLevel === 'high' || hoveredNode 
              ? startPos.y + HEADER_HEIGHT + (colIndex * ROW_HEIGHT) + (ROW_HEIGHT / 2)
              : startPos.y + (HEADER_HEIGHT / 2);
           
-          const endX = endPos.x;
-          // Approximate target Y to save loop time in low detail, unless focused
           const endY = endPos.y + (HEADER_HEIGHT / 2);
 
-          const dist = Math.abs(endX - startX);
-          const controlOffset = Math.max(dist * 0.5, 50);
+          // Bezier Control Points
+          // If exiting right, cp1 goes right (+). If exiting left, cp1 goes left (-).
+          const controlDist = Math.abs(endX - startX) * 0.5;
+          const controlOffset = Math.max(controlDist, 80);
+
+          const cp1x = isTargetRight ? startX + controlOffset : startX - controlOffset;
+          const cp2x = isTargetRight ? endX - controlOffset : endX + controlOffset;
+
+          const pathD = `M ${startX} ${startY} C ${cp1x} ${startY}, ${cp2x} ${endY}, ${endX} ${endY}`;
           
-          // Simplify path calculation
-          const pathD = lodLevel === 'low' && !hoveredNode
-            ? `M ${startX} ${startY} L ${endX} ${endY}`
-            : `M ${startX} ${startY} C ${startX + controlOffset} ${startY}, ${endX - controlOffset} ${endY}, ${endX} ${endY}`;
+          const strokeColor = isHighlighted ? "#f59e0b" : (hoveredNode ? "#6366f1" : "#94a3b8");
+          const strokeWidth = isHighlighted ? 3 : (hoveredNode ? 2 : 1.5);
+          const opacity = isHighlighted ? 1 : (hoveredNode ? 0.6 : 0.4);
 
           lines.push(
             <path 
@@ -311,14 +350,14 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
               fill="none" 
               opacity={opacity} 
               className="pointer-events-none transition-all duration-300"
-              markerEnd={lodLevel === 'high' || hoveredNode ? "url(#arrowhead)" : undefined}
+              markerEnd={isHighlighted || hoveredNode ? "url(#arrowhead)" : undefined}
             />
           );
         }
       });
     });
     return lines;
-  }, [visibleTables, positions, lodLevel, isInteracting, schema.tables, hoveredNode, relationshipGraph]);
+  }, [visibleTables, positions, lodLevel, isInteracting, schema.tables, hoveredNode, hoveredColumn, relationshipGraph]);
 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
@@ -363,14 +402,14 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                  <p className="capitalize">• Detalhe: {lodLevel}</p>
                  <p>• Zoom: {(scale * 100).toFixed(0)}%</p>
                  {hoveredNode && <p className="text-indigo-400 font-bold">• Foco: {hoveredNode}</p>}
-                 {visibleTables.length > 300 && !hoveredNode && <p className="text-amber-500">• Conexões ocultas (+300)</p>}
+                 {visibleTables.length > 300 && !hoveredNode && !hoveredColumn && <p className="text-amber-500">• Conexões ocultas (+300)</p>}
               </div>
            </div>
 
            <div className="bg-indigo-50 dark:bg-indigo-900/30 px-3 py-2 rounded-lg shadow-sm border border-indigo-100 dark:border-indigo-800 pointer-events-auto flex gap-2 items-start max-w-[260px]">
               <HelpCircle className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
               <p className="text-[10px] text-indigo-800 dark:text-indigo-200">
-                 Passe o mouse sobre uma tabela para entrar no <strong>Modo Foco</strong> e ver apenas as conexões relacionadas.
+                 Passe o mouse sobre as colunas (PK/FK) para destacar relacionamentos específicos.
               </p>
            </div>
         </div>
@@ -395,14 +434,13 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                transformOrigin: '0 0',
                width: '100%',
                height: '100%',
-               // willChange: 'transform' // Disabled to prevent blurriness on non-retina displays
              }}
              className={`relative w-full h-full ${isInteracting ? '' : 'transition-transform duration-200 ease-out'}`}
           >
              <svg className="absolute inset-0 pointer-events-none overflow-visible w-full h-full" style={{ zIndex: 0 }}>
                <defs>
                   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                    <polygon points="0 0, 10 3.5, 0 7" fill={hoveredNode ? "#6366f1" : "#94a3b8"} />
+                    <polygon points="0 0, 10 3.5, 0 7" fill={hoveredColumn ? "#f59e0b" : "#6366f1"} />
                   </marker>
                </defs>
                {connections}
@@ -412,13 +450,32 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                 const pos = positions[table.name];
                 if (!pos) return null;
                 
-                const isHovered = hoveredNode === table.name;
+                const isTableHovered = hoveredNode === table.name;
                 const isRelated = !hoveredNode || hoveredNode === table.name || relationshipGraph[hoveredNode]?.has(table.name);
+                const displayLOD = isTableHovered ? 'high' : lodLevel;
                 
-                // Determine display mode: Hover always high, otherwise use LOD
-                const displayLOD = isHovered ? 'high' : lodLevel;
-                const isVeryLowDetail = lodLevel === 'low' && !isHovered;
-                
+                // If column hover active, dim everything else unless related
+                let opacity = isRelated ? 1 : 0.2;
+                if (hoveredColumn) {
+                   // Dim table if it's not the source or target of the column hover
+                   const isSource = hoveredColumn.table === table.name;
+                   let isTarget = false;
+                   
+                   // Check relationships
+                   if (hoveredColumn.isPk) {
+                      // I am target if one of my columns points to hovered PK
+                      isTarget = table.columns.some(c => c.references?.includes(hoveredColumn.table));
+                   } else {
+                      // I am target if I am the table referenced by hovered FK
+                      const refParts = hoveredColumn.ref?.split('.') || [];
+                      const targetTable = refParts.length === 3 ? refParts[1] : refParts[0];
+                      isTarget = table.name === targetTable;
+                   }
+
+                   if (!isSource && !isTarget) opacity = 0.1;
+                   else opacity = 1;
+                }
+
                 return (
                    <div
                       key={table.name}
@@ -428,20 +485,18 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                       style={{
                          transform: `translate(${pos.x}px, ${pos.y}px)`,
                          width: TABLE_WIDTH,
-                         zIndex: isHovered ? 100 : (isRelated ? 20 : 10),
+                         opacity,
+                         zIndex: isTableHovered || opacity === 1 ? 50 : 10,
                       }}
-                      className={`absolute rounded-lg cursor-grab active:cursor-grabbing transition-transform duration-200
-                         ${!isRelated ? 'opacity-20 grayscale filter' : 'opacity-100'}
-                         ${isVeryLowDetail ? 'bg-indigo-200 dark:bg-indigo-900 border border-indigo-300 dark:border-indigo-800 h-8 flex items-center justify-center' : 'bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700'}
-                         ${isHovered ? 'border-indigo-500 ring-2 ring-indigo-500 shadow-xl scale-105' : ''}
+                      className={`absolute rounded-lg cursor-grab active:cursor-grabbing transition-all duration-200
+                         ${lodLevel === 'low' && !isTableHovered ? 'bg-indigo-200 dark:bg-indigo-900 border border-indigo-300 dark:border-indigo-800 h-8 flex items-center justify-center' : 'bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700'}
+                         ${isTableHovered ? 'border-indigo-500 ring-2 ring-indigo-500 shadow-xl scale-105' : ''}
                       `}
                    >
-                      {isVeryLowDetail ? (
-                         // Low Detail Box
+                      {lodLevel === 'low' && !isTableHovered ? (
                          <span className="text-[10px] font-bold text-indigo-900 dark:text-indigo-200 truncate px-2">{table.name}</span>
                       ) : (
                          <>
-                            {/* Header */}
                             <div className={`
                                flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700/50
                                ${debouncedTerm ? 'bg-indigo-50 dark:bg-indigo-900/50' : 'bg-slate-50 dark:bg-slate-900/50'}
@@ -450,28 +505,69 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                                <span className="text-[9px] text-slate-400">{table.schema}</span>
                             </div>
                             
-                            {/* Columns - HIGH DETAIL */}
                             {displayLOD === 'high' && (
                                <div className="py-1">
-                                  {table.columns.slice(0, 15).map(col => (
-                                     <div key={col.name} className="px-3 py-1 flex items-center justify-between text-[10px] hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                                        <div className="flex items-center gap-1.5 overflow-hidden">
-                                           {col.isPrimaryKey && <span className="text-amber-500 font-bold">PK</span>}
-                                           {col.isForeignKey && <span className="text-blue-500 font-bold">FK</span>}
-                                           <span className="truncate text-slate-600 dark:text-slate-400">{col.name}</span>
-                                        </div>
-                                        <span className="text-slate-300 font-mono text-[8px]">{col.type.split('(')[0]}</span>
-                                     </div>
-                                  ))}
+                                  {table.columns.slice(0, 15).map(col => {
+                                     // Column Highlight Logic
+                                     let colBgClass = 'hover:bg-slate-50 dark:hover:bg-slate-700/50';
+                                     let colTextClass = 'text-slate-600 dark:text-slate-400';
+                                     let showBadge = false;
+
+                                     if (hoveredColumn) {
+                                        if (hoveredColumn.table === table.name && hoveredColumn.col === col.name) {
+                                           // THIS is the hovered column
+                                           colBgClass = 'bg-yellow-100 dark:bg-yellow-900/30';
+                                           colTextClass = 'text-slate-900 dark:text-white font-bold';
+                                        } else if (hoveredColumn.isPk && col.isForeignKey && col.references?.includes(hoveredColumn.table)) {
+                                           // This FK points to hovered PK -> Highlight Green (Source)
+                                           colBgClass = 'bg-emerald-100 dark:bg-emerald-900/30';
+                                           colTextClass = 'text-emerald-800 dark:text-emerald-200 font-bold';
+                                           showBadge = true;
+                                        } else if (!hoveredColumn.isPk && hoveredColumn.ref && col.isPrimaryKey) {
+                                           // This PK is target of hovered FK -> Highlight Amber (Target)
+                                           const refParts = hoveredColumn.ref.split('.');
+                                           const targetTable = refParts.length === 3 ? refParts[1] : refParts[0];
+                                           if (targetTable === table.name) {
+                                              colBgClass = 'bg-amber-100 dark:bg-amber-900/30';
+                                              colTextClass = 'text-amber-800 dark:text-amber-200 font-bold';
+                                              showBadge = true;
+                                           }
+                                        }
+                                     }
+
+                                     return (
+                                       <div 
+                                          key={col.name} 
+                                          className={`px-3 py-1 flex items-center justify-between text-[10px] cursor-pointer transition-colors ${colBgClass}`}
+                                          onMouseEnter={(e) => {
+                                             e.stopPropagation(); // Prevent table hover
+                                             setHoveredColumn({ table: table.name, col: col.name, isPk: !!col.isPrimaryKey, ref: col.references });
+                                          }}
+                                          onMouseLeave={() => setHoveredColumn(null)}
+                                       >
+                                          <div className={`flex items-center gap-1.5 overflow-hidden ${colTextClass}`}>
+                                             {col.isPrimaryKey && <Key className="w-3 h-3 text-amber-500 shrink-0" />}
+                                             {col.isForeignKey && <Link className="w-3 h-3 text-blue-500 shrink-0" />}
+                                             <span className="truncate">{col.name}</span>
+                                          </div>
+                                          {showBadge ? (
+                                             <span className="flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-wide">
+                                                {col.isPrimaryKey ? <Target className="w-2.5 h-2.5" /> : <CornerDownRight className="w-2.5 h-2.5" />}
+                                             </span>
+                                          ) : (
+                                             <span className="text-slate-300 font-mono text-[8px]">{col.type.split('(')[0]}</span>
+                                          )}
+                                       </div>
+                                     );
+                                  })}
                                   {table.columns.length > 15 && <div className="px-3 py-1 text-[9px] text-slate-400 italic">...mais {table.columns.length - 15}</div>}
                                </div>
                             )}
 
-                            {/* Info - MEDIUM DETAIL */}
                             {displayLOD === 'medium' && (
                                <div className="px-3 py-2 text-[10px] text-slate-400 flex justify-between">
                                   <span>{table.columns.length} cols</span>
-                                  {table.columns.some(c => c.isPrimaryKey) && <span className="text-amber-500">PK</span>}
+                                  {table.columns.some(c => c.isPrimaryKey) && <span className="text-amber-500 flex items-center gap-0.5"><Key className="w-2.5 h-2.5" /> PK</span>}
                                </div>
                             )}
                          </>
