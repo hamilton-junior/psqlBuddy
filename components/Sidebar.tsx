@@ -1,22 +1,22 @@
 
-
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid, HelpCircle } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
   onNavigate: (step: AppStep) => void;
   schema: DatabaseSchema | null;
   onOpenSettings: () => void;
-  onOpenDiagram?: () => void; // New prop
-  onOpenHistory?: () => void; // New prop
+  onOpenDiagram?: () => void; 
+  onOpenHistory?: () => void; 
   onRegenerateClick?: () => void;
   onDescriptionChange?: (tableName: string, newDesc: string) => void;
+  onOpenShortcuts?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange 
+  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -114,7 +114,17 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <div className="flex-1"></div>
 
-      <div className={`px-6 pb-4 shrink-0 ${isCollapsed ? 'px-2' : ''}`}>
+      <div className={`px-6 pb-4 shrink-0 space-y-2 ${isCollapsed ? 'px-2' : ''}`}>
+        {onOpenShortcuts && (
+           <button 
+              onClick={onOpenShortcuts}
+              title={isCollapsed ? "Atalhos" : "Ver atalhos de teclado"}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 ${isCollapsed ? 'justify-center px-2' : ''}`}
+           >
+              <HelpCircle className="w-4 h-4 shrink-0" />
+              {!isCollapsed && <span>Ajuda & Atalhos</span>}
+           </button>
+        )}
         <button 
            onClick={onOpenSettings}
            title={isCollapsed ? "Configurações" : "Abrir configurações gerais e de IA"}

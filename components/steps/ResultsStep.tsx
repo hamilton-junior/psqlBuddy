@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock } from 'lucide-react';
+import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces } from 'lucide-react';
 import { AppSettings, DashboardItem, ExplainNode } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
@@ -8,6 +8,107 @@ import { addToHistory } from '../../services/historyService';
 import { explainQueryReal } from '../../services/dbService';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
+
+// --- ROW INSPECTOR MODAL ---
+interface RowInspectorProps {
+   row: any;
+   onClose: () => void;
+}
+
+const RowInspector: React.FC<RowInspectorProps> = ({ row, onClose }) => {
+   const [searchTerm, setSearchTerm] = useState('');
+   const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
+   
+   const entries = Object.entries(row);
+   const filteredEntries = entries.filter(([key, val]) => 
+      key.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      String(val).toLowerCase().includes(searchTerm.toLowerCase())
+   );
+
+   const copyToClipboard = (text: string) => {
+      navigator.clipboard.writeText(text);
+   };
+
+   return (
+      <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={onClose}>
+         <div className="bg-white dark:bg-slate-800 w-full max-w-2xl max-h-[85vh] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+               <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/30 rounded text-indigo-600 dark:text-indigo-400"><FileText className="w-4 h-4" /></div>
+                  <h3 className="font-bold text-slate-800 dark:text-white">Detalhes do Registro</h3>
+               </div>
+               <div className="flex items-center gap-2">
+                  <div className="flex bg-slate-200 dark:bg-slate-700 rounded p-0.5">
+                     <button onClick={() => setViewMode('table')} className={`p-1.5 rounded text-xs font-bold transition-all ${viewMode === 'table' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-300' : 'text-slate-500'}`} title="Tabela"><LayoutGrid className="w-3.5 h-3.5" /></button>
+                     <button onClick={() => setViewMode('json')} className={`p-1.5 rounded text-xs font-bold transition-all ${viewMode === 'json' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-300' : 'text-slate-500'}`} title="JSON"><Braces className="w-3.5 h-3.5" /></button>
+                  </div>
+                  <button onClick={onClose} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500"><X className="w-5 h-5" /></button>
+               </div>
+            </div>
+
+            {viewMode === 'table' && (
+               <div className="p-2 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+                  <div className="relative">
+                     <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
+                     <input 
+                        type="text" 
+                        placeholder="Filtrar campos..." 
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500"
+                     />
+                  </div>
+               </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto p-0 bg-slate-50 dark:bg-slate-900 custom-scrollbar">
+               {viewMode === 'table' ? (
+                  <table className="w-full text-left border-collapse">
+                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {filteredEntries.map(([key, val]) => (
+                           <tr key={key} className="group hover:bg-white dark:hover:bg-slate-800 transition-colors">
+                              <td className="px-4 py-3 w-1/3 bg-slate-100/50 dark:bg-slate-900/50 text-xs font-bold text-slate-500 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 font-mono break-all">
+                                 {key}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200 relative break-all whitespace-pre-wrap">
+                                 {val === null ? <span className="text-slate-400 italic text-xs">null</span> : String(val)}
+                                 <button 
+                                    onClick={() => copyToClipboard(String(val))}
+                                    className="absolute right-2 top-2 p-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-indigo-500 shadow-sm"
+                                    title="Copiar valor"
+                                 >
+                                    <Copy className="w-3 h-3" />
+                                 </button>
+                              </td>
+                           </tr>
+                        ))}
+                        {filteredEntries.length === 0 && (
+                           <tr>
+                              <td colSpan={2} className="p-8 text-center text-slate-400 text-xs">Nenhum campo encontrado.</td>
+                           </tr>
+                        )}
+                     </tbody>
+                  </table>
+               ) : (
+                  <div className="p-4">
+                     <div className="relative group">
+                        <pre className="text-xs font-mono text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-all p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                           {JSON.stringify(row, null, 2)}
+                        </pre>
+                        <button 
+                           onClick={() => copyToClipboard(JSON.stringify(row, null, 2))}
+                           className="absolute top-2 right-2 p-1.5 bg-slate-100 dark:bg-slate-700 rounded text-slate-500 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                           <Copy className="w-4 h-4" />
+                        </button>
+                     </div>
+                  </div>
+               )}
+            </div>
+         </div>
+      </div>
+   );
+};
 
 // --- DATA PROFILER COMPONENT ---
 interface ProfilerStats {
@@ -37,7 +138,6 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
          const sum = nonNulls.reduce((a, b) => a + Number(b), 0);
          avg = sum / nonNulls.length;
       } else if (nonNulls.length > 0) {
-         // Sort string logic if needed, simple min/max length
          const sorted = [...nonNulls].sort();
          min = sorted[0];
          max = sorted[sorted.length - 1];
@@ -84,7 +184,7 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
                   {/* Mini Sparkline */}
                   <div className="h-8 flex items-end gap-[1px] mt-2 opacity-70">
                      {[...Array(20)].map((_, i) => {
-                        const h = Math.random() * 100; // Simulated distribution for UI demo
+                        const h = Math.random() * 100;
                         return <div key={i} style={{ height: `${h}%` }} className="flex-1 bg-indigo-400 rounded-t-[1px]"></div>
                      })}
                   </div>
@@ -117,9 +217,10 @@ interface VirtualTableProps {
    data: any[];
    columns: string[];
    highlightMatch: (text: string) => React.ReactNode;
+   onRowClick: (row: any) => void;
 }
 
-const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch }) => {
+const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick }) => {
    const [currentPage, setCurrentPage] = useState(1);
    const [rowsPerPage, setRowsPerPage] = useState(25);
    const [activeProfileCol, setActiveProfileCol] = useState<string | null>(null);
@@ -130,6 +231,20 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
    const currentData = data.slice(startIndex, startIndex + rowsPerPage);
 
    useEffect(() => { setCurrentPage(1); }, [data.length]);
+
+   const formatValue = (val: any) => {
+      if (val === null || val === undefined) return <span className="text-slate-300 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">null</span>;
+      if (typeof val === 'boolean') {
+         return val ? 
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded">TRUE</span> : 
+            <span className="text-[10px] font-bold text-red-700 bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded">FALSE</span>;
+      }
+      // Simple check for JSON object/array
+      if (typeof val === 'object') {
+         return <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-1 rounded flex items-center gap-1 w-fit"><Braces className="w-3 h-3" /> JSON</span>;
+      }
+      return highlightMatch(String(val));
+   };
 
    return (
       <div className="flex flex-col h-full relative" onClick={() => setActiveProfileCol(null)}>
@@ -159,10 +274,10 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                </thead>
                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                   {currentData.map((row, idx) => (
-                     <tr key={idx} className="group hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors h-[40px]">
+                     <tr key={idx} onClick={() => onRowClick(row)} className="group hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors h-[40px] cursor-pointer">
                         {columns.map((col, cIdx) => (
                            <td key={col} className={`px-4 py-2 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-slate-900 dark:group-hover:text-white transition-colors ${cIdx === 0 ? 'pl-6 font-medium' : ''}`}>
-                              {row[col] === null ? <span className="text-slate-300 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">null</span> : highlightMatch(String(row[col]))}
+                              {formatValue(row[col])}
                            </td>
                         ))}
                      </tr>
@@ -173,7 +288,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
          <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 flex items-center justify-between text-xs text-slate-500 shrink-0">
             <div className="flex items-center gap-4 pl-4">
                <span>{startIndex + 1}-{Math.min(startIndex + rowsPerPage, totalRows)} de {totalRows}</span>
-               <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="bg-transparent border border-slate-200 dark:border-slate-700 rounded py-0.5 px-1 font-bold">
+               <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="bg-transparent border border-slate-200 dark:border-slate-700 rounded py-0.5 px-1 font-bold outline-none cursor-pointer">
                   <option value={10}>10</option>
                   <option value={25}>25</option>
                   <option value={100}>100</option>
@@ -302,13 +417,17 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   
   // Smart Filters State
   const [filters, setFilters] = useState<FilterRule[]>([]);
-  const [localSearch, setLocalSearch] = useState(''); // Kept for legacy global search if needed, but UI hides it if filters active
+  const [localSearch, setLocalSearch] = useState(''); 
   
   const [sqlCopied, setSqlCopied] = useState(false);
   const [explainPlan, setExplainPlan] = useState<ExplainNode | null>(null);
   const [loadingExplain, setLoadingExplain] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Row Detail Modal
+  const [selectedRow, setSelectedRow] = useState<any | null>(null);
 
   // Chart configuration state lifted for pinning
   const [currentChartConfig, setCurrentChartConfig] = useState<{xAxis: string, yKeys: string[]} | null>(null);
@@ -407,16 +526,13 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
 
   const handleExportInsert = () => {
      if (filteredData.length === 0) return;
-     // Generate INSERT statements
-     // INSERT INTO table (col1, col2) VALUES (val1, val2);
-     // We guess table name from context or generic 'table_name'
      const tableName = "exported_data";
      const cols = columns.join(', ');
      const statements = filteredData.map(row => {
         const values = columns.map(col => {
            const val = row[col];
            if (val === null) return 'NULL';
-           if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`; // Escape single quotes
+           if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`; 
            return val;
         }).join(', ');
         return `INSERT INTO ${tableName} (${cols}) VALUES (${values});`;
@@ -446,13 +562,10 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
 
   const handlePinChart = () => {
      if (!onAddToDashboard) return;
-     
-     // Default config if none captured (rare)
      const config = currentChartConfig || { xAxis: columns[0], yKeys: columns.slice(1,3) };
-     
      onAddToDashboard({
         title: `Gráfico ${new Date().toLocaleTimeString()}`,
-        type: 'bar', // Visualizer handles type, maybe store preference later
+        type: 'bar',
         data: data, 
         config: config,
         sql: sql
@@ -460,16 +573,34 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      onShowToast("Gráfico fixado no Dashboard com sucesso!", "success");
   };
 
+  const toggleFullscreen = () => {
+     setIsFullscreen(!isFullscreen);
+     // Dispatch custom event if needed to inform layout, 
+     // but usually we control layout via parent props or classes.
+     // In this app, App.tsx renders everything.
+     // Quick hack: Use fixed positioning overlay for true fullscreen within the app context
+  };
+
   return (
-    <div className="h-full flex flex-col space-y-4">
+    <div className={`h-full flex flex-col space-y-4 ${isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-slate-900 p-6' : ''}`}>
       
+      {/* Row Detail Modal */}
+      {selectedRow && <RowInspector row={selectedRow} onClose={() => setSelectedRow(null)} />}
+
       {/* Header & Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
-             Resultados
-             <span className="text-xs font-normal text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">{filteredData.length} registros</span>
-          </h2>
+        <div className="flex items-center gap-4">
+           {isFullscreen && (
+              <button onClick={toggleFullscreen} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 transition-colors">
+                 <Minimize2 className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+              </button>
+           )}
+           <div>
+             <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
+                Resultados
+                <span className="text-xs font-normal text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">{filteredData.length} registros</span>
+             </h2>
+           </div>
         </div>
         
         {/* Central Tabs */}
@@ -529,6 +660,12 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
                  </div>
               )}
            </div>
+           
+           {!isFullscreen && (
+              <button onClick={toggleFullscreen} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors" title="Tela Cheia">
+                 <Maximize2 className="w-5 h-5" />
+              </button>
+           )}
         </div>
       </div>
 
@@ -544,12 +681,16 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8"><Database className="w-12 h-12 opacity-30 mb-4" /><p>Nenhum resultado retornado</p></div>
         ) : (
           <>
-            {activeTab === 'table' && <VirtualTable data={filteredData} columns={columns} highlightMatch={highlightMatch} />}
+            {activeTab === 'table' && (
+               <VirtualTable 
+                  data={filteredData} 
+                  columns={columns} 
+                  highlightMatch={highlightMatch} 
+                  onRowClick={(row) => setSelectedRow(row)} 
+               />
+            )}
             {activeTab === 'chart' && (
                <div className="p-6 h-full w-full relative">
-                  {/* Capture Config Changes to state for Pinning */}
-                  {/* Note: DataVisualizer needs to expose config, but for now we rely on its defaults or internal state logic matching assumptions */}
-                  {/* We can pass a ref or callback if we want 100% sync, but for this demo, basic works */}
                   <DataVisualizer data={filteredData} /> 
                </div>
             )}
@@ -560,23 +701,27 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
       </div>
 
       {/* Footer (SQL View) */}
-      <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-3 p-3 shadow-inner relative group shrink-0">
-         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded">SQL</span>
-         <div className="flex-1 font-mono text-xs text-slate-600 dark:text-slate-300 truncate" title={sql}>{sql}</div>
-         <button onClick={() => { navigator.clipboard.writeText(sql); setSqlCopied(true); setTimeout(()=>setSqlCopied(false), 2000); }} className="text-slate-400 hover:text-indigo-600 p-1 transition-colors">{sqlCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}</button>
-      </div>
+      {!isFullscreen && (
+         <>
+            <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-3 p-3 shadow-inner relative group shrink-0">
+               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded">SQL</span>
+               <div className="flex-1 font-mono text-xs text-slate-600 dark:text-slate-300 truncate" title={sql}>{sql}</div>
+               <button onClick={() => { navigator.clipboard.writeText(sql); setSqlCopied(true); setTimeout(()=>setSqlCopied(false), 2000); }} className="text-slate-400 hover:text-indigo-600 p-1 transition-colors">{sqlCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}</button>
+            </div>
 
-      <div className="flex items-center justify-between shrink-0">
-         <div className="flex items-center gap-4">
-            <button onClick={onNewConnection} className="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-2 px-2 py-1"><Database className="w-4 h-4" /> Nova Conexão</button>
-            {executionDuration !== undefined && executionDuration > 0 && (
-               <span className="text-xs text-slate-400 flex items-center gap-1 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700">
-                  <Clock className="w-3 h-3" /> Executado em {executionDuration.toFixed(0)}ms
-               </span>
-            )}
-         </div>
-         <button onClick={onBackToBuilder} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2"><ArrowLeft className="w-4 h-4" /> Voltar</button>
-      </div>
+            <div className="flex items-center justify-between shrink-0">
+               <div className="flex items-center gap-4">
+                  <button onClick={onNewConnection} className="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-2 px-2 py-1"><Database className="w-4 h-4" /> Nova Conexão</button>
+                  {executionDuration !== undefined && executionDuration > 0 && (
+                     <span className="text-xs text-slate-400 flex items-center gap-1 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700">
+                        <Clock className="w-3 h-3" /> Executado em {executionDuration.toFixed(0)}ms
+                     </span>
+                  )}
+               </div>
+               <button onClick={onBackToBuilder} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2"><ArrowLeft className="w-4 h-4" /> Voltar</button>
+            </div>
+         </>
+      )}
     </div>
   );
 };

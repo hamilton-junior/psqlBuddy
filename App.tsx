@@ -11,6 +11,7 @@ import SettingsModal from './components/SettingsModal';
 import AiPreferenceModal from './components/AiPreferenceModal';
 import SchemaDiagramModal from './components/SchemaDiagramModal';
 import TablePreviewModal from './components/TablePreviewModal';
+import ShortcutsModal from './components/ShortcutsModal';
 import TourGuide, { TourStep } from './components/TourGuide';
 import { generateSqlFromBuilderState, validateSqlQuery, generateMockData, fixSqlError } from './services/geminiService';
 import { generateLocalSql } from './services/localSqlService';
@@ -35,11 +36,32 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showDiagram, setShowDiagram] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   
   // Onboarding State
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourCompleted, setTourCompleted] = useState(() => !!localStorage.getItem('psql-buddy-tour-completed'));
+
+  // Global Shortcuts Listener
+  useEffect(() => {
+     const handleGlobalKeys = (e: KeyboardEvent) => {
+        if (e.key === '?' && e.shiftKey) {
+           // Shift + ? to toggle shortcuts
+           // We check e.target to avoid triggering when typing in inputs if we want, but ? usually safe
+           const tagName = (e.target as HTMLElement).tagName;
+           if (tagName !== 'INPUT' && tagName !== 'TEXTAREA') {
+              setShowShortcuts(prev => !prev);
+           }
+        }
+        if (e.key === 'F1') {
+           e.preventDefault();
+           setShowShortcuts(true);
+        }
+     };
+     window.addEventListener('keydown', handleGlobalKeys);
+     return () => window.removeEventListener('keydown', handleGlobalKeys);
+  }, []);
 
   // Check if it's first run to show onboarding
   useEffect(() => {
@@ -573,6 +595,8 @@ function App() {
          />
       )}
 
+      {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
+
       <Sidebar 
         currentStep={currentStep} 
         onNavigate={handleNavigate} 
@@ -582,6 +606,7 @@ function App() {
         onOpenHistory={() => setShowHistory(true)}
         onRegenerateClick={handleReset}
         onDescriptionChange={handleUpdateSchemaDescription}
+        onOpenShortcuts={() => setShowShortcuts(true)}
       />
 
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden rounded-tl-3xl shadow-2xl my-2 mr-2 relative">
