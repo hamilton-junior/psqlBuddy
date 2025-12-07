@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect, useCallback, memo, useRef } from 'react';
 import { DatabaseSchema, BuilderState, ExplicitJoin, JoinType, Filter, Operator, OrderBy, AppSettings, SavedQuery, AggregateFunction, Column, Table, CalculatedColumn } from '../../types';
 import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square, Plus, Trash2, ArrowRightLeft, Filter as FilterIcon, ArrowDownAZ, List, Link2, ChevronDown, Save, FolderOpen, Calendar, Clock, Key, Combine, ArrowRight, ArrowLeft, FastForward, Target, CornerDownRight, Wand2, Loader2, Undo2, Redo2, Calculator } from 'lucide-react';
@@ -16,6 +15,7 @@ interface BuilderStepProps {
   progressMessage?: string;
   settings: AppSettings;
   onDescriptionChange?: (tableName: string, newDesc: string) => void;
+  onPreviewTable?: (tableName: string) => void; // New prop
 }
 
 type TabType = 'columns' | 'joins' | 'filters' | 'sortgroup';
@@ -487,7 +487,7 @@ const TableCard = memo(({
 
 // --- Main Component ---
 
-const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange, onGenerate, onSkipAi, isGenerating, progressMessage, settings, onDescriptionChange }) => {
+const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange, onGenerate, onSkipAi, isGenerating, progressMessage, settings, onDescriptionChange, onPreviewTable }) => {
   // Persistence for Active Tab
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     return (localStorage.getItem(`psql-buddy-tab-${schema.name}`) as TabType) || 'columns';
@@ -1094,7 +1094,14 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
         
         {/* Left: Schema Viewer */}
         <div className="w-1/4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden shadow-sm">
-          <SchemaViewer schema={schema} selectionMode={true} selectedTableIds={state.selectedTables} onToggleTable={toggleTable} onDescriptionChange={onDescriptionChange} />
+          <SchemaViewer 
+            schema={schema} 
+            selectionMode={true} 
+            selectedTableIds={state.selectedTables} 
+            onToggleTable={toggleTable} 
+            onDescriptionChange={onDescriptionChange}
+            onPreviewTable={onPreviewTable} // Passed down
+          />
         </div>
 
         {/* Right: Tabbed Builder Area */}

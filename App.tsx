@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, AppSettings, DEFAULT_SETTINGS, DashboardItem } from './types';
 import Sidebar from './components/Sidebar';
@@ -5,15 +6,16 @@ import ConnectionStep from './components/steps/ConnectionStep';
 import BuilderStep from './components/steps/BuilderStep';
 import PreviewStep from './components/steps/PreviewStep';
 import ResultsStep from './components/steps/ResultsStep';
-import DashboardStep from './components/steps/DashboardStep'; // NEW
+import DashboardStep from './components/steps/DashboardStep'; 
 import SettingsModal from './components/SettingsModal';
 import AiPreferenceModal from './components/AiPreferenceModal';
 import SchemaDiagramModal from './components/SchemaDiagramModal';
+import TablePreviewModal from './components/TablePreviewModal';
 import { generateSqlFromBuilderState, validateSqlQuery, generateMockData, fixSqlError } from './services/geminiService';
 import { generateLocalSql } from './services/localSqlService';
 import { initializeSimulation, executeOfflineQuery, SimulationData } from './services/simulationService';
 import { executeQueryReal } from './services/dbService';
-import { AlertTriangle, X, ZapOff, History as HistoryIcon, Clock, CheckCircle2, AlertCircle as AlertCircleIcon, Wand2 } from 'lucide-react';
+import { AlertTriangle, X, ZapOff, History as HistoryIcon, Clock, CheckCircle2, AlertCircle as AlertCircleIcon, Wand2, Info, Check } from 'lucide-react';
 import { getHistory, clearHistory } from './services/historyService';
 
 // Helper for safe storage loading
@@ -47,6 +49,14 @@ function App() {
   // Global State for Quota Limits
   const [quotaExhausted, setQuotaExhausted] = useState(false);
   const [hasShownQuotaWarning, setHasShownQuotaWarning] = useState(false);
+
+  // Toast Notification State
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   // Apply Theme - STRICT MODE for Tailwind
   useEffect(() => {
@@ -105,6 +115,12 @@ function App() {
   const [isValidating, setIsValidating] = useState(false); 
   const [error, setError] = useState<{message: string, action?: {label: string, handler: () => void}} | null>(null);
   const [warningToast, setWarningToast] = useState<string | null>(null);
+
+  // Table Preview State
+  const [previewTable, setPreviewTable] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<any[]>([]);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const generationRequestId = useRef(0);
 
@@ -198,6 +214,55 @@ function App() {
       setIsProcessing(false);
       setProgressMessage("");
     }
+  };
+
+  // Preview single table (Top 10)
+  const handlePreviewTable = async (tableName: string) => {
+     if (!schema || !credentials) return;
+     
+     setPreviewTable(tableName);
+     setPreviewData([]);
+     setPreviewError(null);
+     setIsPreviewLoading(true);
+
+     try {
+        // Find fully qualified name from schema to avoid ambiguity
+        const tableObj = schema.tables.find(t => t.name === tableName);
+        const schemaName = tableObj?.schema || 'public';
+        const fullTableName = `${schemaName}.${tableName}`;
+        
+        const sql = `SELECT * FROM ${fullTableName} LIMIT 10`;
+        
+        let data = [];
+        if (credentials.host === 'simulated') {
+           if (simulationData) {
+              // Construct a temporary builder state to reuse logic for single table fetch
+              const tempState: BuilderState = {
+                 selectedTables: [fullTableName],
+                 selectedColumns: [], // *
+                 calculatedColumns: [],
+                 aggregations: {},
+                 joins: [],
+                 filters: [],
+                 groupBy: [],
+                 orderBy: [],
+                 limit: 10
+              };
+              data = executeOfflineQuery(schema, simulationData, tempState);
+           } else {
+              data = [];
+           }
+        } else {
+           data = await executeQueryReal(credentials, sql);
+        }
+        
+        setPreviewData(data);
+     } catch (err: any) {
+        console.error("Preview Error:", err);
+        setPreviewError(err.message || "Erro ao buscar dados da tabela.");
+     } finally {
+        setIsPreviewLoading(false);
+     }
   };
 
   const handleGeneratePreview = async () => {
@@ -370,9 +435,9 @@ function App() {
                   try {
                      const fixedSql = await fixSqlError(sqlToExecute, e.message, schema);
                      setQueryResult({ ...queryResult, sql: fixedSql });
-                     alert("SQL Corrigido! Tente executar novamente.");
+                     showToast("SQL Corrigido! Tente executar novamente.", "success");
                   } catch (fixErr) {
-                     alert("Não foi possível corrigir automaticamente.");
+                     showToast("Não foi possível corrigir automaticamente.", "error");
                   } finally {
                      setIsProcessing(false);
                   }
@@ -455,6 +520,23 @@ function App() {
           />
         </div>
 
+        {/* Global Toast Notification */}
+        {toast && (
+           <div className="absolute top-4 right-4 z-50 animate-in slide-in-from-right-10 duration-300">
+              <div className={`px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 border ${
+                 toast.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/90 text-emerald-800 dark:text-emerald-100 border-emerald-200 dark:border-emerald-700' :
+                 toast.type === 'error' ? 'bg-red-50 dark:bg-red-900/90 text-red-800 dark:text-red-100 border-red-200 dark:border-red-700' :
+                 'bg-blue-50 dark:bg-blue-900/90 text-blue-800 dark:text-blue-100 border-blue-200 dark:border-blue-700'
+              }`}>
+                 {toast.type === 'success' ? <Check className="w-5 h-5" /> : 
+                  toast.type === 'error' ? <AlertCircleIcon className="w-5 h-5" /> : 
+                  <Info className="w-5 h-5" />}
+                 <span className="font-medium text-sm">{toast.message}</span>
+                 <button onClick={() => setToast(null)} className="ml-2 hover:opacity-70"><X className="w-4 h-4" /></button>
+              </div>
+           </div>
+        )}
+
         {error && (
           <div className="bg-red-50 dark:bg-red-900/30 border-b border-red-200 dark:border-red-800 p-4 flex items-center justify-between animate-in slide-in-from-top-2">
             <div className="flex items-center gap-3">
@@ -513,6 +595,7 @@ function App() {
               progressMessage={progressMessage}
               settings={settings}
               onDescriptionChange={handleUpdateSchemaDescription}
+              onPreviewTable={handlePreviewTable}
             />
           )}
 
@@ -536,6 +619,7 @@ function App() {
               onNewConnection={handleReset}
               settings={settings}
               onAddToDashboard={handleAddToDashboard}
+              onShowToast={showToast}
               credentials={credentials}
             />
           )}
@@ -561,6 +645,17 @@ function App() {
 
       {showDiagram && schema && (
          <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} />
+      )}
+
+      {/* Table Preview Modal */}
+      {previewTable && (
+         <TablePreviewModal 
+            tableName={previewTable}
+            data={previewData}
+            isLoading={isPreviewLoading}
+            error={previewError}
+            onClose={() => setPreviewTable(null)}
+         />
       )}
 
       {showHistory && (
@@ -593,7 +688,7 @@ function App() {
                            </code>
                            <div className="flex justify-between items-center text-xs text-slate-500">
                               <span>{item.rowCount} linhas retornadas</span>
-                              <button onClick={() => { navigator.clipboard.writeText(item.sql); setShowHistory(false); }} className="text-indigo-500 hover:underline">Copiar SQL</button>
+                              <button onClick={() => { navigator.clipboard.writeText(item.sql); setShowHistory(false); showToast("SQL copiado para área de transferência!"); }} className="text-indigo-500 hover:underline">Copiar SQL</button>
                            </div>
                         </div>
                      ))
