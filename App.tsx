@@ -522,15 +522,35 @@ function App() {
      },
      {
         targetId: 'magic-fill-bar',
-        title: 'IA Magic Fill',
-        content: 'A maneira mais rápida de começar. Digite o que você quer (ex: "Vendas por mês") e a IA configurará o builder para você.',
+        title: '✨ Magic Fill (IA)',
+        content: settings.enableAiGeneration 
+           ? 'A maneira mais rápida de começar. Digite sua pergunta (ex: "Vendas por mês") e a IA configurará o builder automaticamente.'
+           : 'Esta funcionalidade utiliza Inteligência Artificial para montar queries automaticamente. Ela está desabilitada no modo Offline.',
         position: 'bottom'
      },
      {
-        targetId: 'builder-main-panel',
-        title: 'Área de Construção',
-        content: 'Refine sua query aqui. Use as abas para configurar Joins, Filtros e Ordenação manualmente.',
-        position: 'left'
+        targetId: 'tab-btn-columns',
+        title: '1. Seleção e Agregação',
+        content: 'Escolha as colunas que deseja exibir. Use o menu ao lado de cada coluna selecionada para aplicar funções de agregação (Soma, Média, Contagem).',
+        position: 'bottom'
+     },
+     {
+        targetId: 'tab-btn-joins',
+        title: '2. Relacionamentos (Joins)',
+        content: 'O sistema tenta conectar tabelas automaticamente via chaves estrangeiras. Aqui você pode revisar ou criar conexões manuais (Inner, Left, Right).',
+        position: 'bottom'
+     },
+     {
+        targetId: 'tab-btn-filters',
+        title: '3. Filtros (Where)',
+        content: 'Restrinja seus resultados adicionando condições. Exemplo: "preço > 100" ou "status = ativo".',
+        position: 'bottom'
+     },
+     {
+        targetId: 'tab-btn-sortgroup',
+        title: '4. Ordenar e Agrupar',
+        content: 'Defina a ordem dos resultados e quais colunas usar para agrupamento em relatórios resumidos.',
+        position: 'bottom'
      },
      {
         targetId: 'builder-footer-actions',

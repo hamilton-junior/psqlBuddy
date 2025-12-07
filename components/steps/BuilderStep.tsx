@@ -1019,6 +1019,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   // UI Renderers
   const renderTabButton = (id: TabType, label: string, icon: React.ReactNode, tooltip: string) => (
     <button
+      id={`tab-btn-${id}`}
       onClick={() => setActiveTab(id)}
       title={tooltip}
       className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${

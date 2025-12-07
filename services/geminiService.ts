@@ -52,7 +52,7 @@ export const generateBuilderStateFromPrompt = async (
     1. Use APENAS nomes de tabelas e colunas que existem no schema.
     2. Para 'selectedTables', use o formato "schema.tabela" (ex: "public.users").
     3. Para 'selectedColumns', use o formato "schema.tabela.coluna".
-    4. Para 'aggregations', mapeie colunas para: COUNT, SUM, AVG, MIN, MAX ou NONE.
+    4. Para 'aggregations', retorne uma lista com a coluna e a função: COUNT, SUM, AVG, MIN, MAX ou NONE.
     5. Infira JOINS se múltiplas tabelas forem necessárias. Tente adivinhar as colunas de ligação (fk/pk) pelos nomes.
     6. Infira FILTROS se o usuário pedir (ex: "vendas acima de 100" -> operator: ">", value: "100").
     7. Se o usuário pedir agrupamento (ex: "por país"), adicione ao 'groupBy'.
@@ -75,8 +75,14 @@ export const generateBuilderStateFromPrompt = async (
             selectedTables: { type: Type.ARRAY, items: { type: Type.STRING } },
             selectedColumns: { type: Type.ARRAY, items: { type: Type.STRING } },
             aggregations: { 
-               type: Type.OBJECT, 
-               description: "Map of 'schema.table.column' keys to aggregation function strings"
+               type: Type.ARRAY,
+               items: {
+                 type: Type.OBJECT,
+                 properties: {
+                   column: { type: Type.STRING },
+                   function: { type: Type.STRING }
+                 }
+               }
             }, 
             filters: {
               type: Type.ARRAY,
@@ -117,7 +123,12 @@ export const generateBuilderStateFromPrompt = async (
       const processedState: Partial<BuilderState> = {
         selectedTables: rawData.selectedTables || [],
         selectedColumns: rawData.selectedColumns || [],
-        aggregations: rawData.aggregations || {},
+        aggregations: Array.isArray(rawData.aggregations) 
+            ? rawData.aggregations.reduce((acc: any, curr: any) => {
+                if (curr.column && curr.function) acc[curr.column] = curr.function;
+                return acc;
+              }, {})
+            : {},
         groupBy: rawData.groupBy || [],
         limit: rawData.limit || 100,
         filters: (rawData.filters || []).map((f: any) => ({
