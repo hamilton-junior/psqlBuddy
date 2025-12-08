@@ -1,6 +1,7 @@
 
+
 import React from 'react';
-import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, AlertCircle, GraduationCap } from 'lucide-react';
+import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, AlertCircle, GraduationCap, PenTool } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -43,29 +44,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-8 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">
           
-          {/* Beginner Mode Section */}
-          <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/30">
-             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                   <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-lg">
-                      <GraduationCap className="w-5 h-5" />
+          {/* Modes Section */}
+          <div className="space-y-3">
+             <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Modos de Interface</h4>
+             
+             {/* Beginner Mode */}
+             <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-800/30">
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                         <GraduationCap className="w-5 h-5" />
+                      </div>
+                      <div>
+                         <h4 className="font-bold text-slate-800 dark:text-white text-sm">Modo Iniciante</h4>
+                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Exibe dicas educativas sobre SQL.
+                         </p>
+                      </div>
                    </div>
-                   <div>
-                      <h4 className="font-bold text-slate-800 dark:text-white text-sm">Modo Iniciante</h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-[250px]">
-                         Exibe explicações didáticas sobre conceitos de SQL e dicas de uso do app em cada tela.
-                      </p>
-                   </div>
+                   <label className="relative inline-flex items-center cursor-pointer">
+                     <input 
+                       type="checkbox" 
+                       checked={formData.beginnerMode} 
+                       onChange={e => setFormData({...formData, beginnerMode: e.target.checked})}
+                       className="sr-only peer" 
+                     />
+                     <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                   </label>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={formData.beginnerMode} 
-                    onChange={e => setFormData({...formData, beginnerMode: e.target.checked})}
-                    className="sr-only peer" 
-                  />
-                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                </label>
              </div>
           </div>
 
@@ -277,6 +283,43 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
                   </select>
                </div>
             </div>
+          </div>
+
+          <hr className="border-slate-200 dark:border-slate-700" />
+
+          {/* Advanced Zone (Moved to Bottom) */}
+          <div className="bg-orange-50/50 dark:bg-orange-900/10 p-4 rounded-xl border border-orange-100 dark:border-orange-800/30">
+             <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                   <div className="p-2 bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 rounded-lg">
+                      <PenTool className="w-5 h-5" />
+                   </div>
+                   <div>
+                      <h4 className="font-bold text-slate-800 dark:text-white text-sm">Modo Avançado (CRUD)</h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                         Habilita edição inline na tabela de resultados.
+                      </p>
+                   </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.advancedMode} 
+                    onChange={e => setFormData({...formData, advancedMode: e.target.checked})}
+                    className="sr-only peer" 
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 dark:peer-focus:ring-orange-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                </label>
+             </div>
+             
+             {formData.advancedMode && (
+                 <div className="flex gap-2 items-start text-orange-800 dark:text-orange-200 text-xs bg-white dark:bg-slate-900/50 p-3 rounded-lg border border-orange-100 dark:border-orange-900/50 animate-in fade-in slide-in-from-top-2">
+                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-orange-600" />
+                     <p className="leading-relaxed">
+                         <strong>Atenção:</strong> Esta ferramenta serve apenas para auxílio. Você deve <u>sempre confirmar</u> a query gerada antes de executar qualquer comando de alteração no banco de dados real.
+                     </p>
+                 </div>
+             )}
           </div>
 
         </form>

@@ -1,4 +1,6 @@
 
+
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { DatabaseSchema, QueryResult, ValidationResult, BuilderState, AggregateFunction, Operator, JoinType } from "../types";
 
@@ -328,9 +330,10 @@ export const generateSqlFromBuilderState = async (
     4. **NENHUM RELACIONAMENTO ENCONTRADO**: Se múltiplas tabelas forem selecionadas (ex: Tabela A e Tabela B) e NÃO houver chave estrangeira explícita definida no schema entre elas, E você não conseguir encontrar uma coluna com exatamente o mesmo nome para servir de chave, NÃO adivinhe.
     5. **SINAL DE FALLBACK**: No caso de relacionamentos ausentes, retorne a string exata "NO_RELATIONSHIP" no campo 'sql'. NÃO gere uma consulta quebrada.
     
-    INSTRUÇÕES CRÍTICAS PARA ORDENAÇÃO E GROUP BY:
+    INSTRUÇÕES CRÍTICAS PARA COLUNAS E AGREGAÇÃO:
     6. **ORDER BY**: Se o usuário fornecer instruções de 'OrderBy', você DEVE anexar uma cláusula 'ORDER BY'. Não ignore.
     7. **AGREGAÇÃO**: Se o usuário solicitou uma função de agregação (COUNT, SUM, etc.) em uma coluna, você DEVE incluí-la no SELECT e adicionar o GROUP BY apropriado para as outras colunas.
+    8. **COLUNAS CALCULADAS**: Se a solicitação do usuário contiver "Colunas Calculadas", você DEVE incluí-las na cláusula SELECT. Exemplo: Se a fórmula for "price * qty" e o alias for "total", adicione "(price * qty) AS total" ao SELECT.
 
     INSTRUÇÕES DIDÁTICAS (Explanation):
     - No campo 'explanation', não descreva apenas o que a query faz. EXPLIQUE A SINTAXE para um iniciante.
@@ -356,7 +359,7 @@ export const generateSqlFromBuilderState = async (
   });
   
   // Inject calculated columns into context
-  const calculatedContext = state.calculatedColumns?.map(c => `Calculated Column: "${c.alias}" = ${c.expression}`).join('\n') || '';
+  const calculatedContext = state.calculatedColumns?.map(c => `Calculated Column: "${c.alias}" = ${c.expression}`).join('\n') || 'Nenhuma coluna calculada';
 
   const prompt = `
     SCHEMA DO BANCO DE DADOS (Use APENAS estas colunas):
@@ -365,7 +368,7 @@ export const generateSqlFromBuilderState = async (
     SOLICITAÇÃO DO USUÁRIO:
     - Tabelas: ${state.selectedTables.join(', ')}
     - Colunas Solicitadas (com agregações): ${formattedColumns.join(', ')}
-    - Colunas Calculadas (fórmulas): ${calculatedContext}
+    - Colunas Calculadas (fórmulas): ${calculatedContext} (OBRIGATÓRIO: INCLUIR NO SELECT SE HOUVER)
     - Joins Explícitos: ${JSON.stringify(state.joins)}
     - Filtros: ${JSON.stringify(state.filters)}
     - Agrupamento (GroupBy): ${state.groupBy.join(', ')}

@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces } from 'lucide-react';
-import { AppSettings, DashboardItem, ExplainNode } from '../../types';
+import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save } from 'lucide-react';
+import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
 import CodeSnippetModal from '../CodeSnippetModal';
@@ -113,6 +114,7 @@ const RowInspector: React.FC<RowInspectorProps> = ({ row, onClose }) => {
 };
 
 // --- DATA PROFILER COMPONENT ---
+// ... (kept unchanged)
 interface ProfilerStats {
    count: number;
    distinct: number;
@@ -220,19 +222,53 @@ interface VirtualTableProps {
    columns: string[];
    highlightMatch: (text: string) => React.ReactNode;
    onRowClick: (row: any) => void;
+   isAdvancedMode?: boolean;
+   onUpdateCell?: (rowIdx: number, colKey: string, newValue: string) => void;
 }
 
-const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick }) => {
+const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell }) => {
    const [currentPage, setCurrentPage] = useState(1);
    const [rowsPerPage, setRowsPerPage] = useState(25);
    const [activeProfileCol, setActiveProfileCol] = useState<string | null>(null);
    
+   // Edit State
+   const [editingCell, setEditingCell] = useState<{rowIdx: number, colKey: string, value: string} | null>(null);
+   const editInputRef = useRef<HTMLInputElement>(null);
+
    const totalRows = data.length;
    const totalPages = Math.ceil(totalRows / rowsPerPage);
    const startIndex = (currentPage - 1) * rowsPerPage;
    const currentData = data.slice(startIndex, startIndex + rowsPerPage);
 
    useEffect(() => { setCurrentPage(1); }, [data.length]);
+
+   useEffect(() => {
+      if (editingCell && editInputRef.current) {
+         editInputRef.current.focus();
+      }
+   }, [editingCell]);
+
+   const handleCellDoubleClick = (e: React.MouseEvent, rowIdx: number, colKey: string, val: any) => {
+      if (!isAdvancedMode || !onUpdateCell) return;
+      e.stopPropagation();
+      setEditingCell({
+         rowIdx: startIndex + rowIdx,
+         colKey,
+         value: String(val === null ? '' : val)
+      });
+   };
+
+   const handleEditSave = () => {
+      if (editingCell && onUpdateCell) {
+         onUpdateCell(editingCell.rowIdx, editingCell.colKey, editingCell.value);
+         setEditingCell(null);
+      }
+   };
+
+   const handleEditKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') handleEditSave();
+      if (e.key === 'Escape') setEditingCell(null);
+   };
 
    const formatValue = (val: any) => {
       if (val === null || val === undefined) return <span className="text-slate-300 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">null</span>;
@@ -241,7 +277,6 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded">TRUE</span> : 
             <span className="text-[10px] font-bold text-red-700 bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded">FALSE</span>;
       }
-      // Simple check for JSON object/array
       if (typeof val === 'object') {
          return <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-1 rounded flex items-center gap-1 w-fit"><Braces className="w-3 h-3" /> JSON</span>;
       }
@@ -249,7 +284,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
    };
 
    return (
-      <div className="flex flex-col h-full relative" onClick={() => setActiveProfileCol(null)}>
+      <div className="flex flex-col h-full relative" onClick={() => { setActiveProfileCol(null); if(editingCell) setEditingCell(null); }}>
          <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700 relative">
             <table className="w-full text-left border-collapse table-fixed">
                <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
@@ -275,15 +310,38 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                   </tr>
                </thead>
                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                  {currentData.map((row, idx) => (
-                     <tr key={idx} onClick={() => onRowClick(row)} className="group hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors h-[40px] cursor-pointer">
-                        {columns.map((col, cIdx) => (
-                           <td key={col} className={`px-4 py-2 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-slate-900 dark:group-hover:text-white transition-colors ${cIdx === 0 ? 'pl-6 font-medium' : ''}`}>
-                              {formatValue(row[col])}
-                           </td>
-                        ))}
-                     </tr>
-                  ))}
+                  {currentData.map((row, idx) => {
+                     const realIdx = startIndex + idx;
+                     return (
+                        <tr key={idx} onClick={() => onRowClick(row)} className="group hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors h-[40px] cursor-pointer">
+                           {columns.map((col, cIdx) => {
+                              const isEditing = editingCell?.rowIdx === realIdx && editingCell?.colKey === col;
+                              return (
+                                 <td 
+                                    key={col} 
+                                    onDoubleClick={(e) => handleCellDoubleClick(e, idx, col, row[col])}
+                                    className={`px-4 py-2 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-slate-900 dark:group-hover:text-white transition-colors ${cIdx === 0 ? 'pl-6 font-medium' : ''} ${isAdvancedMode ? 'hover:bg-orange-50 dark:hover:bg-orange-900/20 cursor-text' : ''}`}
+                                    title={isAdvancedMode ? "Clique duplo para editar" : String(row[col])}
+                                 >
+                                    {isEditing ? (
+                                       <input 
+                                          ref={editInputRef}
+                                          value={editingCell.value}
+                                          onChange={(e) => setEditingCell({...editingCell, value: e.target.value})}
+                                          onBlur={handleEditSave}
+                                          onKeyDown={handleEditKeyDown}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="w-full h-full bg-white dark:bg-slate-800 border-2 border-indigo-500 rounded px-1 outline-none text-slate-900 dark:text-white shadow-lg z-20 relative -ml-1 -my-1"
+                                       />
+                                    ) : (
+                                       formatValue(row[col])
+                                    )}
+                                 </td>
+                              );
+                           })}
+                        </tr>
+                     );
+                  })}
                </tbody>
             </table>
          </div>
@@ -307,6 +365,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
    );
 };
 
+// ... (ExplainVisualizer & SmartFilterBar kept unchanged) ...
 // --- EXPLAIN VISUALIZER ---
 const ExplainVisualizer: React.FC<{ plan: ExplainNode | null, loading: boolean, error: string | null }> = ({ plan, loading, error }) => {
    if (loading) return <div className="p-10 text-center"><div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div><p className="text-slate-500">Analisando performance...</p></div>;
@@ -409,13 +468,16 @@ interface ResultsStepProps {
   onShowToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   credentials?: any; 
   executionDuration?: number;
+  schema?: DatabaseSchema; // Added schema
 }
 
 type ResultTab = 'table' | 'chart' | 'analysis' | 'explain';
 
-const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, onNewConnection, settings, onAddToDashboard, onShowToast, credentials, executionDuration }) => {
+const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, onNewConnection, settings, onAddToDashboard, onShowToast, credentials, executionDuration, schema }) => {
   const [activeTab, setActiveTab] = useState<ResultTab>('table');
-  const columns = data.length > 0 ? Object.keys(data[0]) : [];
+  const [localData, setLocalData] = useState(data); // Local state for optimistic updates
+  
+  const columns = localData.length > 0 ? Object.keys(localData[0]) : [];
   
   // Smart Filters State
   const [filters, setFilters] = useState<FilterRule[]>([]);
@@ -442,7 +504,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   }, []);
 
   const filteredData = React.useMemo(() => {
-     let res = data;
+     let res = localData;
      
      // Apply Smart Filters
      if (filters.length > 0) {
@@ -473,16 +535,63 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      }
      
      return res;
-  }, [data, filters, localSearch]);
+  }, [localData, filters, localSearch]);
 
   const highlightMatch = (text: string) => {
-    // Only highlight if using global search or contains filter
     const term = localSearch || filters.find(f => f.operator === 'contains')?.value || '';
     if (!term) return text;
     
     const escapedSearch = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const parts = text.split(new RegExp(`(${escapedSearch})`, 'gi'));
     return <>{parts.map((part, i) => part.toLowerCase() === term.toLowerCase() ? <span key={i} className="bg-yellow-200 dark:bg-yellow-600/50 text-slate-900 dark:text-white font-semibold rounded px-0.5">{part}</span> : part)}</>;
+  };
+
+  // --- Update Cell Handler (Advanced Mode) ---
+  const handleUpdateCell = (rowIdx: number, colKey: string, newValue: string) => {
+     if (!settings?.advancedMode) return;
+
+     // 1. Identify Target Table from SQL FROM clause (simple approximation)
+     const fromMatch = sql.match(/FROM\s+([a-zA-Z0-9_."]+)/i);
+     const tableName = fromMatch ? fromMatch[1] : "table_name";
+
+     // 2. Identify PK
+     const row = localData[rowIdx];
+     let pkCol = 'id';
+     let pkVal = row['id'];
+
+     if (!pkVal) {
+        // Fallback: look for 'grid' or schema defined PK
+        if (row['grid']) { pkCol = 'grid'; pkVal = row['grid']; }
+        else if (schema) {
+           // Try to find table in schema matching the name
+           const t = schema.tables.find(tbl => tableName.includes(tbl.name));
+           if (t) {
+              const pk = t.columns.find(c => c.isPrimaryKey);
+              if (pk) {
+                 pkCol = pk.name;
+                 pkVal = row[pkCol];
+              }
+           }
+        }
+     }
+
+     if (!pkVal) {
+        onShowToast("Não foi possível identificar a Chave Primária (ID) para atualizar esta linha.", "error");
+        return;
+     }
+
+     // 3. Generate SQL
+     const updateSql = `UPDATE ${tableName} SET ${colKey} = '${newValue.replace(/'/g, "''")}' WHERE ${pkCol} = ${pkVal};`;
+     
+     // 4. Update Local Data (Optimistic)
+     const newData = [...localData];
+     newData[rowIdx] = { ...newData[rowIdx], [colKey]: newValue };
+     setLocalData(newData);
+
+     // 5. Show Feedback
+     onShowToast(`UPDATE Gerado: ${updateSql}`, "info");
+     
+     // Note: In a real app, we would execute this SQL against the backend here.
   };
 
   // --- Smart Copy Handlers ---
@@ -601,6 +710,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
              <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
                 Resultados
                 <span className="text-xs font-normal text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">{filteredData.length} registros</span>
+                {settings?.advancedMode && <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-bold border border-orange-200 flex items-center gap-1"><PenTool className="w-3 h-3" /> Modo Edição</span>}
              </h2>
            </div>
         </div>
@@ -695,7 +805,9 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
                   data={filteredData} 
                   columns={columns} 
                   highlightMatch={highlightMatch} 
-                  onRowClick={(row) => setSelectedRow(row)} 
+                  onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} 
+                  isAdvancedMode={settings?.advancedMode}
+                  onUpdateCell={handleUpdateCell}
                />
             )}
             {activeTab === 'chart' && (

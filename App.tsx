@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, AppSettings, DEFAULT_SETTINGS, DashboardItem } from './types';
 import Sidebar from './components/Sidebar';
@@ -727,6 +729,7 @@ function App() {
               onShowToast={showToast}
               credentials={credentials}
               executionDuration={executionDuration}
+              schema={schema || undefined} // NEW: Pass schema to ResultsStep
             />
           )}
 

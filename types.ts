@@ -1,4 +1,5 @@
 
+
 export interface Column {
   name: string;
   type: string;
@@ -109,7 +110,8 @@ export interface AppSettings {
   enableAiGeneration: boolean;
   enableAiValidation: boolean;
   enableAiTips: boolean;
-  beginnerMode: boolean; // New Flag
+  beginnerMode: boolean; 
+  advancedMode: boolean; // New Flag for Inline Editing
   aiGenerationTimeout: number; // ms
   defaultDbHost: string;
   defaultDbPort: string;
@@ -124,7 +126,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enableAiGeneration: true,
   enableAiValidation: true,
   enableAiTips: true,
-  beginnerMode: true, // Default ON
+  beginnerMode: true, 
+  advancedMode: false, // Default OFF
   aiGenerationTimeout: 3000,
   defaultDbHost: 'localhost',
   defaultDbPort: '5432',

@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useMemo, useEffect, useCallback, memo, useRef } from 'react';
 import { DatabaseSchema, BuilderState, ExplicitJoin, JoinType, Filter, Operator, OrderBy, AppSettings, SavedQuery, AggregateFunction, Column, Table, CalculatedColumn } from '../../types';
 import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square, Plus, Trash2, ArrowRightLeft, Filter as FilterIcon, ArrowDownAZ, List, Link2, ChevronDown, Save, FolderOpen, Calendar, Clock, Key, Combine, ArrowRight, ArrowLeft, FastForward, Target, CornerDownRight, Wand2, Loader2, Undo2, Redo2, Calculator, Sparkles, LayoutTemplate, PlayCircle, Eye, Info, ChevronUp } from 'lucide-react';
@@ -6,6 +8,7 @@ import SchemaViewer from '../SchemaViewer';
 import { generateBuilderStateFromPrompt } from '../../services/geminiService';
 import { generateLocalSql } from '../../services/localSqlService';
 import BeginnerTip from '../BeginnerTip';
+import FormulaModal from '../FormulaModal';
 
 interface BuilderStepProps {
   schema: DatabaseSchema;
@@ -539,6 +542,9 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   // Live Preview State
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [liveSql, setLiveSql] = useState('');
+  
+  // Formula Modal State
+  const [showFormulaModal, setShowFormulaModal] = useState(false);
 
   // Update live preview whenever state changes
   useEffect(() => {
@@ -777,16 +783,11 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   };
   
   // --- Calculated Columns Logic (Feature #5) ---
-  const addCalculatedColumn = () => {
-    const alias = prompt("Nome da nova coluna (Alias):", "total_calculado");
-    if (!alias) return;
-    const expr = prompt("Expressão SQL (ex: preco * quantidade):");
-    if (!expr) return;
-
+  const handleAddCalculatedColumn = (alias: string, expression: string) => {
     const newCalc: CalculatedColumn = {
       id: crypto.randomUUID(),
       alias,
-      expression: expr
+      expression
     };
     
     const currentState = stateRef.current;
@@ -813,11 +814,17 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   }, [schema.tables]);
 
   const getAllSelectedTableColumns = () => {
-    let cols: {tableId: string, table: string, column: string}[] = [];
+    let cols: {tableId: string, table: string, column: string, fullId: string, type: string}[] = [];
     state.selectedTables.forEach(tId => {
       const t = schema.tables.find(table => getTableId(table) === tId);
       if (t) {
-        t.columns.forEach(c => cols.push({ tableId: tId, table: t.name, column: c.name }));
+        t.columns.forEach(c => cols.push({ 
+           tableId: tId, 
+           table: t.name, 
+           column: c.name, 
+           fullId: `${tId}.${c.name}`,
+           type: c.type
+        }));
       }
     });
     return cols;
@@ -1119,6 +1126,15 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
 
   return (
     <div className="w-full h-full flex flex-col relative">
+      
+      {/* Formula Modal */}
+      <FormulaModal 
+         isOpen={showFormulaModal}
+         onClose={() => setShowFormulaModal(false)}
+         onSave={handleAddCalculatedColumn}
+         availableColumns={getAllSelectedTableColumns()}
+      />
+
       <div className="flex justify-between items-end mb-4 shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -1228,25 +1244,31 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                         <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
                           <Calculator className="w-3.5 h-3.5" /> Colunas Calculadas (Fórmulas)
                         </h3>
-                        <button onClick={addCalculatedColumn} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1">
+                        <button onClick={() => setShowFormulaModal(true)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-bold bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded transition-colors">
                           <Plus className="w-3 h-3" /> Nova Fórmula
                         </button>
                       </div>
                       
-                      {state.calculatedColumns && state.calculatedColumns.length > 0 && (
+                      {state.calculatedColumns && state.calculatedColumns.length > 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                           {state.calculatedColumns.map(calc => (
-                            <div key={calc.id} className="bg-white dark:bg-slate-800 p-2 rounded border border-indigo-100 dark:border-indigo-900/50 shadow-sm flex items-center justify-between">
+                            <div key={calc.id} className="bg-white dark:bg-slate-800 p-2 rounded border border-indigo-100 dark:border-indigo-900/50 shadow-sm flex items-center justify-between group">
                                <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate">{calc.alias}</div>
-                                  <code className="text-[10px] text-slate-500 dark:text-slate-400 block truncate font-mono bg-slate-50 dark:bg-slate-900 px-1 rounded mt-0.5">{calc.expression}</code>
+                                  <div className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate flex items-center gap-1">
+                                     <Calculator className="w-3 h-3 opacity-50" /> {calc.alias}
+                                  </div>
+                                  <code className="text-[10px] text-slate-500 dark:text-slate-400 block truncate font-mono bg-slate-50 dark:bg-slate-900 px-1 rounded mt-0.5 border border-slate-100 dark:border-slate-800">{calc.expression}</code>
                                </div>
-                               <button onClick={() => removeCalculatedColumn(calc.id)} className="text-slate-400 hover:text-red-500 p-1">
+                               <button onClick={() => removeCalculatedColumn(calc.id)} className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <Trash2 className="w-3.5 h-3.5" />
                                </button>
                             </div>
                           ))}
                         </div>
+                      ) : (
+                         <div className="text-[10px] text-slate-400 bg-slate-50/50 dark:bg-slate-900/30 border border-dashed border-slate-200 dark:border-slate-700 rounded p-2 text-center mb-4">
+                            Nenhuma fórmula criada. Clique em "Nova Fórmula" para criar campos personalizados (ex: lucro = venda - custo).
+                         </div>
                       )}
                    </div>
                  )}
@@ -1366,7 +1388,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                <div className="max-w-3xl mx-auto">
                  
                  <BeginnerTip settings={settings} title="Filtros (WHERE)">
-                    Os filtros funcionam como uma peneira. O banco de dados verifica cada linha e mantém apenas aquelas que atendem às suas condições (ex: preço maior que 100).
+                    Os filtros funcionam como uma peneira. O banco de dados verifica cada linha e mantém apenas aquelas que atendem à suas condições (ex: preço maior que 100).
                  </BeginnerTip>
 
                  <div className="mb-4 flex justify-between items-center">
