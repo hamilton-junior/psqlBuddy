@@ -1,7 +1,6 @@
 
-
 import React from 'react';
-import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, AlertCircle } from 'lucide-react';
+import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, AlertCircle, GraduationCap } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -44,6 +43,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-8 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">
           
+          {/* Beginner Mode Section */}
+          <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/30">
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                   <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                      <GraduationCap className="w-5 h-5" />
+                   </div>
+                   <div>
+                      <h4 className="font-bold text-slate-800 dark:text-white text-sm">Modo Iniciante</h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-[250px]">
+                         Exibe explicações didáticas sobre conceitos de SQL e dicas de uso do app em cada tela.
+                      </p>
+                   </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.beginnerMode} 
+                    onChange={e => setFormData({...formData, beginnerMode: e.target.checked})}
+                    className="sr-only peer" 
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+             </div>
+          </div>
+
+          <hr className="border-slate-200 dark:border-slate-700" />
+
           {/* AI Master Section */}
           <div>
              <h4 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-3 flex items-center gap-1">

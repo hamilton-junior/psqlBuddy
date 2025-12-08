@@ -109,6 +109,7 @@ export interface AppSettings {
   enableAiGeneration: boolean;
   enableAiValidation: boolean;
   enableAiTips: boolean;
+  beginnerMode: boolean; // New Flag
   aiGenerationTimeout: number; // ms
   defaultDbHost: string;
   defaultDbPort: string;
@@ -123,6 +124,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enableAiGeneration: true,
   enableAiValidation: true,
   enableAiTips: true,
+  beginnerMode: true, // Default ON
   aiGenerationTimeout: 3000,
   defaultDbHost: 'localhost',
   defaultDbPort: '5432',

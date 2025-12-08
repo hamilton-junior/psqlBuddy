@@ -5,6 +5,7 @@ import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Squ
 import SchemaViewer from '../SchemaViewer';
 import { generateBuilderStateFromPrompt } from '../../services/geminiService';
 import { generateLocalSql } from '../../services/localSqlService';
+import BeginnerTip from '../BeginnerTip';
 
 interface BuilderStepProps {
   schema: DatabaseSchema;
@@ -1213,6 +1214,13 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
              {/* --- COLUMNS TAB --- */}
              {activeTab === 'columns' && (
                <div className="space-y-6">
+                 
+                 <BeginnerTip settings={settings} title="Seleção e Projeção (SELECT)">
+                    Para ver os dados, primeiro selecione as tabelas na barra lateral esquerda. As colunas aparecerão abaixo.
+                    <br/>
+                    Em SQL, isso é a cláusula <code>SELECT</code>. Você também pode criar novas colunas usando fórmulas matemáticas.
+                 </BeginnerTip>
+
                  {/* Calculated Columns Section (Feature #5) */}
                  {state.selectedTables.length > 0 && (
                    <div className="mb-4">
@@ -1298,6 +1306,15 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
              {/* --- JOINS TAB --- */}
              {activeTab === 'joins' && (
                <div className="max-w-4xl mx-auto pb-10">
+                 
+                 <BeginnerTip settings={settings} title="Relacionamentos (JOINS)">
+                    Joins conectam tabelas para que você possa consultar dados de ambas ao mesmo tempo.
+                    <ul className="list-disc ml-4 mt-1">
+                       <li><strong>INNER:</strong> Traz apenas linhas que têm correspondência nas duas tabelas.</li>
+                       <li><strong>LEFT:</strong> Traz TUDO da tabela da esquerda, e o que combinar da direita (preenche com NULL se não achar).</li>
+                    </ul>
+                 </BeginnerTip>
+
                  {/* ... (Existing Joins Tab Content - kept clean for brevity) ... */}
                  <div className="mb-6 flex justify-between items-center">
                     <div>
@@ -1347,6 +1364,11 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
              {/* --- FILTERS TAB --- */}
              {activeTab === 'filters' && (
                <div className="max-w-3xl mx-auto">
+                 
+                 <BeginnerTip settings={settings} title="Filtros (WHERE)">
+                    Os filtros funcionam como uma peneira. O banco de dados verifica cada linha e mantém apenas aquelas que atendem às suas condições (ex: preço maior que 100).
+                 </BeginnerTip>
+
                  <div className="mb-4 flex justify-between items-center">
                     <p className="text-sm text-slate-500 dark:text-slate-400">Adicione condições WHERE. Para variáveis, use :nome_parametro.</p>
                     <button onClick={addFilter} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded hover:bg-indigo-700 transition-colors shadow-sm"><Plus className="w-3.5 h-3.5" /> Adicionar Filtro</button>
@@ -1374,7 +1396,11 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
              {/* --- SORT & GROUP TAB --- */}
              {activeTab === 'sortgroup' && (
                <div className="max-w-3xl mx-auto space-y-8">
-                 {/* ... (Existing Sort/Group content kept as is) ... */}
+                 
+                 <BeginnerTip settings={settings} title="Agrupamento e Ordenação">
+                    O <code>GROUP BY</code> é usado para criar relatórios resumidos. Se você usar funções como <code>SUM</code> ou <code>COUNT</code>, deve agrupar pelas outras colunas (ex: somar Vendas agrupado por País).
+                 </BeginnerTip>
+
                  <div>
                     <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
                        <List className="w-4 h-4 text-indigo-600" /> Agrupar Por (Group By)

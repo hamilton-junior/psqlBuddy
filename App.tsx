@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, AppSettings, DEFAULT_SETTINGS, DashboardItem } from './types';
 import Sidebar from './components/Sidebar';
@@ -428,7 +427,7 @@ function App() {
              return; // User cancelled
           }
           // Basic replacement logic, could be more robust
-          tempSql = tempSql.replaceAll(`:${param}`, `'${val}'`);
+          tempSql = tempSql.split(`:${param}`).join(`'${val}'`);
        }
        sqlToExecute = tempSql;
     }

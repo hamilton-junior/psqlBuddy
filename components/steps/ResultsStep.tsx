@@ -9,6 +9,7 @@ import { addToHistory } from '../../services/historyService';
 import { explainQueryReal } from '../../services/dbService';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
+import BeginnerTip from '../BeginnerTip';
 
 // --- ROW INSPECTOR MODAL ---
 interface RowInspectorProps {
@@ -670,6 +671,12 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
            )}
         </div>
       </div>
+
+      {settings && (
+         <BeginnerTip settings={settings} title="Leitura de Resultados">
+            Esta tabela exibe o resultado da execução do seu SQL. Lembre-se: estes dados são um "snapshot" (foto) do momento da consulta. Se o banco mudar, você precisará executar novamente para ver as atualizações.
+         </BeginnerTip>
+      )}
 
       {/* Main Content Area */}
       <div id="results-content" className="flex-1 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col relative">
