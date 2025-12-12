@@ -1,8 +1,11 @@
 
+
+
 import React, { useState, useEffect } from 'react';
-import { DatabaseSchema, QueryResult } from '../../types';
-import { Terminal, Play, ArrowLeft, CheckCircle2, ShieldAlert, Info, Copy, Check, Loader2, Lightbulb, ShieldOff, AlertCircle, AlignLeft, Minimize2, Split, Code2 } from 'lucide-react';
+import { DatabaseSchema, QueryResult, OptimizationAnalysis } from '../../types';
+import { Terminal, Play, ArrowLeft, CheckCircle2, ShieldAlert, Info, Copy, Check, Loader2, Lightbulb, ShieldOff, AlertCircle, AlignLeft, Minimize2, Split, Code2, Zap, TrendingUp, Gauge, X } from 'lucide-react';
 import Editor, { useMonaco, DiffEditor } from '@monaco-editor/react';
+import { analyzeQueryPerformance } from '../../services/geminiService';
 
 interface PreviewStepProps {
   queryResult: QueryResult;
@@ -18,6 +21,12 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
   const [copied, setCopied] = useState(false);
   const [editedSql, setEditedSql] = useState(queryResult.sql || '');
   const [viewMode, setViewMode] = useState<'edit' | 'diff'>('edit');
+  
+  // Optimization State
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<OptimizationAnalysis | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  
   const monaco = useMonaco();
 
   // Shortcut Listener
@@ -54,18 +63,11 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
     return () => disposable.dispose();
   }, [monaco, schema]);
 
-  // Sync editedSql when queryResult changes, but only if we are in edit mode and it's empty
   useEffect(() => {
     if (queryResult.sql && editedSql === '') {
        setEditedSql(queryResult.sql);
     }
   }, [queryResult.sql]);
-
-  const isValid = queryResult.validation?.isValid ?? true;
-  const validationError = queryResult.validation?.error;
-  const detailedError = queryResult.validation?.detailedError;
-  const correctedSql = queryResult.validation?.correctedSql;
-  const errorLine = queryResult.validation?.errorLine;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(editedSql);
@@ -89,7 +91,41 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
      setEditedSql(editedSql.replace(/\s+/g, ' ').trim());
   };
 
-  const isDarkMode = document.documentElement.classList.contains('dark');
+  const handleAnalyzePerformance = async () => {
+     if (!schema || !editedSql) return;
+     setIsAnalyzing(true);
+     setShowAnalysis(true);
+     try {
+        const result = await analyzeQueryPerformance(schema, editedSql);
+        setAnalysisResult(result);
+     } catch (e) {
+        console.error("Analysis failed", e);
+        // Simple mock fallback if quota fails to show UI
+        setAnalysisResult({
+           rating: 50,
+           summary: "Erro na análise",
+           explanation: "Não foi possível conectar ao serviço de IA.",
+           suggestedIndexes: [],
+           optimizedSql: editedSql,
+           improvementDetails: ""
+        });
+     } finally {
+        setIsAnalyzing(false);
+     }
+  };
+
+  const handleApplyOptimization = () => {
+     if (analysisResult?.optimizedSql) {
+        setEditedSql(analysisResult.optimizedSql);
+        setShowAnalysis(false);
+     }
+  };
+
+  const isValid = queryResult.validation?.isValid ?? true;
+  const validationError = queryResult.validation?.error;
+  const detailedError = queryResult.validation?.detailedError;
+  const correctedSql = queryResult.validation?.correctedSql;
+  const errorLine = queryResult.validation?.errorLine;
   const hasChanges = editedSql.trim() !== (queryResult.sql || '').trim();
 
   // Common options
@@ -104,7 +140,6 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
      scrollbar: { vertical: 'visible' as const, horizontal: 'visible' as const, useShadows: false, verticalScrollbarSize: 10 },
   };
 
-  // Specific options for the standard editor
   const editorOptions = {
      ...commonOptions,
      minimap: { enabled: false },
@@ -113,30 +148,109 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
      hideCursorInOverviewRuler: true,
   };
 
-  // Specific options for the diff editor
   const diffOptions = {
      ...commonOptions,
      renderSideBySide: true,
-     readOnly: true, // This makes the modified side read-only
+     readOnly: true, 
      originalEditable: false,
      minimap: { enabled: false }
   };
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col relative">
+      
+      {/* Optimization Modal / Slide-over */}
+      {showAnalysis && (
+         <div className="absolute inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex justify-end">
+            <div className="w-full max-w-lg h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+               <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                  <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                     <Gauge className="w-5 h-5 text-indigo-500" /> Consultor DBA (IA)
+                  </h3>
+                  <button onClick={() => setShowAnalysis(false)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500"><X className="w-5 h-5" /></button>
+               </div>
+               
+               <div className="flex-1 overflow-y-auto p-6">
+                  {isAnalyzing ? (
+                     <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+                        <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
+                        <p className="text-sm">Analisando plano de execução e índices...</p>
+                     </div>
+                  ) : analysisResult ? (
+                     <div className="space-y-6">
+                        {/* Rating */}
+                        <div className="flex items-center gap-4">
+                           <div className="relative w-16 h-16 flex items-center justify-center">
+                              <svg className="w-full h-full transform -rotate-90">
+                                 <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-200 dark:text-slate-800" />
+                                 <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={175.9} strokeDashoffset={175.9 - (175.9 * analysisResult.rating) / 100} className={`${analysisResult.rating > 80 ? 'text-emerald-500' : analysisResult.rating > 50 ? 'text-amber-500' : 'text-red-500'} transition-all duration-1000 ease-out`} />
+                              </svg>
+                              <span className="absolute text-sm font-bold text-slate-700 dark:text-slate-200">{analysisResult.rating}</span>
+                           </div>
+                           <div>
+                              <h4 className="font-bold text-slate-800 dark:text-white">{analysisResult.summary}</h4>
+                              <p className="text-xs text-slate-500">{analysisResult.rating > 80 ? 'Excelente performance estimada.' : 'Possíveis gargalos detectados.'}</p>
+                           </div>
+                        </div>
+
+                        {/* Explanation */}
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                           <h5 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1"><Info className="w-3.5 h-3.5" /> Diagnóstico</h5>
+                           <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">{analysisResult.explanation}</p>
+                        </div>
+
+                        {/* Indexes */}
+                        {analysisResult.suggestedIndexes.length > 0 && (
+                           <div>
+                              <h5 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1"><Zap className="w-3.5 h-3.5 text-amber-500" /> Índices Sugeridos</h5>
+                              <div className="space-y-2">
+                                 {analysisResult.suggestedIndexes.map((idx, i) => (
+                                    <div key={i} className="bg-slate-900 text-slate-300 p-3 rounded-lg text-xs font-mono border border-slate-700 relative group">
+                                       {idx}
+                                       <button onClick={() => navigator.clipboard.writeText(idx)} className="absolute top-2 right-2 p-1 bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:text-white"><Copy className="w-3 h-3" /></button>
+                                    </div>
+                                 ))}
+                              </div>
+                           </div>
+                        )}
+
+                        {/* Optimized SQL */}
+                        {analysisResult.optimizedSql !== editedSql && (
+                           <div>
+                              <h5 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> Query Otimizada</h5>
+                              <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100 dark:border-emerald-800/30">
+                                 <p className="text-xs text-emerald-800 dark:text-emerald-200 mb-2 font-bold">{analysisResult.improvementDetails}</p>
+                                 <button onClick={handleApplyOptimization} className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center justify-center gap-2">
+                                    <Check className="w-4 h-4" /> Aplicar Melhoria
+                                 </button>
+                              </div>
+                           </div>
+                        )}
+                     </div>
+                  ) : null}
+               </div>
+            </div>
+         </div>
+      )}
+
       <div className="mb-4 flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><Terminal className="w-6 h-6 text-indigo-600" /> Editor SQL</h2>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Revise e edite o SQL antes da execução. <span className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 ml-2 font-mono">Ctrl + Enter para Executar</span></p>
         </div>
         
-        <div className="bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 flex gap-1">
-           <button onClick={() => setViewMode('edit')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'edit' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-              <Code2 className="w-3.5 h-3.5" /> Editor
+        <div className="flex gap-2">
+           <button onClick={handleAnalyzePerformance} disabled={!schema} className="flex items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/50 rounded-lg text-xs font-bold transition-all border border-amber-200 dark:border-amber-800">
+              <Zap className="w-3.5 h-3.5 fill-current" /> Otimizar (IA)
            </button>
-           <button onClick={() => setViewMode('diff')} disabled={!hasChanges} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'diff' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-50'}`}>
-              <Split className="w-3.5 h-3.5" /> Comparar Alterações
-           </button>
+           <div className="bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 flex gap-1">
+              <button onClick={() => setViewMode('edit')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'edit' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
+                 <Code2 className="w-3.5 h-3.5" /> Editor
+              </button>
+              <button onClick={() => setViewMode('diff')} disabled={!hasChanges} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'diff' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-50'}`}>
+                 <Split className="w-3.5 h-3.5" /> Comparar
+              </button>
+           </div>
         </div>
       </div>
 
@@ -234,7 +348,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
            <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-sm">{queryResult.explanation}</p>
            {queryResult.tips && queryResult.tips.length > 0 && (
              <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-                <h5 className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">DICAS DE OTIMIZAÇÃO</h5>
+                <h5 className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">DICAS GERAIS</h5>
                 <ul className="list-disc pl-4 space-y-1">{queryResult.tips.map((tip, i) => <li key={i} className="text-xs text-slate-600 dark:text-slate-400">{tip}</li>)}</ul>
              </div>
            )}

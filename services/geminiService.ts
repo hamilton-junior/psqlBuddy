@@ -1,8 +1,9 @@
 
 
 
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { DatabaseSchema, QueryResult, ValidationResult, BuilderState, AggregateFunction, Operator, JoinType } from "../types";
+import { DatabaseSchema, QueryResult, ValidationResult, BuilderState, AggregateFunction, Operator, JoinType, OptimizationAnalysis } from "../types";
 
 // Vite will replace 'process.env.API_KEY' with the actual string from your .env file at build time.
 // @ts-ignore: process is defined via Vite config
@@ -24,7 +25,12 @@ const formatSchemaForPrompt = (schema: DatabaseSchema): string => {
     tableName: t.name,
     schema: t.schema || 'public',
     fullName: `${t.schema || 'public'}.${t.name}`,
-    columns: t.columns.map(c => c.name) // Only names needed for validation existence check
+    columns: t.columns.map(c => ({
+       name: c.name,
+       type: c.type,
+       isPk: c.isPrimaryKey,
+       isFk: c.isForeignKey
+    })) 
   }));
   return JSON.stringify(simplifiedStructure, null, 2);
 };
@@ -33,7 +39,6 @@ const formatSchemaForPrompt = (schema: DatabaseSchema): string => {
 
 /**
  * Converts a natural language user request into a structured BuilderState object.
- * This allows the UI to be auto-filled based on a sentence like "Show sales by country".
  */
 export const generateBuilderStateFromPrompt = async (
   schema: DatabaseSchema,
@@ -148,7 +153,7 @@ export const generateBuilderStateFromPrompt = async (
           toColumn: j.toColumn,
           type: (['INNER', 'LEFT', 'RIGHT', 'FULL'].includes(j.type) ? j.type : 'INNER') as JoinType
         })),
-        orderBy: [] // Usually AI struggles to get this perfectly right in same pass, leave empty for now
+        orderBy: []
       };
 
       return processedState;
@@ -162,7 +167,6 @@ export const generateBuilderStateFromPrompt = async (
 
 /**
  * Validates a generated SQL query against a database schema using AI.
- * ...
  */
 export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Promise<ValidationResult> => {
   
@@ -173,11 +177,11 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
     ${formatSchemaForPrompt(schema)}
 
     REGRAS DE VALIDAÇÃO:
-    1. **VERIFICAÇÃO RIGOROSA DE COLUNAS**: Você deve verificar se TODA coluna usada no SQL (SELECT list, WHERE clause, JOIN ON clause, ORDER BY) existe EXATAMENTE no Schema de Referência acima para a tabela correspondente.
-    2. **SEM ADIVINHAÇÃO**: NÃO assuma que uma coluna existe só porque faz sentido. Se a tabela 'lancto' tem apenas ['id', 'data'], e a query usa 'lancto.movto', é INVÁLIDO.
-    3. **VALIDAÇÃO DE JOIN**: Verifique a cláusula ON cuidadosamente. A coluna do lado direito do igual pertence realmente àquela tabela?
-    4. **INTEGRIDADE DE PALAVRAS-CHAVE**: Verifique se há palavras reservadas aparecendo dentro de identificadores. Exemplo: "c ON ta_creditar" é um ERRO DE SINTAXE se a coluna pretendida era "conta_creditar". Palavras como ON, FROM, WHERE não devem dividir palavras.
-    5. **REGRAS DE GROUP BY**: Se uma função de agregação (COUNT, SUM, AVG) for usada, assegure-se de que todas as colunas não agregadas no SELECT estejam presentes na cláusula GROUP BY.
+    1. **VERIFICAÇÃO RIGOROSA DE COLUNAS**: Você deve verificar se TODA coluna usada no SQL (SELECT list, WHERE clause, JOIN ON clause, ORDER BY) existe EXATAMENTE no Schema de Referência acima.
+    2. **SEM ADIVINHAÇÃO**: NÃO assuma que uma coluna existe só porque faz sentido.
+    3. **VALIDAÇÃO DE JOIN**: Verifique a cláusula ON cuidadosamente.
+    4. **INTEGRIDADE DE PALAVRAS-CHAVE**: Verifique se há palavras reservadas.
+    5. **REGRAS DE GROUP BY**: Assegure-se de que todas as colunas não agregadas estejam no GROUP BY.
     `;
   }
 
@@ -192,18 +196,16 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
     Tarefa:
     1. Analise o SQL para identificar todas as tabelas e colunas referenciadas.
     2. Compare-as com o SCHEMA DE REFERÊNCIA.
-    3. Identifique se alguma coluna usada não existe no schema.
-    4. Verifique erros de sintaxe, especialmente palavras/identificadores quebrados ou palavras-chave ausentes.
-    5. Verifique erros de lógica específicos do PostgreSQL (ex: requisitos de GROUP BY).
-    6. Se houver erro, tente identificar em qual linha (aproximada) do SQL fornecido o erro ocorre (considere a primeira linha como 1).
+    3. Verifique erros de sintaxe e lógica (GROUP BY).
+    4. Se houver erro, tente identificar em qual linha (aproximada) o erro ocorre.
 
     Retorne JSON:
     {
       "isValid": boolean,
-      "error": string (Um resumo técnico conciso de 1 frase do erro),
-      "detailedError": string (Uma explicação educativa e útil em pt-BR. Explique POR QUE está errado e nomeie explicitamente a tabela/coluna causando o problema. Se for erro de Group By, explique a regra.),
-      "errorLine": number (O número da linha onde o erro começa, ou null se não aplicável),
-      "correctedSql": string (SQL corrigido opcional. Se encontrar uma correspondência provável para uma coluna mal digitada, use aqui. Se não houver correção possível, null)
+      "error": string (Resumo técnico conciso),
+      "detailedError": string (Explicação em pt-BR),
+      "errorLine": number,
+      "correctedSql": string (opcional)
     }
   `;
 
@@ -232,7 +234,7 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
         const cleanText = cleanJsonString(response.text);
         return JSON.parse(cleanText) as ValidationResult;
       } catch (parseError) {
-        console.error("Erro de Parse JSON na Validação:", parseError, response.text);
+        console.error("Erro de Parse JSON na Validação:", parseError);
         return { isValid: true };
       }
     }
@@ -246,11 +248,72 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
   }
 };
 
-
 /**
- * Automatically fixes a SQL query based on a provided error message using AI.
- * (Feature #6)
+ * Feature: Performance Analysis & Optimization
  */
+export const analyzeQueryPerformance = async (schema: DatabaseSchema, sql: string): Promise<OptimizationAnalysis> => {
+   const schemaContext = formatSchemaForPrompt(schema);
+   
+   const prompt = `
+     Você é um DBA PostgreSQL Especialista em Performance Tuning.
+     
+     SCHEMA DO BANCO:
+     ${schemaContext}
+     
+     QUERY A ANALISAR:
+     "${sql}"
+     
+     TAREFA:
+     1. Analise a query em busca de gargalos de performance comuns (ex: Full Table Scans em tabelas grandes, Joins sem índices, funções em colunas no WHERE, excesso de colunas no SELECT).
+     2. Dê uma nota de 0 a 100 para a query (100 = perfeita).
+     3. Sugira índices (CREATE INDEX) que beneficiariam esta query específica.
+     4. Se possível, reescreva a query para ser mais performática (ex: substituir subquery por JOIN, usar CTEs de forma eficiente, remover DISTINCT desnecessário). Se a query já for ótima, retorne a mesma query.
+     
+     Retorne JSON:
+     {
+       "rating": number,
+       "summary": string (Título curto do diagnóstico, ex: "Falta de Índice em Foreign Key"),
+       "explanation": string (Explicação detalhada em PT-BR sobre os problemas encontrados),
+       "suggestedIndexes": string[] (Lista de comandos SQL CREATE INDEX sugeridos),
+       "optimizedSql": string (A query reescrita otimizada),
+       "improvementDetails": string (O que foi mudado na versão otimizada)
+     }
+   `;
+
+   try {
+     const response = await ai.models.generateContent({
+       model: 'gemini-2.5-flash',
+       contents: prompt,
+       config: {
+         responseMimeType: "application/json",
+         responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+               rating: { type: Type.INTEGER },
+               summary: { type: Type.STRING },
+               explanation: { type: Type.STRING },
+               suggestedIndexes: { type: Type.ARRAY, items: { type: Type.STRING } },
+               optimizedSql: { type: Type.STRING },
+               improvementDetails: { type: Type.STRING }
+            },
+            required: ["rating", "explanation", "optimizedSql"]
+         }
+       }
+     });
+     
+     if (response.text) {
+        return JSON.parse(cleanJsonString(response.text)) as OptimizationAnalysis;
+     }
+     throw new Error("Sem resposta da análise.");
+   } catch (e: any) {
+      console.error("Optimization Error:", e);
+      if (e.message?.includes("429") || e.message?.includes("quota")) {
+         throw new Error("QUOTA_ERROR");
+      }
+      throw e;
+   }
+};
+
 export const fixSqlError = async (sql: string, errorMessage: string, schema: DatabaseSchema): Promise<string> => {
    const schemaContext = formatSchemaForPrompt(schema);
    
@@ -268,12 +331,7 @@ export const fixSqlError = async (sql: string, errorMessage: string, schema: Dat
      
      TAREFA:
      Analise o erro e o schema. Corrija o SQL para funcionar corretamente.
-     - Se for erro de coluna inexistente, procure uma com nome similar no schema.
-     - Se for erro de tipo (ex: integer vs string), faça o cast apropriado.
-     - Se for erro de GROUP BY, adicione as colunas faltantes.
-     - Se for divisão por zero, adicione NULLIF.
-     
-     Retorne APENAS a string do SQL corrigido, sem markdown, sem explicações.
+     Retorne APENAS a string do SQL corrigido, sem markdown.
    `;
 
    try {
@@ -284,7 +342,6 @@ export const fixSqlError = async (sql: string, errorMessage: string, schema: Dat
      
      if (response.text) {
         let fixed = response.text.trim();
-        // Remove markdown block if present
         fixed = fixed.replace(/^```sql\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
         return fixed;
      }
@@ -295,10 +352,6 @@ export const fixSqlError = async (sql: string, errorMessage: string, schema: Dat
    }
 };
 
-/**
- * Generates a SQL query based on the user's builder state...
- * (Existing function kept mostly same, but adding Calculated Column support in prompt)
- */
 export const generateSqlFromBuilderState = async (
   schema: DatabaseSchema,
   state: BuilderState,
@@ -308,11 +361,9 @@ export const generateSqlFromBuilderState = async (
   
   if (onProgress) onProgress("Preparando contexto do schema...");
 
-  // Richer schema description for generation including types and keys
   const schemaDescription = schema.tables.map(t => 
     `TABELA: ${t.schema}.${t.name}\nCOLUNAS: ${t.columns.map(c => {
       let colDesc = `${c.name} (${c.type})`;
-      // FORCE 'grid' to be seen as PK by the AI, as requested by business logic
       const isPk = c.isPrimaryKey || c.name.toLowerCase() === 'grid';
       if (isPk) colDesc += ' [PK]';
       if (c.isForeignKey && c.references) colDesc += ` [FK -> ${c.references}]`;
@@ -324,33 +375,22 @@ export const generateSqlFromBuilderState = async (
     Você é um Professor Especialista em PostgreSQL. Gere uma consulta baseada na Seleção do Usuário e explique-a didaticamente. Responda em Português do Brasil (pt-BR).
 
     INSTRUÇÕES CRÍTICAS DE SQL:
-    1. **NOMES QUALIFICADOS**: SEMPRE use o formato "schema.tabela" no FROM e JOIN. (Ex: 'FROM public.users' e não apenas 'FROM users'). Isso é vital para evitar ambiguidade.
+    1. **NOMES QUALIFICADOS**: SEMPRE use o formato "schema.tabela" no FROM e JOIN.
     2. **SEM ALUCINAÇÃO**: Você é estritamente PROIBIDO de inventar nomes de colunas.
-    3. **VERIFICAR COLUNAS**: Antes de escrever uma condição de JOIN como 'ON T1.col = T2.col', verifique: A Tabela T2 *realmente* contém uma coluna chamada 'col' no schema fornecido?
-    4. **NENHUM RELACIONAMENTO ENCONTRADO**: Se múltiplas tabelas forem selecionadas (ex: Tabela A e Tabela B) e NÃO houver chave estrangeira explícita definida no schema entre elas, E você não conseguir encontrar uma coluna com exatamente o mesmo nome para servir de chave, NÃO adivinhe.
-    5. **SINAL DE FALLBACK**: No caso de relacionamentos ausentes, retorne a string exata "NO_RELATIONSHIP" no campo 'sql'. NÃO gere uma consulta quebrada.
+    3. **VERIFICAR COLUNAS**: Antes de escrever uma condição de JOIN, verifique se a coluna existe.
+    4. **SINAL DE FALLBACK**: Se não houver relacionamentos válidos, retorne "NO_RELATIONSHIP".
     
-    INSTRUÇÕES CRÍTICAS PARA COLUNAS E AGREGAÇÃO:
-    6. **ORDER BY**: Se o usuário fornecer instruções de 'OrderBy', você DEVE anexar uma cláusula 'ORDER BY'. Não ignore.
-    7. **AGREGAÇÃO**: Se o usuário solicitou uma função de agregação (COUNT, SUM, etc.) em uma coluna, você DEVE incluí-la no SELECT e adicionar o GROUP BY apropriado para as outras colunas.
-    8. **COLUNAS CALCULADAS**: Se a solicitação do usuário contiver "Colunas Calculadas", você DEVE incluí-las na cláusula SELECT. Exemplo: Se a fórmula for "price * qty" e o alias for "total", adicione "(price * qty) AS total" ao SELECT.
+    INSTRUÇÕES PARA COLUNAS E AGREGAÇÃO:
+    5. **AGREGAÇÃO**: Se houver função de agregação, adicione GROUP BY para colunas não agregadas.
+    6. **COLUNAS CALCULADAS**: Inclua fórmulas no SELECT.
 
-    INSTRUÇÕES DIDÁTICAS (Explanation):
-    - No campo 'explanation', não descreva apenas o que a query faz. EXPLIQUE A SINTAXE para um iniciante.
-    - Exemplo ruim: "Esta query seleciona vendas."
-    - Exemplo bom: "Estamos usando 'SELECT' para escolher as colunas e 'JOIN' para conectar a tabela de vendas com clientes através do ID. O 'GROUP BY' é necessário aqui porque usamos a função SUM() para somar totais."
-
-    Formatação:
-    - Use espaçamento estrito (ex: 'SELECT * FROM' não 'SELECT*FROM').
-    - Use alias para tabelas como t1, t2, etc., para brevidade, mas mapeie corretamente.
+    INSTRUÇÕES DIDÁTICAS:
+    - Explique A SINTAXE para um iniciante no campo 'explanation'.
   `;
 
-  // Format columns to include aggregation requests
   const formattedColumns = state.selectedColumns.map(col => {
-     // Format input: "schema.table.column"
      const agg = state.aggregations?.[col];
      if (agg && agg !== 'NONE') {
-        // extract column name (last part)
         const parts = col.split('.');
         const colName = parts[parts.length - 1];
         return `${agg}(${col}) AS ${agg.toLowerCase()}_${colName}`;
@@ -358,39 +398,36 @@ export const generateSqlFromBuilderState = async (
      return col;
   });
   
-  // Inject calculated columns into context
   const calculatedContext = state.calculatedColumns?.map(c => `Calculated Column: "${c.alias}" = ${c.expression}`).join('\n') || 'Nenhuma coluna calculada';
 
   const prompt = `
-    SCHEMA DO BANCO DE DADOS (Use APENAS estas colunas):
+    SCHEMA DO BANCO DE DADOS:
     ${schemaDescription}
 
     SOLICITAÇÃO DO USUÁRIO:
     - Tabelas: ${state.selectedTables.join(', ')}
-    - Colunas Solicitadas (com agregações): ${formattedColumns.join(', ')}
-    - Colunas Calculadas (fórmulas): ${calculatedContext} (OBRIGATÓRIO: INCLUIR NO SELECT SE HOUVER)
+    - Colunas Solicitadas: ${formattedColumns.join(', ')}
+    - Colunas Calculadas: ${calculatedContext}
     - Joins Explícitos: ${JSON.stringify(state.joins)}
     - Filtros: ${JSON.stringify(state.filters)}
-    - Agrupamento (GroupBy): ${state.groupBy.join(', ')}
-    - Ordenação (OrderBy): ${JSON.stringify(state.orderBy)}
+    - GroupBy: ${state.groupBy.join(', ')}
+    - OrderBy: ${JSON.stringify(state.orderBy)}
     - Limite: ${state.limit}
 
     Gere um JSON válido:
     {
-      "sql": "string", (OU "NO_RELATIONSHIP" se nenhum join válido for encontrado)
-      "explanation": "string (pt-BR - Explique a lógica da query de forma didática e educacional)",
-      "tips": ["string"] (Apenas se solicitado, dicas de otimização em pt-BR)
+      "sql": "string",
+      "explanation": "string",
+      "tips": ["string"]
     }
   `;
   
-  // Conditionally remove tips from the schema request if disabled
   const requiredFields = ["sql", "explanation"];
   if (includeTips) requiredFields.push("tips");
 
   try {
     if (onProgress) onProgress("Aguardando resposta da IA...");
     
-    // Add a timeout race
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error("TIMEOUT")), 25000)
     );
@@ -406,10 +443,7 @@ export const generateSqlFromBuilderState = async (
           properties: {
             sql: { type: Type.STRING },
             explanation: { type: Type.STRING },
-            tips: { 
-              type: Type.ARRAY, 
-              items: { type: Type.STRING } 
-            }
+            tips: { type: Type.ARRAY, items: { type: Type.STRING } }
           },
           required: requiredFields
         }
@@ -430,30 +464,21 @@ export const generateSqlFromBuilderState = async (
         throw new Error("Resposta inválida da IA.");
       }
       
-      if (onProgress) onProgress("Finalizando query...");
-
-      // Check for the specific no-relationship signal
       if (result.sql === "NO_RELATIONSHIP") {
         return result;
       }
 
-      // Safety net: ensure very first SELECT has a space if missing.
       let fixedSql = result.sql;
       fixedSql = fixedSql.replace(/^SELECT(?=[^\s])/i, 'SELECT ');
-      
       result.sql = fixedSql;
       
-      // Clean up tips if they weren't requested
-      if (!includeTips) {
-        result.tips = [];
-      }
+      if (!includeTips) result.tips = [];
 
       return result;
     }
     throw new Error("Sem resposta da IA");
   } catch (error: any) {
     console.error("Erro na Geração do Builder:", error);
-    // Add logic to check for quota exhaustion
     if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("exhausted")) {
        throw new Error("QUOTA_ERROR");
     }
@@ -461,27 +486,15 @@ export const generateSqlFromBuilderState = async (
   }
 };
 
-// ... (Other exports: generateSchemaFromTopic, parseSchemaFromDDL, generateMockData kept as is) ...
 export const generateSchemaFromTopic = async (topic: string, context: string): Promise<DatabaseSchema> => {
   const prompt = `
     Gere um Schema de Banco de Dados PostgreSQL realista para um sistema sobre: "${topic}".
     Contexto adicional: ${context}
     
-    O schema deve ser complexo o suficiente para ser interessante (mínimo 3 tabelas, máximo 6).
-    Inclua chaves primárias (PK) e estrangeiras (FK) adequadas.
-    
-    Retorne JSON estritamente com esta estrutura:
+    Retorne JSON:
     {
       "name": "string",
-      "tables": [
-        {
-          "name": "string",
-          "description": "string",
-          "columns": [
-             { "name": "string", "type": "string (ex: SERIAL, VARCHAR(50), INTEGER)", "isPrimaryKey": boolean, "isForeignKey": boolean, "references": "string (opcional, ex: users.id)" }
-          ]
-        }
-      ]
+      "tables": [ { "name": "string", "description": "string", "columns": [ { "name": "string", "type": "string", "isPrimaryKey": boolean, "isForeignKey": boolean, "references": "string" } ] } ]
     }
   `;
 
@@ -529,13 +542,11 @@ export const generateSchemaFromTopic = async (topic: string, context: string): P
     if (response.text) {
       const parsed = JSON.parse(cleanJsonString(response.text)) as DatabaseSchema;
       parsed.connectionSource = 'simulated';
-      // Default missing schemas to 'public' for simulation
       parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
       return parsed;
     }
     throw new Error("Resposta da IA vazia na simulação.");
   } catch (error: any) {
-    console.error(error);
     if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("exhausted")) {
        throw new Error("QUOTA_ERROR");
     }
@@ -545,50 +556,16 @@ export const generateSchemaFromTopic = async (topic: string, context: string): P
 
 export const parseSchemaFromDDL = async (ddl: string): Promise<DatabaseSchema> => {
   const prompt = `Faça o parse deste SQL DDL para JSON: ${ddl}`;
-  const schemaStructure: Schema = {
-    type: Type.OBJECT,
-    properties: {
-      name: { type: Type.STRING },
-      tables: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            description: { type: Type.STRING },
-            columns: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  type: { type: Type.STRING },
-                  isPrimaryKey: { type: Type.BOOLEAN },
-                  isForeignKey: { type: Type.BOOLEAN },
-                  references: { type: Type.STRING }
-                },
-                required: ["name", "type"]
-              }
-            }
-          },
-          required: ["name", "columns"]
-        }
-      }
-    },
-    required: ["name", "tables"]
-  };
-
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
-      config: { responseMimeType: "application/json", responseSchema: schemaStructure }
+      config: { responseMimeType: "application/json" }
     });
 
     if (response.text) {
       const parsed = JSON.parse(cleanJsonString(response.text)) as DatabaseSchema;
       parsed.connectionSource = 'ddl';
-      // Default to public
       parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
       return parsed;
     }
@@ -603,35 +580,22 @@ export const parseSchemaFromDDL = async (ddl: string): Promise<DatabaseSchema> =
 
 export const generateMockData = async (schema: DatabaseSchema, sql: string): Promise<any[]> => {
   const prompt = `
-    Gere dados fictícios (Mock Data) para o seguinte cenário.
-    
-    SCHEMA DO BANCO:
-    ${JSON.stringify(schema.tables.map(t => ({ table: `${t.schema || 'public'}.${t.name}`, columns: t.columns.map(c => c.name) })))}
-
-    QUERY SQL:
-    ${sql}
-
-    INSTRUÇÃO:
-    Retorne um Array JSON contendo 5 a 10 linhas de resultados realistas para esta query.
-    As chaves dos objetos JSON devem ser os nomes das colunas/aliases retornados pela query.
-    Seja consistente com os tipos de dados (números, datas, strings).
+    Gere dados fictícios (Mock Data).
+    SCHEMA: ${JSON.stringify(schema.tables.map(t => ({ table: `${t.schema || 'public'}.${t.name}`, columns: t.columns.map(c => c.name) })))}
+    QUERY SQL: ${sql}
+    INSTRUÇÃO: Retorne Array JSON com 5-10 linhas de resultados realistas.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
-      config: {
-        responseMimeType: "application/json"
-      }
+      config: { responseMimeType: "application/json" }
     });
 
-    if (response.text) {
-      return JSON.parse(cleanJsonString(response.text));
-    }
+    if (response.text) return JSON.parse(cleanJsonString(response.text));
     return [];
   } catch (error: any) {
-    console.error("Mock Data Generation Error:", error);
     if (error.message?.includes("429") || error.message?.includes("quota")) {
        throw new Error("QUOTA_ERROR");
     }

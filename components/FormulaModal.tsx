@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { X, Calculator, Table2, Check, Braces, Plus, Minus, AlertCircle, Search, Divide, Hash, Type, FunctionSquare } from 'lucide-react';
 

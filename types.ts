@@ -37,11 +37,21 @@ export interface ValidationResult {
   correctedSql?: string;
 }
 
+export interface OptimizationAnalysis {
+  rating: number; // 0 to 100
+  summary: string;
+  explanation: string;
+  suggestedIndexes: string[];
+  optimizedSql: string;
+  improvementDetails: string;
+}
+
 export interface QueryResult {
   sql: string;
   explanation: string;
   tips?: string[];
   validation?: ValidationResult;
+  optimization?: OptimizationAnalysis;
 }
 
 export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'dashboard';
