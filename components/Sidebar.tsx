@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid, HelpCircle, BookOpen, GitCompare } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid, HelpCircle, BookOpen, GitCompare, Link } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
@@ -15,10 +15,11 @@ interface SidebarProps {
   onDescriptionChange?: (tableName: string, newDesc: string) => void;
   onOpenShortcuts?: () => void;
   onOpenCheatSheet?: () => void;
+  onOpenVirtualRelations?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet
+  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -106,10 +107,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         
         <div className="space-y-2 mt-2">
            {schema && (
-             <button onClick={onOpenDiagram} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-emerald-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Mapa Visual do Schema">
-                <Map className="w-4 h-4 shrink-0" />
-                {!isCollapsed && <span>Mapa do Schema</span>}
-             </button>
+             <>
+               <button onClick={onOpenVirtualRelations} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-indigo-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Vínculos Manuais">
+                  <Link className="w-4 h-4 shrink-0" />
+                  {!isCollapsed && <span>Vínculos Manuais</span>}
+               </button>
+               <button onClick={onOpenDiagram} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-emerald-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Mapa Visual do Schema">
+                  <Map className="w-4 h-4 shrink-0" />
+                  {!isCollapsed && <span>Mapa do Schema</span>}
+               </button>
+             </>
            )}
            <button onClick={onOpenHistory} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-amber-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Histórico de Execuções">
               <History className="w-4 h-4 shrink-0" />

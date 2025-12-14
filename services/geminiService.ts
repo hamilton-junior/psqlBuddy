@@ -1,7 +1,6 @@
 
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { DatabaseSchema, QueryResult, ValidationResult, BuilderState, AggregateFunction, Operator, JoinType, OptimizationAnalysis } from "../types";
+import { DatabaseSchema, QueryResult, ValidationResult, BuilderState, AggregateFunction, Operator, JoinType, OptimizationAnalysis, VirtualRelation } from "../types";
 
 // Vite will replace 'process.env.API_KEY' with the actual string from your .env file at build time.
 // @ts-ignore: process is defined via Vite config
@@ -482,6 +481,79 @@ export const generateSqlFromBuilderState = async (
     }
     throw new Error(error.message || "Falha ao construir SQL.");
   }
+};
+
+export const suggestRelationships = async (schema: DatabaseSchema): Promise<VirtualRelation[]> => {
+   const schemaContext = formatSchemaForPrompt(schema);
+   
+   const prompt = `
+     Analise o schema do banco de dados abaixo.
+     Identifique prováveis chaves estrangeiras (Foreign Keys) que existem logicamente (por nome de coluna e tipo) mas não estão declaradas explicitamente como CONSTRAINTs.
+     
+     SCHEMA:
+     ${schemaContext}
+     
+     PADRÕES COMUNS:
+     - Coluna 'nome_tabela_id' ou 'id_nome_tabela' referenciando 'nome_tabela.id'.
+     - Coluna com mesmo nome da tabela referenciada (ex: 'produto' referenciando 'produtos.id').
+     - Coluna 'grid' costuma ser PK.
+     
+     RETORNE JSON:
+     Lista de relacionamentos sugeridos.
+     {
+       "suggestions": [
+         {
+           "sourceTable": "schema.table", 
+           "sourceColumn": "column_name",
+           "targetTable": "schema.table", 
+           "targetColumn": "column_name",
+           "confidence": number (0-100)
+         }
+       ]
+     }
+     
+     Ignore relacionamentos que já estão marcados como 'isFk: true' no schema fornecido.
+   `;
+
+   try {
+      const response = await ai.models.generateContent({
+         model: 'gemini-2.5-flash',
+         contents: prompt,
+         config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+               type: Type.OBJECT,
+               properties: {
+                  suggestions: {
+                     type: Type.ARRAY,
+                     items: {
+                        type: Type.OBJECT,
+                        properties: {
+                           sourceTable: { type: Type.STRING },
+                           sourceColumn: { type: Type.STRING },
+                           targetTable: { type: Type.STRING },
+                           targetColumn: { type: Type.STRING },
+                           confidence: { type: Type.NUMBER }
+                        }
+                     }
+                  }
+               }
+            }
+         }
+      });
+
+      if (response.text) {
+         const data = JSON.parse(cleanJsonString(response.text));
+         return (data.suggestions || []).map((s: any) => ({...s, id: crypto.randomUUID()}));
+      }
+      return [];
+   } catch (e: any) {
+      console.error("Relationship Suggestion Error:", e);
+      if (e.message?.includes("429") || e.message?.includes("quota")) {
+         throw new Error("QUOTA_ERROR");
+      }
+      throw e;
+   }
 };
 
 export const generateSchemaFromTopic = async (topic: string, context: string): Promise<DatabaseSchema> => {

@@ -199,6 +199,16 @@ export interface DiffRow {
   diffColumns: string[]; // List of columns that changed
 }
 
+// Virtual Relations (Feature for implicit FKs)
+export interface VirtualRelation {
+  id: string;
+  sourceTable: string; // schema.table
+  sourceColumn: string;
+  targetTable: string; // schema.table
+  targetColumn: string;
+  confidence?: number; // For AI suggested ones later
+}
+
 export const SAMPLE_SCHEMA: DatabaseSchema = {
   name: "ecommerce_sample",
   connectionSource: "simulated",
