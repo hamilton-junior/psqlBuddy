@@ -239,7 +239,10 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
   const [scale, setScale] = useState(0.8);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+  const [containerSize, setContainerSize] = useState({ 
+     w: typeof window !== 'undefined' ? window.innerWidth : 1000, 
+     h: typeof window !== 'undefined' ? window.innerHeight : 800 
+  });
   const [isLayoutReady, setIsLayoutReady] = useState(false);
   
   // --- Interaction State ---
@@ -359,14 +362,15 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   // --- Resize Observer ---
   useEffect(() => {
     if (!containerRef.current) return;
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerSize({ w: containerRef.current.clientWidth, h: containerRef.current.clientHeight });
-      }
-    };
-    updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+       for (const entry of entries) {
+          setContainerSize({ w: entry.contentRect.width, h: entry.contentRect.height });
+       }
+    });
+    
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
   }, []);
 
   // --- Virtualization & Culling Logic ---
@@ -394,8 +398,8 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      const vpW = containerSize.w / scale;
      const vpH = containerSize.h / scale;
      
-     // Add buffer to prevent pop-in
-     const buffer = 300 / scale; 
+     // Add generous buffer to prevent pop-in and ensure scrolling feels smooth
+     const buffer = 1000 / scale; 
 
      // 3. Filter tables inside viewport
      const visible = schema.tables.filter(t => {
@@ -403,12 +407,16 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
         if (!pos) return false;
         
         // Basic Rectangle Intersection
-        return (
-           pos.x + TABLE_WIDTH >= vpX - buffer &&
-           pos.x <= vpX + vpW + buffer &&
-           pos.y + 600 >= vpY - buffer && // 600 is safe max height of table
-           pos.y <= vpY + vpH + buffer
-        );
+        // Table Rect: [pos.x, pos.y, pos.x + TABLE_WIDTH, pos.y + Height]
+        // Viewport Rect: [vpX - buffer, vpY - buffer, vpX + vpW + buffer, vpY + vpH + buffer]
+        
+        // Check if Table is completely OUTSIDE Viewport
+        if (pos.x > vpX + vpW + buffer) return false; // To the right
+        if (pos.x + TABLE_WIDTH < vpX - buffer) return false; // To the left
+        if (pos.y > vpY + vpH + buffer) return false; // Below
+        if (pos.y + 600 < vpY - buffer) return false; // Above (assuming max table height 600)
+        
+        return true;
      });
 
      return { 
