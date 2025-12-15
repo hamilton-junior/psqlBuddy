@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { DatabaseSchema, Table } from '../types';
-import { X, ZoomIn, ZoomOut, Maximize, Loader2, Search, Key, Link, Target, CornerDownRight, Copy, Eye, Download, Map as MapIcon, Palette, FileCode, Upload, Save, Trash2, Tag, Filter, Eraser, Route, PlayCircle, StopCircle, ArrowRight } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize, Loader2, Search, Key, Link, Target, CornerDownRight, Copy, Eye, Download, Map as MapIcon, Palette, FileCode, Upload, Save, Trash2, Tag, Filter, Eraser, Route, PlayCircle, StopCircle, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 interface SchemaDiagramModalProps {
@@ -151,6 +151,7 @@ const DiagramNode = memo(({
   onMouseDown, onMouseEnter, onMouseLeave, onContextMenu, onDoubleClick, onClearTableColor
 }: any) => {
   
+  const [isExpanded, setIsExpanded] = useState(false);
   const colorId = tableColors[table.name] || 'default';
   const style = TABLE_COLORS.find(c => c.id === colorId) || TABLE_COLORS[0];
   
@@ -159,9 +160,14 @@ const DiagramNode = memo(({
      transform: `translate(${pos.x}px, ${pos.y}px)`,
      width: TABLE_WIDTH,
      opacity,
-     zIndex: isHovered || opacity === 1 ? 50 : 10,
+     zIndex: isHovered || opacity === 1 || isExpanded ? 50 : 10,
      pointerEvents: opacity < 0.2 ? 'none' : 'auto' as any
-  }), [pos.x, pos.y, opacity, isHovered]);
+  }), [pos.x, pos.y, opacity, isHovered, isExpanded]);
+
+  // Determine columns to show
+  const displayLimit = lodLevel === 'medium' ? 5 : 12;
+  const visibleColumns = isExpanded ? table.columns : table.columns.slice(0, displayLimit);
+  const hiddenCount = table.columns.length - displayLimit;
 
   return (
      <div
@@ -197,10 +203,10 @@ const DiagramNode = memo(({
               </div>
               
               {/* Only render columns if LOD is high or medium */}
-              {(lodLevel === 'high' || lodLevel === 'medium') && (
+              {(lodLevel === 'high' || lodLevel === 'medium' || isExpanded) && (
                  <div className="py-1">
-                    {/* Render minimal columns if medium, full if high */}
-                    {table.columns.slice(0, lodLevel === 'medium' ? 5 : 12).map((col: any) => {
+                    {/* Render columns */}
+                    {visibleColumns.map((col: any) => {
                        const colColorId = columnColors[`${table.name}.${col.name}`];
                        const colStyle = colColorId ? TABLE_COLORS.find(c => c.id === colColorId) : null;
                        const colBg = colStyle ? colStyle.bg : 'hover:bg-slate-50 dark:hover:bg-slate-700/50';
@@ -223,8 +229,23 @@ const DiagramNode = memo(({
                          </div>
                        );
                     })}
-                    {(table.columns.length > (lodLevel === 'medium' ? 5 : 12)) && (
-                       <div className="px-3 py-1 text-[9px] text-slate-400 italic">...mais {table.columns.length - (lodLevel === 'medium' ? 5 : 12)}</div>
+                    
+                    {/* Expand/Collapse Footer */}
+                    {(table.columns.length > displayLimit) && (
+                       <div 
+                          className="px-3 py-1.5 text-[9px] text-slate-400 italic cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-indigo-500 transition-colors flex items-center justify-center gap-1 border-t border-transparent hover:border-slate-100 dark:hover:border-slate-700"
+                          onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+                       >
+                          {isExpanded ? (
+                             <>
+                                <ChevronUp className="w-3 h-3" /> Recolher
+                             </>
+                          ) : (
+                             <>
+                                <ChevronDown className="w-3 h-3" /> ...mais {hiddenCount} campos
+                             </>
+                          )}
+                       </div>
                     )}
                  </div>
               )}
@@ -249,8 +270,11 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [isInteracting, setIsInteracting] = useState(false);
+  
+  // Refs for Interaction Delay
   const lastMousePos = useRef({ x: 0, y: 0 });
   const interactionTimeout = useRef<any>(null);
+  const interactionStartRef = useRef<any>(null); // New ref for start delay
 
   // --- Filtering & Selection ---
   const [inputValue, setInputValue] = useState('');
@@ -425,11 +449,28 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      };
   }, [positions, pan, scale, containerSize, schema.tables, isLayoutReady]);
 
-  // --- Interaction Handlers ---
+  // --- Interaction Handlers with DELAY ---
   const triggerInteraction = useCallback(() => {
-     if (!isInteracting) setIsInteracting(true);
+     // Clear the "stop" timer (debounce end of interaction)
      if (interactionTimeout.current) clearTimeout(interactionTimeout.current);
-     interactionTimeout.current = setTimeout(() => setIsInteracting(false), 150);
+     
+     // Set the "stop" timer
+     interactionTimeout.current = setTimeout(() => {
+         setIsInteracting(false);
+         // Reset the start ref so next move waits again
+         if (interactionStartRef.current) {
+             clearTimeout(interactionStartRef.current);
+             interactionStartRef.current = null;
+         }
+     }, 300);
+
+     // Only start "interacting" mode (low detail) if we haven't already, AND if we've been moving for a bit
+     if (!isInteracting && !interactionStartRef.current) {
+         interactionStartRef.current = setTimeout(() => {
+             setIsInteracting(true);
+             interactionStartRef.current = null;
+         }, 150); // DELAY: Wait 150ms of continuous movement before switching to low detail
+     }
   }, [isInteracting]);
 
   const handleMouseDown = (e: React.MouseEvent, tableName?: string) => {
