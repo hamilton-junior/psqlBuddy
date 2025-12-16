@@ -230,9 +230,10 @@ interface VirtualTableProps {
    onOpenJson: (json: any) => void;
    onDrillDown: (table: string, col: string, val: any) => void;
    schema?: DatabaseSchema;
+   defaultTableName?: string | null;
 }
 
-const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell, onOpenJson, onDrillDown, schema }) => {
+const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell, onOpenJson, onDrillDown, schema, defaultTableName }) => {
    const [currentPage, setCurrentPage] = useState(1);
    const [rowsPerPage, setRowsPerPage] = useState(25);
    const [activeProfileCol, setActiveProfileCol] = useState<string | null>(null);
@@ -281,7 +282,38 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
       if (!schema) return null;
       const lowerCol = colName.toLowerCase();
 
-      // 1. Explicit FK Check (Schema)
+      // 1. Special Fixed Names (grid, mlid) - as per user request
+      // Can be "grid", "mlid", "table.grid", "schema.table.grid"
+      const leafName = lowerCol.split('.').pop(); // get last part
+      if (leafName === 'grid' || leafName === 'mlid') {
+         // Case A: Qualified Name (e.g. public.users.grid)
+         const parts = lowerCol.split('.');
+         let targetTableObj = null;
+         
+         if (parts.length >= 2) {
+            // format: table.grid or schema.table.grid
+            // We need to match this to a table in schema
+            const potentialTableName = parts[parts.length - 2];
+            const potentialSchemaName = parts.length > 2 ? parts[parts.length - 3] : null;
+            
+            targetTableObj = schema.tables.find(t => {
+               if (potentialSchemaName) return t.name === potentialTableName && (t.schema || 'public') === potentialSchemaName;
+               return t.name === potentialTableName;
+            });
+         }
+         
+         // Case B: Simple Name (e.g. "grid") - use defaultTableName context
+         if (!targetTableObj && defaultTableName) {
+             const [defSchema, defTable] = defaultTableName.includes('.') ? defaultTableName.split('.') : ['public', defaultTableName];
+             targetTableObj = schema.tables.find(t => t.name === defTable && (t.schema || 'public') === defSchema);
+         }
+         
+         if (targetTableObj) {
+             return { table: `${targetTableObj.schema || 'public'}.${targetTableObj.name}`, pk: leafName };
+         }
+      }
+
+      // 2. Explicit FK Check (Schema)
       for (const t of schema.tables) {
          const col = t.columns.find(c => c.name === colName);
          if (col && col.isForeignKey && col.references) {
@@ -291,7 +323,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
          }
       }
 
-      // 2. Implicit Heuristics (Name Matching)
+      // 3. Implicit Heuristics (Name Matching)
       // Check suffixes: _id, _grid, _mlid
       const suffixes = ['_id', '_grid', '_mlid'];
       for (const suffix of suffixes) {
@@ -574,6 +606,16 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   // Chart configuration state lifted for pinning
   const [currentChartConfig, setCurrentChartConfig] = useState<{xAxis: string, yKeys: string[]} | null>(null);
 
+  // Determine main table from SQL
+  const mainTableName = useMemo(() => {
+     const fromMatch = sql.match(/FROM\s+([a-zA-Z0-9_."]+)/i);
+     if (fromMatch) {
+        // clean quotes
+        return fromMatch[1].replace(/"/g, '');
+     }
+     return null;
+  }, [sql]);
+
   useEffect(() => {
      if (data) {
         addToHistory({ sql, rowCount: data.length, durationMs: executionDuration || 0, status: 'success', schemaName: 'Database' });
@@ -617,8 +659,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
 
   const handleUpdateCell = (rowIdx: number, colKey: string, newValue: string) => {
      if (!settings?.advancedMode) return;
-     const fromMatch = sql.match(/FROM\s+([a-zA-Z0-9_."]+)/i);
-     const tableName = fromMatch ? fromMatch[1] : "table_name";
+     const tableName = mainTableName || "table_name";
      const row = localData[rowIdx];
      let pkCol = 'id';
      let pkVal = row['id'];
@@ -900,8 +941,9 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
                   isAdvancedMode={settings?.advancedMode}
                   onUpdateCell={handleUpdateCell}
                   onOpenJson={setViewJson}
-                  onDrillDown={setDrillDownTarget}
+                  onDrillDown={(table, col, val) => setDrillDownTarget({ table, col, val })}
                   schema={schema}
+                  defaultTableName={mainTableName}
                />
             )}
             {activeTab === 'chart' && (

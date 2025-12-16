@@ -35,15 +35,15 @@ interface ContextMenuState {
   columnName?: string;
 }
 
-const TABLE_WIDTH = 220;
-const HEADER_HEIGHT = 42; 
-const ROW_HEIGHT = 28;    
-const COL_SPACING = 250;
-const ROW_SPACING_GAP = 80;
+const TABLE_WIDTH = 250; // Increased for better readability
+const HEADER_HEIGHT = 44; 
+const ROW_HEIGHT = 30;    
+const COL_SPACING = 280;
+const ROW_SPACING_GAP = 100;
 
 // Predefined colors
 const TABLE_COLORS = [
-  { id: 'default', bg: 'bg-slate-50', darkBg: 'dark:bg-slate-900/50', border: 'border-slate-100', text: 'text-slate-700' },
+  { id: 'default', bg: 'bg-slate-50', darkBg: 'dark:bg-slate-900/50', border: 'border-slate-200', text: 'text-slate-700' },
   { id: 'red', bg: 'bg-red-50', darkBg: 'dark:bg-red-900/30', border: 'border-red-200', text: 'text-red-800' },
   { id: 'orange', bg: 'bg-orange-50', darkBg: 'dark:bg-orange-900/30', border: 'border-orange-200', text: 'text-orange-800' },
   { id: 'amber', bg: 'bg-amber-50', darkBg: 'dark:bg-amber-900/30', border: 'border-amber-200', text: 'text-amber-800' },
@@ -165,7 +165,7 @@ const DiagramNode = memo(({
   }), [pos.x, pos.y, opacity, isHovered, isExpanded]);
 
   // Determine columns to show
-  const displayLimit = lodLevel === 'medium' ? 5 : 12;
+  const displayLimit = lodLevel === 'medium' ? 5 : 10;
   const visibleColumns = isExpanded ? table.columns : table.columns.slice(0, displayLimit);
   const hiddenCount = table.columns.length - displayLimit;
 
@@ -177,63 +177,84 @@ const DiagramNode = memo(({
         onContextMenu={(e) => onContextMenu(e, table.name)}
         onDoubleClick={(e) => onDoubleClick(e, table.name)}
         style={nodeStyle}
-        className={`absolute rounded-lg cursor-grab active:cursor-grabbing transition-shadow duration-200
-           ${lodLevel === 'low' && !isHovered && !isSelected ? 'bg-indigo-200 dark:bg-indigo-900 border border-indigo-300 dark:border-indigo-800 h-10 flex items-center justify-center' : 'bg-white dark:bg-slate-800 shadow-md border border-slate-200 dark:border-slate-700'}
+        className={`absolute flex flex-col rounded-xl transition-all duration-200
+           ${lodLevel === 'low' && !isHovered && !isSelected 
+              ? 'bg-indigo-100 dark:bg-slate-800 border-2 border-indigo-300 dark:border-indigo-700 h-10 items-center justify-center shadow-sm' 
+              : 'bg-white dark:bg-slate-800 shadow-xl border border-slate-200 dark:border-slate-700'}
            ${ringClass}
+           ${isSelected ? 'ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-slate-900 shadow-2xl scale-[1.02] z-50' : ''}
         `}
      >
         {lodLevel === 'low' && !isHovered && !isSelected ? (
-           <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 truncate px-2">{table.name}</span>
+           <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate px-2">{table.name}</span>
         ) : (
            <>
-              <div className={`flex items-center justify-between px-3 py-2 border-b h-[42px] relative group/header ${style.bg} ${style.darkBg} ${style.border}`}>
-                 <span className={`font-bold text-sm truncate ${style.text}`} title={table.name}>{table.name}</span>
+              {/* Header */}
+              <div className={`flex items-center justify-between px-4 py-2.5 border-b shrink-0 relative group/header rounded-t-xl
+                  ${style.bg} ${style.darkBg} ${style.border}
+              `}>
+                 <div className="flex flex-col min-w-0">
+                    <span className={`font-bold text-sm truncate leading-tight ${style.text}`} title={table.name}>{table.name}</span>
+                    <span className={`text-[10px] opacity-70 truncate ${style.text}`}>{table.schema}</span>
+                 </div>
                  <div className="flex items-center gap-1">
                     {hasTags && (
                        <button 
                          onClick={(e) => { e.stopPropagation(); onClearTableColor(table.name); }} 
-                         className="p-1 opacity-0 group-hover/header:opacity-100 hover:text-red-500 transition-colors"
-                         title="Limpar tags"
+                         className="p-1 opacity-0 group-hover/header:opacity-100 hover:text-red-500 transition-colors bg-white/50 dark:bg-black/20 rounded"
+                         title="Limpar cor"
                        >
                          <Eraser className="w-3 h-3" />
                        </button>
                     )}
-                    <span className={`text-[9px] opacity-70 ${style.text}`}>{table.schema}</span>
                  </div>
               </div>
               
-              {/* Only render columns if LOD is high or medium */}
+              {/* Columns */}
               {(lodLevel === 'high' || lodLevel === 'medium' || isExpanded) && (
-                 <div className="py-1">
-                    {/* Render columns */}
-                    {visibleColumns.map((col: any) => {
-                       const colColorId = columnColors[`${table.name}.${col.name}`];
-                       const colStyle = colColorId ? TABLE_COLORS.find(c => c.id === colColorId) : null;
-                       const colBg = colStyle ? colStyle.bg : 'hover:bg-slate-50 dark:hover:bg-slate-700/50';
-                       
-                       return (
-                         <div 
-                            key={col.name} 
-                            className={`px-3 flex items-center justify-between text-[11px] h-[28px] ${colBg} relative`}
-                            onContextMenu={(e) => onContextMenu(e, table.name, col.name)}
-                         >
-                            {colColorId && <div className={`absolute left-0 top-0 bottom-0 w-1 ${colStyle?.bg.replace('50', '400')}`}></div>}
-                            <div className="flex items-center gap-1.5 overflow-hidden text-slate-600 dark:text-slate-300">
-                               {col.isPrimaryKey && <Key className="w-3 h-3 text-amber-500 shrink-0" />}
-                               {col.isForeignKey && <Link className="w-3 h-3 text-blue-500 shrink-0" />}
-                               <span className="truncate">{col.name}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                               <span className="text-slate-300 font-mono text-[9px]">{col.type.split('(')[0]}</span>
-                            </div>
-                         </div>
-                       );
-                    })}
+                 <div className="flex-1 min-h-0 bg-white dark:bg-slate-800 rounded-b-xl overflow-hidden flex flex-col">
+                    {/* Render columns with scroll when expanded */}
+                    <div 
+                        className={`flex flex-col ${isExpanded ? 'max-h-[300px] overflow-y-auto custom-scrollbar' : 'py-1'}`}
+                        onWheel={(e) => {
+                           if (isExpanded) e.stopPropagation(); 
+                        }}
+                    >
+                        {visibleColumns.map((col: any) => {
+                           const colColorId = columnColors[`${table.name}.${col.name}`];
+                           const colStyle = colColorId ? TABLE_COLORS.find(c => c.id === colColorId) : null;
+                           const isKey = col.isPrimaryKey || col.isForeignKey;
+                           
+                           return (
+                             <div 
+                                key={col.name} 
+                                className={`px-4 flex items-center justify-between text-xs h-[30px] transition-colors border-b border-transparent hover:border-slate-100 dark:hover:border-slate-700
+                                   ${colStyle ? colStyle.bg : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}
+                                   ${isKey ? 'bg-slate-50/50 dark:bg-slate-800/80' : ''}
+                                `}
+                                onContextMenu={(e) => onContextMenu(e, table.name, col.name)}
+                             >
+                                {colColorId && <div className={`absolute left-0 w-1 h-[20px] rounded-r ${colStyle?.bg.replace('50', '400')}`}></div>}
+                                
+                                <div className="flex items-center gap-2 overflow-hidden text-slate-700 dark:text-slate-300">
+                                   <div className="w-3.5 flex justify-center shrink-0">
+                                      {col.isPrimaryKey && <Key className="w-3 h-3 text-amber-500 fill-amber-500/20" />}
+                                      {col.isForeignKey && <Link className="w-3 h-3 text-blue-500" />}
+                                   </div>
+                                   <span className={`truncate font-mono ${isKey ? 'font-semibold' : ''}`} title={col.name}>{col.name}</span>
+                                </div>
+                                <div className="flex items-center gap-1 pl-2">
+                                   <span className="text-slate-400 dark:text-slate-500 text-[10px] truncate max-w-[60px] text-right" title={col.type}>{col.type.split('(')[0].toLowerCase()}</span>
+                                </div>
+                             </div>
+                           );
+                        })}
+                    </div>
                     
                     {/* Expand/Collapse Footer */}
                     {(table.columns.length > displayLimit) && (
                        <div 
-                          className="px-3 py-1.5 text-[9px] text-slate-400 italic cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-indigo-500 transition-colors flex items-center justify-center gap-1 border-t border-transparent hover:border-slate-100 dark:hover:border-slate-700"
+                          className="px-4 py-2 text-[10px] font-medium text-slate-500 dark:text-slate-400 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center justify-center gap-1 border-t border-slate-100 dark:border-slate-700"
                           onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
                        >
                           {isExpanded ? (
@@ -242,7 +263,7 @@ const DiagramNode = memo(({
                              </>
                           ) : (
                              <>
-                                <ChevronDown className="w-3 h-3" /> ...mais {hiddenCount} campos
+                                <ChevronDown className="w-3 h-3" /> Ver mais {hiddenCount} campos
                              </>
                           )}
                        </div>
@@ -753,7 +774,6 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                transformOrigin: '0 0',
                width: '100%',
                height: '100%',
-               willChange: 'transform' // Performance Hint
              }}
              className="relative w-full h-full"
           >
