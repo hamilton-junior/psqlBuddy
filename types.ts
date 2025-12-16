@@ -1,5 +1,4 @@
 
-
 export interface Column {
   name: string;
   type: string;
@@ -168,6 +167,14 @@ export interface SavedQuery {
   state: BuilderState;
 }
 
+export interface QueryTemplate {
+  id: string;
+  name: string;
+  sql: string;
+  description?: string;
+  parameters: string[]; // List of extracted params like ['email', 'start_date']
+}
+
 export interface QueryHistoryItem {
   id: string;
   sql: string;
@@ -222,7 +229,8 @@ export const SAMPLE_SCHEMA: DatabaseSchema = {
         { name: "name", type: "VARCHAR(100)" },
         { name: "email", type: "VARCHAR(100)" },
         { name: "created_at", type: "TIMESTAMP" },
-        { name: "country", type: "VARCHAR(50)" }
+        { name: "country", type: "VARCHAR(50)" },
+        { name: "settings", type: "JSONB" } // Added JSONB for demo
       ]
     },
     {
@@ -234,7 +242,8 @@ export const SAMPLE_SCHEMA: DatabaseSchema = {
         { name: "user_id", type: "INTEGER", isForeignKey: true, references: "public.users.id" },
         { name: "total_amount", type: "DECIMAL(10,2)" },
         { name: "status", type: "VARCHAR(20)" },
-        { name: "created_at", type: "TIMESTAMP" }
+        { name: "created_at", type: "TIMESTAMP" },
+        { name: "metadata", type: "JSONB" }
       ]
     },
     {

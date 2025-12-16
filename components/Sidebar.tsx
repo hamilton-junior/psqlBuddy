@@ -1,8 +1,7 @@
 
-
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid, HelpCircle, BookOpen, GitCompare, Link } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid, HelpCircle, BookOpen, GitCompare, Link, FileSearch, FileText } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
@@ -16,10 +15,12 @@ interface SidebarProps {
   onOpenShortcuts?: () => void;
   onOpenCheatSheet?: () => void;
   onOpenVirtualRelations?: () => void;
+  onOpenLogAnalyzer?: () => void; // New
+  onOpenTemplates?: () => void; // New
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations
+  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations, onOpenLogAnalyzer, onOpenTemplates
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -100,14 +101,23 @@ const Sidebar: React.FC<SidebarProps> = ({
           {navItem('datadiff', 'Comparador', <GitCompare className="w-4 h-4" />, !schema, "Comparar dados entre tabelas")}
         </div>
         
-        {/* Extra Tools Section */}
+        {/* Support Tools Section */}
         {schema && !isCollapsed && (
-           <div className="mt-8 mb-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ferramentas</div>
+           <div className="mt-8 mb-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Suporte Técnico</div>
         )}
         
         <div className="space-y-2 mt-2">
            {schema && (
              <>
+               <button onClick={onOpenTemplates} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-cyan-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Templates SQL">
+                  <FileText className="w-4 h-4 shrink-0" />
+                  {!isCollapsed && <span>Templates SQL</span>}
+               </button>
+               <button onClick={onOpenLogAnalyzer} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-rose-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Analisador de Logs">
+                  <FileSearch className="w-4 h-4 shrink-0" />
+                  {!isCollapsed && <span>Analisador de Logs</span>}
+               </button>
+               <div className="border-t border-slate-800 my-1"></div>
                <button onClick={onOpenVirtualRelations} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-indigo-400 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Vínculos Manuais">
                   <Link className="w-4 h-4 shrink-0" />
                   {!isCollapsed && <span>Vínculos Manuais</span>}

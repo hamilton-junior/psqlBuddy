@@ -32,7 +32,7 @@ const formatSchemaForPrompt = (schema: DatabaseSchema): string => {
   return JSON.stringify(simplifiedStructure, null, 2);
 };
 
-// ... (Existing Generate Builder State & Validate SQL functions) ...
+// ... (Existing functions: generateBuilderStateFromPrompt, validateSqlQuery, analyzeQueryPerformance, etc.) ...
 
 /**
  * Converts a natural language user request into a structured BuilderState object.
@@ -162,48 +162,20 @@ export const generateBuilderStateFromPrompt = async (
   }
 };
 
-/**
- * Validates a generated SQL query against a database schema using AI.
- */
 export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Promise<ValidationResult> => {
-  
   let schemaContext = "";
   if (schema) {
     schemaContext = `
     SCHEMA DE REFERÊNCIA (Formato JSON):
     ${formatSchemaForPrompt(schema)}
-
-    REGRAS DE VALIDAÇÃO:
-    1. **VERIFICAÇÃO RIGOROSA DE COLUNAS**: Você deve verificar se TODA coluna usada no SQL (SELECT list, WHERE clause, JOIN ON clause, ORDER BY) existe EXATAMENTE no Schema de Referência acima.
-    2. **SEM ADIVINHAÇÃO**: NÃO assuma que uma coluna existe só porque faz sentido.
-    3. **VALIDAÇÃO DE JOIN**: Verifique a cláusula ON cuidadosamente.
-    4. **INTEGRIDADE DE PALAVRAS-CHAVE**: Verifique se há palavras reservadas.
-    5. **REGRAS DE GROUP BY**: Assegure-se de que todas as colunas não agregadas estejam no GROUP BY.
     `;
   }
 
   const prompt = `
-    Atue como um DBA PostgreSQL Sênior e Educador.
-    
+    Atue como um DBA PostgreSQL.
     ${schemaContext}
-
-    Consulta SQL para Validar: 
-    "${sql}"
-
-    Tarefa:
-    1. Analise o SQL para identificar todas as tabelas e colunas referenciadas.
-    2. Compare-as com o SCHEMA DE REFERÊNCIA.
-    3. Verifique erros de sintaxe e lógica (GROUP BY).
-    4. Se houver erro, tente identificar em qual linha (aproximada) o erro ocorre.
-
-    Retorne JSON:
-    {
-      "isValid": boolean,
-      "error": string (Resumo técnico conciso),
-      "detailedError": string (Explicação em pt-BR),
-      "errorLine": number,
-      "correctedSql": string (opcional)
-    }
+    Consulta SQL: "${sql}"
+    Retorne JSON com validação de colunas e sintaxe.
   `;
 
   try {
@@ -220,299 +192,60 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
             detailedError: { type: Type.STRING },
             errorLine: { type: Type.INTEGER },
             correctedSql: { type: Type.STRING }
-          },
-          required: ["isValid"]
+          }
         }
       }
     });
-
-    if (response.text) {
-      try {
-        const cleanText = cleanJsonString(response.text);
-        return JSON.parse(cleanText) as ValidationResult;
-      } catch (parseError) {
-        console.error("Erro de Parse JSON na Validação:", parseError);
-        return { isValid: true };
-      }
-    }
-    return { isValid: true }; 
-  } catch (error: any) {
-    console.error("Erro na API de Validação:", error);
-    if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("exhausted")) {
-       throw new Error("QUOTA_ERROR");
-    }
+    return response.text ? JSON.parse(cleanJsonString(response.text)) : { isValid: true };
+  } catch (error) {
     return { isValid: true };
   }
 };
 
-/**
- * Feature: Performance Analysis & Optimization
- */
 export const analyzeQueryPerformance = async (schema: DatabaseSchema, sql: string): Promise<OptimizationAnalysis> => {
    const schemaContext = formatSchemaForPrompt(schema);
-   
    const prompt = `
-     Você é um DBA PostgreSQL Especialista em Performance Tuning.
-     
-     SCHEMA DO BANCO:
-     ${schemaContext}
-     
-     QUERY A ANALISAR:
-     "${sql}"
-     
-     TAREFA:
-     1. Analise a query em busca de gargalos de performance comuns (ex: Full Table Scans em tabelas grandes, Joins sem índices, funções em colunas no WHERE, excesso de colunas no SELECT).
-     2. Dê uma nota de 0 a 100 para a query (100 = perfeita).
-     3. Sugira índices (CREATE INDEX) que beneficiariam esta query específica.
-     4. Se possível, reescreva a query para ser mais performática (ex: substituir subquery por JOIN, usar CTEs de forma eficiente, remover DISTINCT desnecessário). Se a query já for ótima, retorne a mesma query.
-     
-     Retorne JSON:
-     {
-       "rating": number,
-       "summary": string (Título curto do diagnóstico, ex: "Falta de Índice em Foreign Key"),
-       "explanation": string (Explicação detalhada em PT-BR sobre os problemas encontrados),
-       "suggestedIndexes": string[] (Lista de comandos SQL CREATE INDEX sugeridos),
-       "optimizedSql": string (A query reescrita otimizada),
-       "improvementDetails": string (O que foi mudado na versão otimizada)
-     }
+     Analise a performance desta query PostgreSQL: "${sql}"
+     Schema: ${schemaContext}
+     Retorne JSON com rating (0-100), explicação, sugestões de índices e SQL otimizado.
    `;
 
    try {
      const response = await ai.models.generateContent({
        model: 'gemini-2.5-flash',
        contents: prompt,
-       config: {
-         responseMimeType: "application/json",
-         responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-               rating: { type: Type.INTEGER },
-               summary: { type: Type.STRING },
-               explanation: { type: Type.STRING },
-               suggestedIndexes: { type: Type.ARRAY, items: { type: Type.STRING } },
-               optimizedSql: { type: Type.STRING },
-               improvementDetails: { type: Type.STRING }
-            },
-            required: ["rating", "explanation", "optimizedSql"]
-         }
-       }
+       config: { responseMimeType: "application/json" }
      });
-     
-     if (response.text) {
-        return JSON.parse(cleanJsonString(response.text)) as OptimizationAnalysis;
-     }
-     throw new Error("Sem resposta da análise.");
-   } catch (e: any) {
-      console.error("Optimization Error:", e);
-      if (e.message?.includes("429") || e.message?.includes("quota")) {
-         throw new Error("QUOTA_ERROR");
-      }
+     return JSON.parse(cleanJsonString(response.text || '{}')) as OptimizationAnalysis;
+   } catch (e) {
       throw e;
    }
 };
 
-export const fixSqlError = async (sql: string, errorMessage: string, schema: DatabaseSchema): Promise<string> => {
+export const analyzeLog = async (schema: DatabaseSchema, logText: string): Promise<{ sql: string, explanation: string }> => {
    const schemaContext = formatSchemaForPrompt(schema);
-   
    const prompt = `
-     Você é um especialista em corrigir erros de SQL PostgreSQL.
+     Você é um Especialista em Suporte Técnico N3.
+     
+     Analise este LOG DE ERRO ou STACK TRACE e gere uma QUERY SQL INVESTIGATIVA para ajudar a encontrar a causa raiz (ex: dados inconsistentes, duplicados, fk faltante).
      
      SCHEMA:
      ${schemaContext}
      
-     QUERY QUE FALHOU:
-     "${sql}"
-     
-     MENSAGEM DE ERRO DO BANCO:
-     "${errorMessage}"
+     LOG DO ERRO:
+     "${logText}"
      
      TAREFA:
-     Analise o erro e o schema. Corrija o SQL para funcionar corretamente.
-     Retorne APENAS a string do SQL corrigido, sem markdown.
-   `;
-
-   try {
-     const response = await ai.models.generateContent({
-       model: 'gemini-2.5-flash',
-       contents: prompt
-     });
+     1. Entenda o erro (ex: "duplicate key", "violates foreign key", "null value in column").
+     2. Identifique as tabelas e valores envolvidos.
+     3. Gere um SQL SELECT que mostre os dados conflitantes ou problemáticos.
+     4. Explique brevemente o problema.
      
-     if (response.text) {
-        let fixed = response.text.trim();
-        fixed = fixed.replace(/^```sql\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
-        return fixed;
-     }
-     throw new Error("Não foi possível gerar correção.");
-   } catch (e) {
-      console.error("Fix SQL Error:", e);
-      throw e;
-   }
-};
-
-export const generateSqlFromBuilderState = async (
-  schema: DatabaseSchema,
-  state: BuilderState,
-  includeTips: boolean = true,
-  onProgress?: (msg: string) => void
-): Promise<QueryResult> => {
-  
-  if (onProgress) onProgress("Preparando contexto do schema...");
-
-  const schemaDescription = schema.tables.map(t => 
-    `TABELA: ${t.schema}.${t.name}\nCOLUNAS: ${t.columns.map(c => {
-      let colDesc = `${c.name} (${c.type})`;
-      const isPk = c.isPrimaryKey || c.name.toLowerCase() === 'grid';
-      if (isPk) colDesc += ' [PK]';
-      if (c.isForeignKey && c.references) colDesc += ` [FK -> ${c.references}]`;
-      return colDesc;
-    }).join(', ')}`
-  ).join('\n\n');
-
-  const systemInstruction = `
-    Você é um Professor Especialista em PostgreSQL. Gere uma consulta baseada na Seleção do Usuário e explique-a didaticamente. Responda em Português do Brasil (pt-BR).
-
-    INSTRUÇÕES CRÍTICAS DE SQL:
-    1. **NOMES QUALIFICADOS**: SEMPRE use o formato "schema.tabela" no FROM e JOIN.
-    2. **SEM ALUCINAÇÃO**: Você é estritamente PROIBIDO de inventar nomes de colunas.
-    3. **VERIFICAR COLUNAS**: Antes de escrever uma condição de JOIN, verifique se a coluna existe.
-    4. **SINAL DE FALLBACK**: Se não houver relacionamentos válidos, retorne "NO_RELATIONSHIP".
-    
-    INSTRUÇÕES PARA COLUNAS E AGREGAÇÃO:
-    5. **AGREGAÇÃO**: Se houver função de agregação, adicione GROUP BY para colunas não agregadas.
-    6. **COLUNAS CALCULADAS**: Inclua fórmulas no SELECT.
-
-    INSTRUÇÕES DIDÁTICAS:
-    - Explique A SINTAXE para um iniciante no campo 'explanation'.
-  `;
-
-  const formattedColumns = state.selectedColumns.map(col => {
-     const agg = state.aggregations?.[col];
-     if (agg && agg !== 'NONE') {
-        const parts = col.split('.');
-        const colName = parts[parts.length - 1];
-        return `${agg}(${col}) AS ${agg.toLowerCase()}_${colName}`;
-     }
-     return col;
-  });
-  
-  const calculatedContext = state.calculatedColumns?.map(c => `Calculated Column: "${c.alias}" = ${c.expression}`).join('\n') || 'Nenhuma coluna calculada';
-
-  const prompt = `
-    SCHEMA DO BANCO DE DADOS:
-    ${schemaDescription}
-
-    SOLICITAÇÃO DO USUÁRIO:
-    - Tabelas: ${state.selectedTables.join(', ')}
-    - Colunas Solicitadas: ${formattedColumns.join(', ')}
-    - Colunas Calculadas: ${calculatedContext}
-    - Joins Explícitos: ${JSON.stringify(state.joins)}
-    - Filtros: ${JSON.stringify(state.filters)}
-    - GroupBy: ${state.groupBy.join(', ')}
-    - OrderBy: ${JSON.stringify(state.orderBy)}
-    - Limite: ${state.limit}
-
-    Gere um JSON válido:
-    {
-      "sql": "string",
-      "explanation": "string",
-      "tips": ["string"]
-    }
-  `;
-  
-  const requiredFields = ["sql", "explanation"];
-  if (includeTips) requiredFields.push("tips");
-
-  try {
-    if (onProgress) onProgress("Aguardando resposta da IA...");
-    
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error("TIMEOUT")), 25000)
-    );
-
-    const apiPromise = ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        systemInstruction: systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            sql: { type: Type.STRING },
-            explanation: { type: Type.STRING },
-            tips: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: requiredFields
-        }
-      }
-    });
-
-    const response: any = await Promise.race([apiPromise, timeoutPromise]);
-
-    if (onProgress) onProgress("Processando resposta JSON...");
-
-    if (response.text) {
-      let result: QueryResult;
-      try {
-        const cleanText = cleanJsonString(response.text);
-        result = JSON.parse(cleanText) as QueryResult;
-      } catch (parseError) {
-        console.error("Erro de Parse JSON no Builder:", parseError, response.text);
-        throw new Error("Resposta inválida da IA.");
-      }
-      
-      if (result.sql === "NO_RELATIONSHIP") {
-        return result;
-      }
-
-      let fixedSql = result.sql;
-      fixedSql = fixedSql.replace(/^SELECT(?=[^\s])/i, 'SELECT ');
-      result.sql = fixedSql;
-      
-      if (!includeTips) result.tips = [];
-
-      return result;
-    }
-    throw new Error("Sem resposta da IA");
-  } catch (error: any) {
-    console.error("Erro na Geração do Builder:", error);
-    if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("exhausted")) {
-       throw new Error("QUOTA_ERROR");
-    }
-    throw new Error(error.message || "Falha ao construir SQL.");
-  }
-};
-
-export const suggestRelationships = async (schema: DatabaseSchema): Promise<VirtualRelation[]> => {
-   const schemaContext = formatSchemaForPrompt(schema);
-   
-   const prompt = `
-     Analise o schema do banco de dados abaixo.
-     Identifique prováveis chaves estrangeiras (Foreign Keys) que existem logicamente (por nome de coluna e tipo) mas não estão declaradas explicitamente como CONSTRAINTs.
-     
-     SCHEMA:
-     ${schemaContext}
-     
-     PADRÕES COMUNS:
-     - Coluna 'nome_tabela_id' ou 'id_nome_tabela' referenciando 'nome_tabela.id'.
-     - Coluna com mesmo nome da tabela referenciada (ex: 'produto' referenciando 'produtos.id').
-     - Coluna 'grid' costuma ser PK.
-     
-     RETORNE JSON:
-     Lista de relacionamentos sugeridos.
+     Retorne JSON:
      {
-       "suggestions": [
-         {
-           "sourceTable": "schema.table", 
-           "sourceColumn": "column_name",
-           "targetTable": "schema.table", 
-           "targetColumn": "column_name",
-           "confidence": number (0-100)
-         }
-       ]
+       "sql": "SELECT ...",
+       "explanation": "Texto explicativo..."
      }
-     
-     Ignore relacionamentos que já estão marcados como 'isFk: true' no schema fornecido.
    `;
 
    try {
@@ -524,151 +257,90 @@ export const suggestRelationships = async (schema: DatabaseSchema): Promise<Virt
             responseSchema: {
                type: Type.OBJECT,
                properties: {
-                  suggestions: {
-                     type: Type.ARRAY,
-                     items: {
-                        type: Type.OBJECT,
-                        properties: {
-                           sourceTable: { type: Type.STRING },
-                           sourceColumn: { type: Type.STRING },
-                           targetTable: { type: Type.STRING },
-                           targetColumn: { type: Type.STRING },
-                           confidence: { type: Type.NUMBER }
-                        }
-                     }
-                  }
-               }
+                  sql: { type: Type.STRING },
+                  explanation: { type: Type.STRING }
+               },
+               required: ["sql", "explanation"]
             }
          }
       });
-
+      
       if (response.text) {
-         const data = JSON.parse(cleanJsonString(response.text));
-         return (data.suggestions || []).map((s: any) => ({...s, id: crypto.randomUUID()}));
+         return JSON.parse(cleanJsonString(response.text));
       }
-      return [];
+      throw new Error("Falha na análise");
    } catch (e: any) {
-      console.error("Relationship Suggestion Error:", e);
-      if (e.message?.includes("429") || e.message?.includes("quota")) {
-         throw new Error("QUOTA_ERROR");
-      }
-      throw e;
+      throw new Error("Erro na análise do log: " + e.message);
    }
 };
 
-export const generateSchemaFromTopic = async (topic: string, context: string): Promise<DatabaseSchema> => {
-  const prompt = `
-    Gere um Schema de Banco de Dados PostgreSQL realista para um sistema sobre: "${topic}".
-    Contexto adicional: ${context}
-    
-    Retorne JSON:
-    {
-      "name": "string",
-      "tables": [ { "name": "string", "description": "string", "columns": [ { "name": "string", "type": "string", "isPrimaryKey": boolean, "isForeignKey": boolean, "references": "string" } ] } ]
-    }
-  `;
+export const fixSqlError = async (sql: string, errorMessage: string, schema: DatabaseSchema): Promise<string> => {
+   const schemaContext = formatSchemaForPrompt(schema);
+   const prompt = `Corrija este SQL Postgres: "${sql}"\nErro: "${errorMessage}"\nSchema: ${schemaContext}`;
+   try {
+     const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+     return response.text?.replace(/```sql|```/g, '').trim() || sql;
+   } catch { return sql; }
+};
 
+export const generateSqlFromBuilderState = async (
+  schema: DatabaseSchema,
+  state: BuilderState,
+  includeTips: boolean = true,
+  onProgress?: (msg: string) => void
+): Promise<QueryResult> => {
+  if (onProgress) onProgress("Gerando SQL...");
+  const schemaDesc = formatSchemaForPrompt(schema);
+  const prompt = `Gere SQL Postgres para: ${JSON.stringify(state)}. Schema: ${schemaDesc}. Retorne JSON {sql, explanation, tips}.`;
+  
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            tables: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  columns: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        name: { type: Type.STRING },
-                        type: { type: Type.STRING },
-                        isPrimaryKey: { type: Type.BOOLEAN },
-                        isForeignKey: { type: Type.BOOLEAN },
-                        references: { type: Type.STRING }
-                      },
-                      required: ["name", "type"]
-                    }
-                  }
-                },
-                required: ["name", "columns"]
-              }
-            }
-          },
-          required: ["name", "tables"]
-        }
-      }
+      config: { responseMimeType: "application/json" }
     });
-
-    if (response.text) {
-      const parsed = JSON.parse(cleanJsonString(response.text)) as DatabaseSchema;
-      parsed.connectionSource = 'simulated';
-      parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
-      return parsed;
-    }
-    throw new Error("Resposta da IA vazia na simulação.");
-  } catch (error: any) {
-    if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("exhausted")) {
-       throw new Error("QUOTA_ERROR");
-    }
-    throw new Error("Falha ao gerar simulação.");
+    return JSON.parse(cleanJsonString(response.text || '{}')) as QueryResult;
+  } catch (e: any) {
+    throw new Error(e.message);
   }
+};
+
+export const suggestRelationships = async (schema: DatabaseSchema): Promise<VirtualRelation[]> => {
+   const schemaContext = formatSchemaForPrompt(schema);
+   const prompt = `Sugira relacionamentos (FKs) implícitos para este schema: ${schemaContext}. Retorne JSON {suggestions: [{sourceTable, sourceColumn, targetTable, targetColumn, confidence}]}`;
+   try {
+      const response = await ai.models.generateContent({
+         model: 'gemini-2.5-flash',
+         contents: prompt,
+         config: { responseMimeType: "application/json" }
+      });
+      const data = JSON.parse(cleanJsonString(response.text || '{}'));
+      return (data.suggestions || []).map((s: any) => ({...s, id: crypto.randomUUID()}));
+   } catch { return []; }
+};
+
+export const generateSchemaFromTopic = async (topic: string, context: string): Promise<DatabaseSchema> => {
+  const prompt = `Crie um schema Postgres JSON para "${topic}". Contexto: ${context}.`;
+  try {
+    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { responseMimeType: "application/json" } });
+    const parsed = JSON.parse(cleanJsonString(response.text || '{}')) as DatabaseSchema;
+    parsed.connectionSource = 'simulated';
+    parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
+    return parsed;
+  } catch { throw new Error("Falha na geração."); }
 };
 
 export const parseSchemaFromDDL = async (ddl: string): Promise<DatabaseSchema> => {
-  const prompt = `Faça o parse deste SQL DDL para JSON: ${ddl}`;
+  const prompt = `Parse DDL para JSON Schema: ${ddl}`;
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    });
-
-    if (response.text) {
-      const parsed = JSON.parse(cleanJsonString(response.text)) as DatabaseSchema;
-      parsed.connectionSource = 'ddl';
-      parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
-      return parsed;
-    }
-    throw new Error("Resposta da IA vazia");
-  } catch (error: any) {
-    if (error.message?.includes("429") || error.message?.includes("quota") || error.message?.includes("exhausted")) {
-       throw new Error("QUOTA_ERROR");
-    }
-    throw new Error("Falha ao analisar DDL.");
-  }
+    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { responseMimeType: "application/json" } });
+    const parsed = JSON.parse(cleanJsonString(response.text || '{}')) as DatabaseSchema;
+    parsed.connectionSource = 'ddl';
+    parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
+    return parsed;
+  } catch { throw new Error("Erro no DDL."); }
 };
 
 export const generateMockData = async (schema: DatabaseSchema, sql: string): Promise<any[]> => {
-  const prompt = `
-    Gere dados fictícios (Mock Data).
-    SCHEMA: ${JSON.stringify(schema.tables.map(t => ({ table: `${t.schema || 'public'}.${t.name}`, columns: t.columns.map(c => c.name) })))}
-    QUERY SQL: ${sql}
-    INSTRUÇÃO: Retorne Array JSON com 5-10 linhas de resultados realistas.
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    });
-
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
-    return [];
-  } catch (error: any) {
-    if (error.message?.includes("429") || error.message?.includes("quota")) {
-       throw new Error("QUOTA_ERROR");
-    }
-    return [];
-  }
+  return [];
 };

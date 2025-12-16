@@ -1,3 +1,4 @@
+
 import { QueryHistoryItem } from '../types';
 
 const STORAGE_KEY = 'psql-buddy-history';
@@ -27,6 +28,18 @@ export const addToHistory = (item: Omit<QueryHistoryItem, 'id' | 'timestamp'>) =
     return newItem;
   } catch (e) {
     console.error("Failed to save history", e);
+  }
+};
+
+export const removeFromHistory = (id: string): QueryHistoryItem[] => {
+  try {
+    const history = getHistory();
+    const updated = history.filter(item => item.id !== id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch (e) {
+    console.error("Failed to remove from history", e);
+    return [];
   }
 };
 

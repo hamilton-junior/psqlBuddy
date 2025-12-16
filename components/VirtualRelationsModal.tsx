@@ -106,17 +106,22 @@ const VirtualRelationsModal: React.FC<VirtualRelationsModalProps> = ({
   const handleGenerateSql = () => {
      if (existingRelations.length === 0) return;
      
+     const parseTable = (str: string) => {
+        const parts = str.split('.');
+        if (parts.length >= 2) return { schema: parts[0], table: parts[1] };
+        return { schema: 'public', table: parts[0] };
+     };
+
      const statements = existingRelations.map(rel => {
-        // Handle source schema/table
-        const [srcSchema, srcTable] = rel.sourceTable.split('.');
-        const [tgtSchema, tgtTable] = rel.targetTable.split('.');
+        const src = parseTable(rel.sourceTable);
+        const tgt = parseTable(rel.targetTable);
         
-        const constraintName = `fk_${srcTable}_${tgtTable}_${rel.sourceColumn}`;
+        const constraintName = `fk_${src.table}_${tgt.table}_${rel.sourceColumn}`;
         
-        return `ALTER TABLE "${srcSchema}"."${srcTable}"
+        return `ALTER TABLE "${src.schema}"."${src.table}"
 ADD CONSTRAINT "${constraintName}"
 FOREIGN KEY ("${rel.sourceColumn}")
-REFERENCES "${tgtSchema}"."${tgtTable}" ("${rel.targetColumn}");`;
+REFERENCES "${tgt.schema}"."${tgt.table}" ("${rel.targetColumn}");`;
      });
      
      setGeneratedSql(statements.join('\n\n'));

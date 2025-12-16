@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
@@ -20,6 +19,9 @@ import SqlCheatSheetModal from './components/SqlCheatSheetModal';
 import VirtualRelationsModal from './components/VirtualRelationsModal';
 import TablePreviewModal from './components/TablePreviewModal';
 import AiPreferenceModal from './components/AiPreferenceModal';
+import LogAnalyzerModal from './components/LogAnalyzerModal'; // New
+import TemplateModal from './components/TemplateModal'; // New
+import HistoryModal from './components/HistoryModal'; // New
 import TourGuide, { TourStep } from './components/TourGuide';
 import { generateSqlFromBuilderState } from './services/geminiService';
 import { generateLocalSql } from './services/localSqlService';
@@ -88,9 +90,11 @@ const App: React.FC = () => {
   const [showDiagram, setShowDiagram] = useState(false);
   const [showVirtualRelations, setShowVirtualRelations] = useState(false);
   const [showAiPreference, setShowAiPreference] = useState(false);
+  const [showLogAnalyzer, setShowLogAnalyzer] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tablePreview, setTablePreview] = useState<{name: string, data: any[], loading: boolean, error: string | null} | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false); // Placeholder for future History Modal
+  const [historyOpen, setHistoryOpen] = useState(false); 
 
   // Virtual Relations
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
@@ -119,7 +123,6 @@ const App: React.FC = () => {
     
     setCurrentStep('builder');
     
-    // Check if first time user
     const hasSeenTour = localStorage.getItem('psql-buddy-tour-seen');
     if (!hasSeenTour) {
        setShowAiPreference(true);
@@ -144,15 +147,9 @@ const App: React.FC = () => {
       if (settings.enableAiGeneration) {
          result = await generateSqlFromBuilderState(schema, builderState, settings.enableAiTips, (msg) => setProgressMessage(msg));
       } else {
-         // Manual / Offline Generation
-         await new Promise(r => setTimeout(r, 500)); // UI feel
+         await new Promise(r => setTimeout(r, 500));
          result = generateLocalSql(schema, builderState);
-         
-         // Basic validation for offline mode
          if (settings.enableAiValidation) {
-             // Even in offline generation mode, validation might be requested if settings allow
-             // But usually if enableAiGeneration is false, we might assume validation is also skipped or done locally (which is hard).
-             // We'll skip AI validation here to respect "Offline Mode".
              result.validation = { isValid: true }; 
          }
       }
@@ -194,20 +191,10 @@ const App: React.FC = () => {
     try {
        let data: any[] = [];
        if (credentials.host === 'simulated') {
-          // Parse SQL minimally to identify table/filters for simulation if possible
-          // Or use builderState if sql matches generated. 
-          // For simplicity in simulation mode from Editor, we re-run logic based on builderState 
-          // if SQL hasn't drifted too much, or use a basic parser.
-          // *Ideally* we would parse the SQL string. 
-          // For now, we use the builderState for simulation execution which is robust for the builder path.
-          // If the user EDITED the SQL, simulation might not match edits.
-          
           if (sqlOverride && sqlOverride !== queryResult?.sql) {
              handleShowToast("Nota: Em modo simulação, edições manuais no SQL podem não refletir nos dados fictícios complexos. Usando lógica do construtor.", 'info');
           }
-          
           data = executeOfflineQuery(schema, simulationData, builderState);
-          // Simulate network delay
           await new Promise(r => setTimeout(r, 600));
        } else {
           data = await executeQueryReal(credentials, sqlToRun);
@@ -216,7 +203,6 @@ const App: React.FC = () => {
        setExecutionResult(data);
        setExecutionDuration(performance.now() - start);
        
-       // Update Query Result if executed from editor
        if (sqlOverride && queryResult) {
           setQueryResult({ ...queryResult, sql: sqlOverride });
        }
@@ -230,20 +216,16 @@ const App: React.FC = () => {
     }
   };
 
-  // Virtual Relations Handlers
   const handleAddVirtualRelation = (rel: VirtualRelation) => {
      setVirtualRelations(prev => [...prev, rel]);
-     
-     // Update Schema in memory to reflect this relation as a real FK for the builder
      if (schema) {
         const newSchema = { ...schema };
         const sourceTbl = newSchema.tables.find(t => `${t.schema || 'public'}.${t.name}` === rel.sourceTable);
-        
         if (sourceTbl) {
            const col = sourceTbl.columns.find(c => c.name === rel.sourceColumn);
            if (col) {
               col.isForeignKey = true;
-              col.references = `${rel.targetTable}.${rel.targetColumn}`; // Update reference
+              col.references = `${rel.targetTable}.${rel.targetColumn}`; 
            }
         }
         setSchema(newSchema);
@@ -254,16 +236,12 @@ const App: React.FC = () => {
   const handleRemoveVirtualRelation = (id: string) => {
      const rel = virtualRelations.find(r => r.id === id);
      setVirtualRelations(prev => prev.filter(r => r.id !== id));
-     
-     // Revert Schema change
      if (schema && rel) {
         const newSchema = { ...schema };
         const sourceTbl = newSchema.tables.find(t => `${t.schema || 'public'}.${t.name}` === rel.sourceTable);
         if (sourceTbl) {
            const col = sourceTbl.columns.find(c => c.name === rel.sourceColumn);
            if (col) {
-              // Only remove if it wasn't already a real FK (simple check)
-              // Ideally we would track original state, but for now we assume virtuals are additive
               col.isForeignKey = false;
               col.references = undefined;
            }
@@ -274,14 +252,12 @@ const App: React.FC = () => {
 
   const handleCheckOverlap = async (tA: string, cA: string, tB: string, cB: string): Promise<number> => {
      if (!credentials) return 0;
-     if (credentials.host === 'simulated') return 10; // Mock overlap for simulation
-     
+     if (credentials.host === 'simulated') return 10; 
      const sql = `SELECT COUNT(*) as count FROM ${tA} A JOIN ${tB} B ON A.${cA} = B.${cB}`;
      const res = await executeQueryReal(credentials, sql);
      return parseInt(res[0].count);
   };
 
-  // Dashboard Handlers
   const handleAddToDashboard = (item: Omit<DashboardItem, 'id' | 'createdAt'>) => {
      const newItem: DashboardItem = {
         ...item,
@@ -291,7 +267,6 @@ const App: React.FC = () => {
      setDashboardItems(prev => [newItem, ...prev]);
   };
 
-  // Preview Table Handler
   const handlePreviewTable = async (tableName: string) => {
      setTablePreview({ name: tableName, data: [], loading: true, error: null });
      try {
@@ -308,18 +283,26 @@ const App: React.FC = () => {
      }
   };
 
-  // Toast Notification
   const handleShowToast = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
      if (type === 'success') toast.success(msg);
      else if (type === 'error') toast.error(msg);
      else toast(msg, { icon: <Info className="w-4 h-4 text-blue-500" /> });
   };
 
+  // Run SQL from External Components (Templates, Analyzer)
+  const handleRunExternalSql = (sql: string) => {
+     setQueryResult({
+        sql: sql,
+        explanation: 'Gerada via ferramenta externa.',
+        tips: []
+     });
+     setCurrentStep('preview');
+  };
+
   return (
     <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
       <Toaster position="top-right" toastOptions={{ className: 'text-sm font-medium', style: { background: '#1e293b', color: '#fff' } }} />
       
-      {/* Sidebar Navigation */}
       <Sidebar 
         currentStep={currentStep}
         onNavigate={setCurrentStep}
@@ -337,9 +320,10 @@ const App: React.FC = () => {
         onOpenShortcuts={() => setShowShortcuts(true)}
         onOpenCheatSheet={() => setShowCheatSheet(true)}
         onOpenVirtualRelations={() => setShowVirtualRelations(true)}
+        onOpenLogAnalyzer={() => setShowLogAnalyzer(true)}
+        onOpenTemplates={() => setShowTemplates(true)}
       />
 
-      {/* Main Content Area */}
       <main className="flex-1 overflow-hidden relative flex flex-col">
         <div className="flex-1 p-6 overflow-hidden h-full">
            {currentStep === 'connection' && (
@@ -411,18 +395,11 @@ const App: React.FC = () => {
 
       {/* Modals */}
       {showSettings && (
-         <SettingsModal 
-            settings={settings} 
-            onSave={setSettings} 
-            onClose={() => setShowSettings(false)} 
-         />
+         <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} />
       )}
 
       {showDiagram && schema && (
-         <SchemaDiagramModal 
-            schema={schema} 
-            onClose={() => setShowDiagram(false)} 
-         />
+         <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} />
       )}
 
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
@@ -438,6 +415,28 @@ const App: React.FC = () => {
             onClose={() => setShowVirtualRelations(false)}
             onCheckOverlap={handleCheckOverlap}
             credentials={credentials}
+         />
+      )}
+
+      {showLogAnalyzer && schema && (
+         <LogAnalyzerModal 
+            schema={schema}
+            onClose={() => setShowLogAnalyzer(false)}
+            onRunSql={handleRunExternalSql}
+         />
+      )}
+
+      {showTemplates && (
+         <TemplateModal 
+            onClose={() => setShowTemplates(false)}
+            onRunTemplate={handleRunExternalSql}
+         />
+      )}
+
+      {historyOpen && (
+         <HistoryModal 
+            onClose={() => setHistoryOpen(false)}
+            onLoadQuery={handleRunExternalSql}
          />
       )}
 

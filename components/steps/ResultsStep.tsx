@@ -1,17 +1,19 @@
 
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save } from 'lucide-react';
+import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye } from 'lucide-react';
 import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
 import CodeSnippetModal from '../CodeSnippetModal';
+import JsonViewerModal from '../JsonViewerModal'; // New
+import DrillDownModal from '../DrillDownModal'; // New
 import { addToHistory } from '../../services/historyService';
 import { explainQueryReal } from '../../services/dbService';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
 import BeginnerTip from '../BeginnerTip';
 
+// ... (Existing RowInspector, ColumnProfiler - no changes needed there) ...
 // --- ROW INSPECTOR MODAL ---
 interface RowInspectorProps {
    row: any;
@@ -224,9 +226,13 @@ interface VirtualTableProps {
    onRowClick: (row: any) => void;
    isAdvancedMode?: boolean;
    onUpdateCell?: (rowIdx: number, colKey: string, newValue: string) => void;
+   // New features
+   onOpenJson: (json: any) => void;
+   onDrillDown: (table: string, col: string, val: any) => void;
+   schema?: DatabaseSchema;
 }
 
-const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell }) => {
+const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell, onOpenJson, onDrillDown, schema }) => {
    const [currentPage, setCurrentPage] = useState(1);
    const [rowsPerPage, setRowsPerPage] = useState(25);
    const [activeProfileCol, setActiveProfileCol] = useState<string | null>(null);
@@ -270,16 +276,85 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
       if (e.key === 'Escape') setEditingCell(null);
    };
 
-   const formatValue = (val: any) => {
+   // Determine if column is a linkable target (FK or special suffix)
+   const getLinkTarget = (colName: string): { table: string, pk: string } | null => {
+      if (!schema) return null;
+      const lowerCol = colName.toLowerCase();
+
+      // 1. Explicit FK Check (Schema)
+      for (const t of schema.tables) {
+         const col = t.columns.find(c => c.name === colName);
+         if (col && col.isForeignKey && col.references) {
+            const parts = col.references.split('.');
+            if (parts.length === 3) return { table: `${parts[0]}.${parts[1]}`, pk: parts[2] };
+            if (parts.length === 2) return { table: `public.${parts[0]}`, pk: parts[1] };
+         }
+      }
+
+      // 2. Implicit Heuristics (Name Matching)
+      // Check suffixes: _id, _grid, _mlid
+      const suffixes = ['_id', '_grid', '_mlid'];
+      for (const suffix of suffixes) {
+         if (lowerCol.endsWith(suffix) && lowerCol !== suffix) {
+            const baseName = lowerCol.substring(0, lowerCol.length - suffix.length);
+            const target = schema.tables.find(t => 
+               t.name.toLowerCase() === baseName || 
+               t.name.toLowerCase() === baseName + 's' ||
+               t.name.toLowerCase() === baseName + 'es'
+            );
+            if (target) {
+               // Guess PK of target table
+               const pk = target.columns.find(c => c.isPrimaryKey)?.name || 'id';
+               return { table: `${target.schema || 'public'}.${target.name}`, pk };
+            }
+         }
+      }
+
+      // Direct Table Name match (column "user" -> table "users")
+      const direct = schema.tables.find(t => t.name.toLowerCase() === lowerCol || t.name.toLowerCase() === lowerCol + 's');
+      if (direct) {
+         const pk = direct.columns.find(c => c.isPrimaryKey)?.name || 'id';
+         return { table: `${direct.schema || 'public'}.${direct.name}`, pk };
+      }
+
+      return null;
+   };
+
+   const formatValue = (col: string, val: any) => {
       if (val === null || val === undefined) return <span className="text-slate-300 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">null</span>;
+      
       if (typeof val === 'boolean') {
          return val ? 
             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded">TRUE</span> : 
             <span className="text-[10px] font-bold text-red-700 bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded">FALSE</span>;
       }
+      
       if (typeof val === 'object') {
-         return <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-1 rounded flex items-center gap-1 w-fit"><Braces className="w-3 h-3" /> JSON</span>;
+         return (
+            <button 
+               onClick={(e) => { e.stopPropagation(); onOpenJson(val); }} 
+               className="text-xs font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded flex items-center gap-1 w-fit hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+            >
+               <Braces className="w-3 h-3" /> JSON
+            </button>
+         );
       }
+
+      // Check for Drill Down Link
+      const target = getLinkTarget(col);
+      if (target) {
+         return (
+            <button 
+               onClick={(e) => { e.stopPropagation(); onDrillDown(target.table, target.pk, val); }}
+               className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 group/link"
+               title={`Ir para ${target.table}`}
+            >
+               {highlightMatch(String(val))}
+               <ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100 transition-opacity" />
+            </button>
+         );
+      }
+
       return highlightMatch(String(val));
    };
 
@@ -334,7 +409,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                                           className="w-full h-full bg-white dark:bg-slate-800 border-2 border-indigo-500 rounded px-1 outline-none text-slate-900 dark:text-white shadow-lg z-20 relative -ml-1 -my-1"
                                        />
                                     ) : (
-                                       formatValue(row[col])
+                                       formatValue(col, row[col])
                                     )}
                                  </td>
                               );
@@ -430,7 +505,7 @@ const SmartFilterBar: React.FC<{ columns: string[], filters: FilterRule[], onCha
       <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700 animate-in slide-in-from-top-2">
          <div className="flex items-center justify-between mb-2 px-1">
             <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Filtros Locais</span>
-            <button onClick={onClear} className="text-[10px] text-red-500 hover:underline">Limpar</button>
+            <button onClick={() => { onClear(); setIsOpen(false); }} className="text-[10px] text-red-500 hover:underline">Limpar</button>
          </div>
          <div className="space-y-2">
             {filters.map(f => (
@@ -491,8 +566,10 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCodeModal, setShowCodeModal] = useState(false);
   
-  // Row Detail Modal
+  // New Modals
   const [selectedRow, setSelectedRow] = useState<any | null>(null);
+  const [viewJson, setViewJson] = useState<any | null>(null);
+  const [drillDownTarget, setDrillDownTarget] = useState<{table: string, col: string, val: any} | null>(null);
 
   // Chart configuration state lifted for pinning
   const [currentChartConfig, setCurrentChartConfig] = useState<{xAxis: string, yKeys: string[]} | null>(null);
@@ -505,17 +582,13 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
 
   const filteredData = React.useMemo(() => {
      let res = localData;
-     
-     // Apply Smart Filters
      if (filters.length > 0) {
         res = res.filter(row => {
            return filters.every(f => {
               const val = row[f.column];
               const strVal = String(val).toLowerCase();
               const filterVal = f.value.toLowerCase();
-              
-              if (f.value === '') return true; // Ignore empty filters
-
+              if (f.value === '') return true;
               switch(f.operator) {
                  case 'contains': return strVal.includes(filterVal);
                  case 'equals': return strVal === filterVal;
@@ -528,73 +601,49 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
            });
         });
      }
-
-     // Apply Global Search (Legacy fallback)
      if (localSearch) {
         res = res.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(localSearch.toLowerCase())));
      }
-     
      return res;
   }, [localData, filters, localSearch]);
 
   const highlightMatch = (text: string) => {
     const term = localSearch || filters.find(f => f.operator === 'contains')?.value || '';
     if (!term) return text;
-    
     const escapedSearch = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const parts = text.split(new RegExp(`(${escapedSearch})`, 'gi'));
     return <>{parts.map((part, i) => part.toLowerCase() === term.toLowerCase() ? <span key={i} className="bg-yellow-200 dark:bg-yellow-600/50 text-slate-900 dark:text-white font-semibold rounded px-0.5">{part}</span> : part)}</>;
   };
 
-  // --- Update Cell Handler (Advanced Mode) ---
   const handleUpdateCell = (rowIdx: number, colKey: string, newValue: string) => {
      if (!settings?.advancedMode) return;
-
-     // 1. Identify Target Table from SQL FROM clause (simple approximation)
      const fromMatch = sql.match(/FROM\s+([a-zA-Z0-9_."]+)/i);
      const tableName = fromMatch ? fromMatch[1] : "table_name";
-
-     // 2. Identify PK
      const row = localData[rowIdx];
      let pkCol = 'id';
      let pkVal = row['id'];
-
      if (!pkVal) {
-        // Fallback: look for 'grid' or schema defined PK
         if (row['grid']) { pkCol = 'grid'; pkVal = row['grid']; }
         else if (schema) {
-           // Try to find table in schema matching the name
            const t = schema.tables.find(tbl => tableName.includes(tbl.name));
            if (t) {
               const pk = t.columns.find(c => c.isPrimaryKey);
-              if (pk) {
-                 pkCol = pk.name;
-                 pkVal = row[pkCol];
-              }
+              if (pk) { pkCol = pk.name; pkVal = row[pkCol]; }
            }
         }
      }
-
      if (!pkVal) {
         onShowToast("Não foi possível identificar a Chave Primária (ID) para atualizar esta linha.", "error");
         return;
      }
-
-     // 3. Generate SQL
      const updateSql = `UPDATE ${tableName} SET ${colKey} = '${newValue.replace(/'/g, "''")}' WHERE ${pkCol} = ${pkVal};`;
-     
-     // 4. Update Local Data (Optimistic)
      const newData = [...localData];
      newData[rowIdx] = { ...newData[rowIdx], [colKey]: newValue };
      setLocalData(newData);
-
-     // 5. Show Feedback
      onShowToast(`UPDATE Gerado: ${updateSql}`, "info");
-     
-     // Note: In a real app, we would execute this SQL against the backend here.
   };
 
-  // --- Smart Copy Handlers ---
+  // ... (Export handlers kept same) ...
   const copyAsMarkdown = () => {
      if (filteredData.length === 0) return;
      const headers = `| ${columns.join(' | ')} |`;
@@ -722,6 +771,20 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
       {/* Row Detail Modal */}
       {selectedRow && <RowInspector row={selectedRow} onClose={() => setSelectedRow(null)} />}
       
+      {/* JSON Viewer Modal */}
+      {viewJson && <JsonViewerModal json={viewJson} onClose={() => setViewJson(null)} />}
+
+      {/* Drill Down Modal */}
+      {drillDownTarget && (
+         <DrillDownModal 
+            targetTable={drillDownTarget.table} 
+            filterColumn={drillDownTarget.col} 
+            filterValue={drillDownTarget.val}
+            credentials={credentials || null}
+            onClose={() => setDrillDownTarget(null)}
+         />
+      )}
+      
       {/* Code Snippet Modal */}
       {showCodeModal && <CodeSnippetModal sql={sql} onClose={() => setShowCodeModal(false)} />}
 
@@ -836,6 +899,9 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
                   onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} 
                   isAdvancedMode={settings?.advancedMode}
                   onUpdateCell={handleUpdateCell}
+                  onOpenJson={setViewJson}
+                  onDrillDown={setDrillDownTarget}
+                  schema={schema}
                />
             )}
             {activeTab === 'chart' && (
