@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2 } from 'lucide-react';
+import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2 } from 'lucide-react';
 import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
@@ -8,72 +8,178 @@ import CodeSnippetModal from '../CodeSnippetModal';
 import JsonViewerModal from '../JsonViewerModal'; 
 import DrillDownModal from '../DrillDownModal'; 
 import { addToHistory } from '../../services/historyService';
-import { explainQueryReal } from '../../services/dbService';
+import { executeQueryReal, explainQueryReal } from '../../services/dbService';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
 import BeginnerTip from '../BeginnerTip';
+
+// --- Sub-componente de Preview no Hover ---
+const HoverPreviewTooltip: React.FC<{
+  targetTable: string;
+  pkColumn: string;
+  value: any;
+  displayColumn: string;
+  credentials: any;
+  x: number;
+  y: number;
+}> = ({ targetTable, pkColumn, value, displayColumn, credentials, x, y }) => {
+  const [data, setData] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPreview = async () => {
+      if (!credentials || !targetTable || !displayColumn) return;
+      setLoading(true);
+      try {
+        const safeValue = typeof value === 'string' ? `'${value.replace(/'/g, "''")}'` : value;
+        const sql = `SELECT "${displayColumn}" FROM ${targetTable} WHERE "${pkColumn}"::text = ${safeValue}::text LIMIT 1`;
+        const results = await executeQueryReal(credentials, sql);
+        if (isMounted) {
+          if (results && results.length > 0) {
+            setData(String(results[0][displayColumn]));
+          } else {
+            setData("Não encontrado");
+          }
+        }
+      } catch (e) {
+        if (isMounted) setError(true);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchPreview();
+    return () => { isMounted = false; };
+  }, [targetTable, pkColumn, value, displayColumn, credentials]);
+
+  return (
+    <div 
+      className="fixed z-[100] pointer-events-none bg-slate-900 text-white p-2.5 rounded-lg shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-150"
+      style={{ left: x + 15, top: y - 10 }}
+    >
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2 border-b border-slate-700 pb-1.5 mb-1">
+          <Database className="w-3 h-3 text-indigo-400" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{displayColumn}</span>
+        </div>
+        {loading ? (
+          <div className="flex items-center gap-2 text-xs opacity-70">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>Buscando...</span>
+          </div>
+        ) : error ? (
+          <span className="text-xs text-red-400">Erro ao carregar</span>
+        ) : (
+          <span className="text-sm font-semibold text-indigo-100">{data}</span>
+        )}
+      </div>
+      {/* Seta do Tooltip */}
+      <div className="absolute top-3 -left-1 w-2 h-2 bg-slate-900 border-l border-b border-slate-700 transform rotate-45"></div>
+    </div>
+  );
+};
 
 // --- Sub-componente para Configurar Vínculo Manual ---
 const ManualMappingPopover: React.FC<{ 
   column: string, 
   schema: DatabaseSchema, 
-  onSave: (table: string) => void, 
+  onSave: (table: string, previewCol: string) => void, 
   onClose: () => void,
-  currentValue?: string
-}> = ({ column, schema, onSave, onClose, currentValue }) => {
+  currentValue?: string,
+  currentPreviewCol?: string
+}> = ({ column, schema, onSave, onClose, currentValue, currentPreviewCol }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTable, setSelectedTable] = useState(currentValue || '');
+  const [previewCol, setPreviewCol] = useState(currentPreviewCol || '');
   
   const filteredTables = schema.tables.filter(t => 
     t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     t.schema.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const targetColumns = useMemo(() => {
+    if (!selectedTable) return [];
+    const [s, t] = selectedTable.split('.');
+    const tbl = schema.tables.find(table => table.name === t && (table.schema || 'public') === s);
+    return tbl ? tbl.columns.map(c => c.name) : [];
+  }, [selectedTable, schema]);
+
   return (
-    <div className="absolute z-[70] top-full mt-2 right-0 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right">
+    <div className="absolute z-[70] top-full mt-2 right-0 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right">
        <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
-          <span className="text-[10px] font-bold uppercase text-slate-500">Vincular Coluna: {column}</span>
+          <span className="text-[10px] font-bold uppercase text-slate-500">Configurar Vínculo: {column}</span>
           <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded"><X className="w-3 h-3" /></button>
        </div>
-       <div className="p-2 border-b border-slate-100 dark:border-slate-700">
-          <div className="relative">
-             <Search className="absolute left-2 top-2 w-3 h-3 text-slate-400" />
-             <input 
-                autoFocus
-                type="text" 
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Buscar tabela alvo..."
-                className="w-full pl-7 pr-2 py-1.5 text-xs bg-slate-100 dark:bg-slate-900 border-none rounded-lg outline-none focus:ring-1 focus:ring-indigo-500"
-             />
+       
+       <div className="p-3 space-y-4">
+          {/* Busca de Tabela */}
+          <div className="space-y-1.5">
+             <label className="text-[10px] font-bold text-slate-400 uppercase">Tabela de Destino</label>
+             <div className="relative">
+                <Search className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                <input 
+                   autoFocus
+                   type="text" 
+                   value={searchTerm}
+                   onChange={e => setSearchTerm(e.target.value)}
+                   placeholder="Buscar tabela..."
+                   className="w-full pl-7 pr-2 py-2 text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+             </div>
+             <div className="max-h-32 overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-lg mt-1 custom-scrollbar">
+                {filteredTables.map(t => {
+                   const fullId = `${t.schema}.${t.name}`;
+                   const isSelected = selectedTable === fullId;
+                   return (
+                      <button 
+                        key={fullId}
+                        onClick={() => { setSelectedTable(fullId); setPreviewCol(''); }}
+                        className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 dark:text-slate-300'}`}
+                      >
+                         <span className="truncate">{fullId}</span>
+                         {isSelected && <Check className="w-3 h-3" />}
+                      </button>
+                   );
+                })}
+             </div>
           </div>
-       </div>
-       <div className="max-h-48 overflow-y-auto custom-scrollbar">
-          {filteredTables.map(t => {
-             const fullId = `${t.schema}.${t.name}`;
-             const isSelected = currentValue === fullId;
-             return (
-               <button 
-                  key={fullId}
-                  onClick={() => onSave(fullId)}
-                  className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 dark:text-slate-300'}`}
+
+          {/* Seleção de Coluna de Preview */}
+          {selectedTable && (
+            <div className="space-y-1.5 animate-in slide-in-from-top-1">
+               <label className="text-[10px] font-bold text-slate-400 uppercase">Mostrar no Hover (Preview)</label>
+               <select 
+                  value={previewCol}
+                  onChange={e => setPreviewCol(e.target.value)}
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500"
                >
-                  <span className="truncate">{fullId}</span>
-                  {isSelected && <Check className="w-3 h-3" />}
-               </button>
-             );
-          })}
-          {filteredTables.length === 0 && <div className="p-4 text-center text-[10px] text-slate-400 italic">Nenhuma tabela encontrada</div>}
+                  <option value="">-- Selecione uma coluna --</option>
+                  {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
+               </select>
+               <p className="text-[9px] text-slate-400 italic">Esta coluna será mostrada ao passar o mouse no link.</p>
+            </div>
+          )}
        </div>
-       {currentValue && (
-          <div className="p-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/20">
+
+       <div className="p-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/20 flex gap-2">
+          <button 
+             onClick={() => onSave(selectedTable, previewCol)}
+             disabled={!selectedTable}
+             className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+          >
+             Salvar Vínculo
+          </button>
+          {currentValue && (
              <button 
-                onClick={() => onSave('')}
-                className="w-full py-1 text-[10px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                onClick={() => onSave('', '')}
+                className="px-2 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
              >
-                Remover Vínculo
+                Remover
              </button>
-          </div>
-       )}
+          )}
+       </div>
     </div>
   );
 };
@@ -92,10 +198,6 @@ const RowInspector: React.FC<RowInspectorProps> = ({ row, onClose }) => {
       key.toLowerCase().includes(searchTerm.toLowerCase()) || 
       String(val || '').toLowerCase().includes(searchTerm.toLowerCase())
    );
-
-   const copyToClipboard = (text: string) => {
-      navigator.clipboard.writeText(text);
-   };
 
    return (
       <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={onClose}>
@@ -154,26 +256,31 @@ interface VirtualTableProps {
    onDrillDown: (table: string, col: string, val: any) => void;
    schema?: DatabaseSchema;
    defaultTableName?: string | null;
+   credentials?: any;
 }
 
-const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell, onOpenJson, onDrillDown, schema, defaultTableName }) => {
+const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell, onOpenJson, onDrillDown, schema, defaultTableName, credentials }) => {
    const [currentPage, setCurrentPage] = useState(1);
    const [rowsPerPage, setRowsPerPage] = useState(25);
    const [activeProfileCol, setActiveProfileCol] = useState<string | null>(null);
    const [activeMappingCol, setActiveMappingCol] = useState<string | null>(null);
    
-   // Mapeamentos Manuais Locais
-   const [manualMappings, setManualMappings] = useState<Record<string, string>>(() => {
+   // Preview Hover State
+   const [hoverPreview, setHoverPreview] = useState<{table: string, pk: string, val: any, displayCol: string, x: number, y: number} | null>(null);
+   const hoverTimeoutRef = useRef<any>(null);
+
+   // Mapeamentos Manuais Locais (Links de tabelas e colunas de preview)
+   const [manualMappings, setManualMappings] = useState<Record<string, { table: string, previewCol?: string }>>(() => {
       try {
          const stored = localStorage.getItem('psql-buddy-manual-drilldown-links');
          return stored ? JSON.parse(stored) : {};
       } catch { return {}; }
    });
 
-   const handleSaveManualMapping = (colName: string, targetTable: string) => {
+   const handleSaveManualMapping = (colName: string, targetTable: string, previewCol: string) => {
       const newMappings = { ...manualMappings };
       if (!targetTable) delete newMappings[colName];
-      else newMappings[colName] = targetTable;
+      else newMappings[colName] = { table: targetTable, previewCol };
       
       setManualMappings(newMappings);
       localStorage.setItem('psql-buddy-manual-drilldown-links', JSON.stringify(newMappings));
@@ -185,10 +292,10 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
    const startIndex = (currentPage - 1) * rowsPerPage;
    const currentData = data.slice(startIndex, startIndex + rowsPerPage);
 
-   const getLinkTarget = (colName: string): { table: string, pk: string } | null => {
+   const getLinkTarget = (colName: string): { table: string, pk: string, previewCol?: string } | null => {
       // 1. Prioridade: Mapeamento Manual do Usuário
       if (manualMappings[colName]) {
-         return { table: manualMappings[colName], pk: 'grid' }; // Assume grid/fallback logic no modal
+         return { table: manualMappings[colName].table, pk: 'grid', previewCol: manualMappings[colName].previewCol };
       }
 
       if (!schema || !colName) return null;
@@ -236,19 +343,53 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
       
       const target = getLinkTarget(col);
       if (target && val !== '') {
-         return <button onClick={(e) => { e.stopPropagation(); onDrillDown(target.table, target.pk, val); }} className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 group/link">{highlightMatch(String(val))}<ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100" /></button>;
+         return (
+            <button 
+               onClick={(e) => { e.stopPropagation(); onDrillDown(target.table, target.pk, val); }} 
+               onMouseEnter={(e) => {
+                  const x = e.clientX;
+                  const y = e.clientY;
+                  if (target.previewCol) {
+                     hoverTimeoutRef.current = setTimeout(() => {
+                        setHoverPreview({ table: target.table, pk: target.pk, val: val, displayCol: target.previewCol!, x, y });
+                     }, 400); // Delay para não poluir
+                  }
+               }}
+               onMouseLeave={() => {
+                  if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                  setHoverPreview(null);
+               }}
+               className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 group/link"
+            >
+               {highlightMatch(String(val))}
+               <ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100" />
+            </button>
+         );
       }
       return highlightMatch(String(val));
    };
 
    return (
       <div className="flex flex-col h-full relative">
+         {/* Hover Preview Dynamic Component */}
+         {hoverPreview && credentials && (
+            <HoverPreviewTooltip 
+               {...hoverPreview}
+               targetTable={hoverPreview.table}
+               pkColumn={hoverPreview.pk}
+               value={hoverPreview.val}
+               displayColumn={hoverPreview.displayCol}
+               credentials={credentials}
+            />
+         )}
+
          <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
             <table className="w-full text-left border-collapse table-fixed">
                <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
                   <tr>
                      {columns.map((col, idx) => {
-                        const hasManualMapping = !!manualMappings[col];
+                        const mapping = manualMappings[col];
+                        const hasManualMapping = !!mapping;
                         return (
                            <th key={col} className={`px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase border-b border-slate-200 dark:border-slate-700 w-[160px] group relative ${idx === 0 ? 'pl-6' : ''}`}>
                               <div className="flex items-center justify-between">
@@ -259,7 +400,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                                        <button 
                                           onClick={(e) => { e.stopPropagation(); setActiveMappingCol(activeMappingCol === col ? null : col); setActiveProfileCol(null); }} 
                                           className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-all ${hasManualMapping ? 'text-indigo-500 opacity-100' : 'opacity-0 group-hover:opacity-100 text-slate-300'}`}
-                                          title={hasManualMapping ? `Vínculo ativo para ${manualMappings[col]}` : "Vincular coluna manualmente"}
+                                          title={hasManualMapping ? `Vínculo ativo para ${mapping.table}` : "Vincular coluna manualmente"}
                                        >
                                           {hasManualMapping ? <LinkIcon className="w-3.5 h-3.5" /> : <Anchor className="w-3.5 h-3.5" />}
                                        </button>
@@ -273,8 +414,9 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                                  <ManualMappingPopover 
                                     column={col} 
                                     schema={schema} 
-                                    currentValue={manualMappings[col]}
-                                    onSave={(tbl) => handleSaveManualMapping(col, tbl)} 
+                                    currentValue={mapping?.table}
+                                    currentPreviewCol={mapping?.previewCol}
+                                    onSave={(tbl, previewCol) => handleSaveManualMapping(col, tbl, previewCol)} 
                                     onClose={() => setActiveMappingCol(null)} 
                                  />
                               )}
@@ -409,7 +551,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   const [selectedRow, setSelectedRow] = useState<any | null>(null);
   const [viewJson, setViewJson] = useState<any | null>(null);
   const [drillDownTarget, setDrillDownTarget] = useState<{table: string, col: string, val: any} | null>(null);
-  const [currentChartConfig, setCurrentChartConfig] = useState<{xAxis: string, yKeys: string[]} | null>(null);
 
   const mainTableName = useMemo(() => {
      const fromMatch = sql.match(/FROM\s+([a-zA-Z0-9_."]+)/i);
@@ -447,7 +588,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
     if (!term) return text;
     const escapedSearch = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const parts = text.split(new RegExp(`(${escapedSearch})`, 'gi'));
-    return <>{parts.map((part, i) => part.toLowerCase() === term.toLowerCase() ? <span key={i} className="bg-yellow-200 dark:bg-yellow-600/50 text-slate-900 dark:text-white font-semibold rounded px-0.5">{part}</span> : part)}</>;
+    return <>{parts.map((part, i) => part.toLowerCase() === term.toLowerCase() ? <span key={i} className="bg-yellow-200 dark:bg-yellow-600/50 text-slate-900 dark:white font-semibold rounded px-0.5">{part}</span> : part)}</>;
   };
 
   const handleUpdateCell = (rowIdx: number, colKey: string, newValue: string) => {
@@ -499,7 +640,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
            {activeTab === 'table' && (<div className="flex items-center gap-2"><SmartFilterBar columns={columns} filters={filters} onChange={setFilters} onClear={() => setFilters([])} />{filters.length === 0 && (<div className="relative group"><Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" /><input type="text" placeholder="Busca rápida..." value={localSearch} onChange={(e) => setLocalSearch(e.target.value)} className="pl-8 pr-4 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-48" /></div>)}</div>)}
            <div className="relative">
               <button onClick={() => setShowExportMenu(!showExportMenu)} className={`flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors text-slate-700 dark:text-slate-300 ${showExportMenu ? 'ring-2 ring-indigo-500' : ''}`}><Download className="w-4 h-4" /> Exportar</button>
-              {showExportMenu && (<div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-[90] overflow-hidden animate-in fade-in zoom-in-95" onClick={() => setShowExportMenu(false)}><div className="p-2 border-b border-slate-100 dark:border-slate-700"><button onClick={() => { setShowCodeModal(true); setShowExportMenu(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-indigo-600 font-medium"><FileCode className="w-3.5 h-3.5" /> Exportar Código</button><button onClick={handleExportInsert} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><Database className="w-3.5 h-3.5 text-slate-500" /> Copy as SQL INSERT</button></div><div className="p-2"><button onClick={() => { navigator.clipboard.writeText(JSON.stringify(filteredData)); onShowToast("JSON copiado!", "success"); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><FileJson className="w-3.5 h-3.5 text-yellow-500" /> Copy JSON Raw</button></div></div>)}
+              {showExportMenu && (<div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-[90] overflow-hidden animate-in fade-in zoom-in-95" onClick={() => setShowExportMenu(false)}><div className="p-2 border-b border-slate-100 dark:border-slate-700"><button onClick={() => { setShowCodeModal(true); setShowExportMenu(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-indigo-600 font-medium"><FileCode className="w-3.5 h-3.5" /> Exportar Código</button><button onClick={handleExportInsert} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><Database className="w-3.5 h-3.5" /> Copy as SQL INSERT</button></div><div className="p-2"><button onClick={() => { navigator.clipboard.writeText(JSON.stringify(filteredData)); onShowToast("JSON copiado!", "success"); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><FileJson className="w-3.5 h-3.5" /> Copy JSON Raw</button></div></div>)}
            </div>
            {!isFullscreen && <button onClick={toggleFullscreen} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors" title="Tela Cheia"><Maximize2 className="w-5 h-5" /></button>}
         </div>
@@ -512,7 +653,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8"><Database className="w-12 h-12 opacity-30 mb-4" /><p>Nenhum resultado retornado</p></div>
         ) : (
           <>
-            {activeTab === 'table' && <VirtualTable data={filteredData} columns={columns} highlightMatch={highlightMatch} onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} isAdvancedMode={settings?.advancedMode} onUpdateCell={handleUpdateCell} onOpenJson={setViewJson} onDrillDown={(table, col, val) => setDrillDownTarget({ table, col, val })} schema={schema} defaultTableName={mainTableName} />}
+            {activeTab === 'table' && <VirtualTable data={filteredData} columns={columns} highlightMatch={highlightMatch} onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} isAdvancedMode={settings?.advancedMode} onUpdateCell={handleUpdateCell} onOpenJson={setViewJson} onDrillDown={(table, col, val) => setDrillDownTarget({ table, col, val })} schema={schema} defaultTableName={mainTableName} credentials={credentials} />}
             {activeTab === 'chart' && <div className="p-6 h-full w-full relative"><DataVisualizer data={filteredData} onDrillDown={handleChartDrillDown} /> </div>}
             {activeTab === 'analysis' && <div className="flex-1 h-full"><DataAnalysisChat data={filteredData} sql={sql} /></div>}
             {activeTab === 'explain' && <ExplainVisualizer plan={explainPlan} loading={loadingExplain} error={explainError} />}
