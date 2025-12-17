@@ -1,3 +1,4 @@
+
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
@@ -8,7 +9,6 @@ const { Client } = pg;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ESM helpers for __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -17,13 +17,11 @@ app.use(express.json());
 
 console.log(`Starting server...`);
 
-// Helper to handle encoding errors automatically
 async function queryWithFallback(client, sql, params = []) {
   try {
     return await client.query(sql, params);
   } catch (error) {
     const errorMsg = error.message ? error.message.toLowerCase() : '';
-    // Error 22021 is character_not_in_repertoire, often due to encoding mismatch
     const isEncodingError = 
       error.code === '22021' || 
       errorMsg.includes('invalid byte sequence') ||
@@ -35,7 +33,7 @@ async function queryWithFallback(client, sql, params = []) {
         await client.query("SET CLIENT_ENCODING TO 'LATIN1'");
         return await client.query(sql, params);
       } catch (retryError) {
-        throw retryError; // If fallback fails, throw original
+        throw retryError; 
       }
     }
     throw error;
@@ -55,26 +53,25 @@ app.post('/api/connect', async (req, res) => {
     user,
     password,
     database,
-    connectionTimeoutMillis: 5000, // 5s timeout
+    connectionTimeoutMillis: 5000, 
   });
 
   try {
     await client.connect();
     
-    // 1. Fetch Tables
     const tablesQuery = `
       SELECT 
         table_schema, 
         table_name, 
+        table_type,
         obj_description((table_schema || '.' || table_name)::regclass) as description
       FROM information_schema.tables
       WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-      AND table_type = 'BASE TABLE'
+      AND table_type IN ('BASE TABLE', 'VIEW')
       ORDER BY table_schema, table_name;
     `;
     const tablesRes = await queryWithFallback(client, tablesQuery);
 
-    // 2. Fetch Columns
     const columnsQuery = `
       SELECT 
         c.table_schema, 
@@ -97,7 +94,6 @@ app.post('/api/connect', async (req, res) => {
     `;
     const columnsRes = await queryWithFallback(client, columnsQuery);
 
-    // 3. Fetch Foreign Keys
     const fkQuery = `
       SELECT
           tc.table_schema, 
@@ -118,12 +114,10 @@ app.post('/api/connect', async (req, res) => {
     `;
     const fkRes = await queryWithFallback(client, fkQuery);
 
-    // Assemble Schema Object
     const tables = tablesRes.rows.map(t => {
       const tableCols = columnsRes.rows
         .filter(c => c.table_name === t.table_name && c.table_schema === t.table_schema)
         .map(c => {
-          // Check for FK
           const fk = fkRes.rows.find(f => 
             f.table_name === t.table_name && 
             f.table_schema === t.table_schema && 
@@ -142,6 +136,7 @@ app.post('/api/connect', async (req, res) => {
       return {
         name: t.table_name,
         schema: t.table_schema,
+        type: t.table_type === 'VIEW' ? 'view' : 'table',
         description: t.description,
         columns: tableCols
       };
@@ -171,15 +166,9 @@ app.post('/api/execute', async (req, res) => {
 
   try {
     await client.connect();
-    
-    // Check if it is multiple statements or single
-    // pg driver executes multiple statements if passed as one string, but returns array of results
-    // We want to handle single statement mostly for this app
     const result = await queryWithFallback(client, sql);
-    
-    // Handle case where result might be an array (if multiple statements)
     if (Array.isArray(result)) {
-        res.json(result[result.length - 1].rows); // Return last result
+        res.json(result[result.length - 1].rows); 
     } else {
         res.json(result.rows);
     }
