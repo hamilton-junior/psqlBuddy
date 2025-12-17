@@ -5,16 +5,14 @@ import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema } from '../../t
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
 import CodeSnippetModal from '../CodeSnippetModal';
-import JsonViewerModal from '../JsonViewerModal'; // New
-import DrillDownModal from '../DrillDownModal'; // New
+import JsonViewerModal from '../JsonViewerModal'; 
+import DrillDownModal from '../DrillDownModal'; 
 import { addToHistory } from '../../services/historyService';
 import { explainQueryReal } from '../../services/dbService';
 import { jsPDF } from "jspdf";
 import html2canvas from 'html2canvas';
 import BeginnerTip from '../BeginnerTip';
 
-// ... (Existing RowInspector, ColumnProfiler - no changes needed there) ...
-// --- ROW INSPECTOR MODAL ---
 interface RowInspectorProps {
    row: any;
    onClose: () => void;
@@ -24,10 +22,10 @@ const RowInspector: React.FC<RowInspectorProps> = ({ row, onClose }) => {
    const [searchTerm, setSearchTerm] = useState('');
    const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
    
-   const entries = Object.entries(row);
+   const entries = Object.entries(row || {});
    const filteredEntries = entries.filter(([key, val]) => 
       key.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
+      String(val || '').toLowerCase().includes(searchTerm.toLowerCase())
    );
 
    const copyToClipboard = (text: string) => {
@@ -98,10 +96,10 @@ const RowInspector: React.FC<RowInspectorProps> = ({ row, onClose }) => {
                   <div className="p-4">
                      <div className="relative group">
                         <pre className="text-xs font-mono text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-all p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                           {JSON.stringify(row, null, 2)}
+                           {JSON.stringify(row || {}, null, 2)}
                         </pre>
                         <button 
-                           onClick={() => copyToClipboard(JSON.stringify(row, null, 2))}
+                           onClick={() => copyToClipboard(JSON.stringify(row || {}, null, 2))}
                            className="absolute top-2 right-2 p-1.5 bg-slate-100 dark:bg-slate-700 rounded text-slate-500 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                            <Copy className="w-4 h-4" />
@@ -115,8 +113,6 @@ const RowInspector: React.FC<RowInspectorProps> = ({ row, onClose }) => {
    );
 };
 
-// --- DATA PROFILER COMPONENT ---
-// ... (kept unchanged)
 interface ProfilerStats {
    count: number;
    distinct: number;
@@ -149,7 +145,6 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
          max = sorted[sorted.length - 1];
       }
 
-      // Frequencies
       const freqs: Record<string, number> = {};
       nonNulls.forEach(v => { const s = String(v); freqs[s] = (freqs[s] || 0) + 1; });
       const topValues = Object.entries(freqs)
@@ -178,7 +173,7 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
                </div>
                <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
                   <span className="block text-slate-400 mb-0.5">Nulls</span>
-                  <span className={`font-mono font-bold ${stats.nulls > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{stats.nulls} ({Math.round(stats.nulls/stats.count*100)}%)</span>
+                  <span className={`font-mono font-bold ${stats.nulls > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{stats.nulls} ({Math.round(stats.nulls/Math.max(stats.count, 1)*100)}%)</span>
                </div>
             </div>
 
@@ -187,7 +182,6 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
                   <div className="flex justify-between text-xs text-slate-500"><span>Min</span> <span className="font-mono">{stats.min}</span></div>
                   <div className="flex justify-between text-xs text-slate-500"><span>Max</span> <span className="font-mono">{stats.max}</span></div>
                   <div className="flex justify-between text-xs text-slate-500"><span>Avg</span> <span className="font-mono">{stats.avg?.toFixed(2)}</span></div>
-                  {/* Mini Sparkline */}
                   <div className="h-8 flex items-end gap-[1px] mt-2 opacity-70">
                      {[...Array(20)].map((_, i) => {
                         const h = Math.random() * 100;
@@ -205,7 +199,7 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
                         <span className="truncate max-w-[120px] text-slate-600 dark:text-slate-400" title={v.val}>{v.val}</span>
                         <div className="flex items-center gap-2">
                            <div className="w-12 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                              <div style={{ width: `${(v.count / stats.count) * 100}%` }} className="h-full bg-indigo-500"></div>
+                              <div style={{ width: `${(v.count / Math.max(stats.count, 1)) * 100}%` }} className="h-full bg-indigo-500"></div>
                            </div>
                            <span className="font-mono text-[10px] text-slate-400">{v.count}</span>
                         </div>
@@ -218,7 +212,6 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
    );
 };
 
-// --- VIRTUAL TABLE COMPONENT ---
 interface VirtualTableProps {
    data: any[];
    columns: string[];
@@ -226,7 +219,6 @@ interface VirtualTableProps {
    onRowClick: (row: any) => void;
    isAdvancedMode?: boolean;
    onUpdateCell?: (rowIdx: number, colKey: string, newValue: string) => void;
-   // New features
    onOpenJson: (json: any) => void;
    onDrillDown: (table: string, col: string, val: any) => void;
    schema?: DatabaseSchema;
@@ -237,32 +229,21 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
    const [currentPage, setCurrentPage] = useState(1);
    const [rowsPerPage, setRowsPerPage] = useState(25);
    const [activeProfileCol, setActiveProfileCol] = useState<string | null>(null);
-   
-   // Edit State
    const [editingCell, setEditingCell] = useState<{rowIdx: number, colKey: string, value: string} | null>(null);
    const editInputRef = useRef<HTMLInputElement>(null);
 
    const totalRows = data.length;
-   const totalPages = Math.ceil(totalRows / rowsPerPage);
+   const totalPages = Math.ceil(totalRows / Math.max(rowsPerPage, 1));
    const startIndex = (currentPage - 1) * rowsPerPage;
    const currentData = data.slice(startIndex, startIndex + rowsPerPage);
 
    useEffect(() => { setCurrentPage(1); }, [data.length]);
-
-   useEffect(() => {
-      if (editingCell && editInputRef.current) {
-         editInputRef.current.focus();
-      }
-   }, [editingCell]);
+   useEffect(() => { if (editingCell && editInputRef.current) editInputRef.current.focus(); }, [editingCell]);
 
    const handleCellDoubleClick = (e: React.MouseEvent, rowIdx: number, colKey: string, val: any) => {
       if (!isAdvancedMode || !onUpdateCell) return;
       e.stopPropagation();
-      setEditingCell({
-         rowIdx: startIndex + rowIdx,
-         colKey,
-         value: String(val === null ? '' : val)
-      });
+      setEditingCell({ rowIdx: startIndex + rowIdx, colKey, value: String(val === null ? '' : val) });
    };
 
    const handleEditSave = () => {
@@ -277,43 +258,29 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
       if (e.key === 'Escape') setEditingCell(null);
    };
 
-   // Determine if column is a linkable target (FK or special suffix)
    const getLinkTarget = (colName: string): { table: string, pk: string } | null => {
-      if (!schema) return null;
+      if (!schema || !colName) return null;
       const lowerCol = colName.toLowerCase();
+      const leafName = lowerCol.split('.').pop() || '';
 
-      // 1. Special Fixed Names (grid, mlid) - as per user request
-      // Can be "grid", "mlid", "table.grid", "schema.table.grid"
-      const leafName = lowerCol.split('.').pop(); // get last part
       if (leafName === 'grid' || leafName === 'mlid') {
-         // Case A: Qualified Name (e.g. public.users.grid)
          const parts = lowerCol.split('.');
          let targetTableObj = null;
-         
          if (parts.length >= 2) {
-            // format: table.grid or schema.table.grid
-            // We need to match this to a table in schema
             const potentialTableName = parts[parts.length - 2];
             const potentialSchemaName = parts.length > 2 ? parts[parts.length - 3] : null;
-            
             targetTableObj = schema.tables.find(t => {
                if (potentialSchemaName) return t.name === potentialTableName && (t.schema || 'public') === potentialSchemaName;
                return t.name === potentialTableName;
             });
          }
-         
-         // Case B: Simple Name (e.g. "grid") - use defaultTableName context
          if (!targetTableObj && defaultTableName) {
              const [defSchema, defTable] = defaultTableName.includes('.') ? defaultTableName.split('.') : ['public', defaultTableName];
              targetTableObj = schema.tables.find(t => t.name === defTable && (t.schema || 'public') === defSchema);
          }
-         
-         if (targetTableObj) {
-             return { table: `${targetTableObj.schema || 'public'}.${targetTableObj.name}`, pk: leafName };
-         }
+         if (targetTableObj) return { table: `${targetTableObj.schema || 'public'}.${targetTableObj.name}`, pk: leafName };
       }
 
-      // 2. Explicit FK Check (Schema)
       for (const t of schema.tables) {
          const col = t.columns.find(c => c.name === colName);
          if (col && col.isForeignKey && col.references) {
@@ -323,70 +290,38 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
          }
       }
 
-      // 3. Implicit Heuristics (Name Matching)
-      // Check suffixes: _id, _grid, _mlid
       const suffixes = ['_id', '_grid', '_mlid'];
       for (const suffix of suffixes) {
          if (lowerCol.endsWith(suffix) && lowerCol !== suffix) {
             const baseName = lowerCol.substring(0, lowerCol.length - suffix.length);
-            const target = schema.tables.find(t => 
-               t.name.toLowerCase() === baseName || 
-               t.name.toLowerCase() === baseName + 's' ||
-               t.name.toLowerCase() === baseName + 'es'
-            );
+            const target = schema.tables.find(t => t.name.toLowerCase() === baseName || t.name.toLowerCase() === baseName + 's' || t.name.toLowerCase() === baseName + 'es');
             if (target) {
-               // Guess PK of target table
                const pk = target.columns.find(c => c.isPrimaryKey)?.name || 'id';
                return { table: `${target.schema || 'public'}.${target.name}`, pk };
             }
          }
       }
 
-      // Direct Table Name match (column "user" -> table "users")
       const direct = schema.tables.find(t => t.name.toLowerCase() === lowerCol || t.name.toLowerCase() === lowerCol + 's');
       if (direct) {
          const pk = direct.columns.find(c => c.isPrimaryKey)?.name || 'id';
          return { table: `${direct.schema || 'public'}.${direct.name}`, pk };
       }
-
       return null;
    };
 
    const formatValue = (col: string, val: any) => {
       if (val === null || val === undefined) return <span className="text-slate-300 text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">null</span>;
-      
       if (typeof val === 'boolean') {
-         return val ? 
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded">TRUE</span> : 
-            <span className="text-[10px] font-bold text-red-700 bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded">FALSE</span>;
+         return val ? <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded">TRUE</span> : <span className="text-[10px] font-bold text-red-700 bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded">FALSE</span>;
       }
-      
       if (typeof val === 'object') {
-         return (
-            <button 
-               onClick={(e) => { e.stopPropagation(); onOpenJson(val); }} 
-               className="text-xs font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded flex items-center gap-1 w-fit hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-            >
-               <Braces className="w-3 h-3" /> JSON
-            </button>
-         );
+         return <button onClick={(e) => { e.stopPropagation(); onOpenJson(val); }} className="text-xs font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded flex items-center gap-1 w-fit hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"><Braces className="w-3 h-3" /> JSON</button>;
       }
-
-      // Check for Drill Down Link
       const target = getLinkTarget(col);
-      if (target) {
-         return (
-            <button 
-               onClick={(e) => { e.stopPropagation(); onDrillDown(target.table, target.pk, val); }}
-               className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 group/link"
-               title={`Ir para ${target.table}`}
-            >
-               {highlightMatch(String(val))}
-               <ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100 transition-opacity" />
-            </button>
-         );
+      if (target && val !== '') {
+         return <button onClick={(e) => { e.stopPropagation(); if (target && val !== undefined) onDrillDown(target.table, target.pk, val); }} className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 group/link" title={`Ir para ${target.table}`}>{highlightMatch(String(val))}<ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100 transition-opacity" /></button>;
       }
-
       return highlightMatch(String(val));
    };
 
@@ -400,18 +335,9 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                         <th key={col} className={`px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap border-b border-slate-200 dark:border-slate-700 w-[150px] group cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 ${idx === 0 ? 'pl-6' : ''}`}>
                            <div className="flex items-center justify-between">
                               <span className="truncate">{col.replace(/_/g, ' ')}</span>
-                              <button 
-                                 onClick={(e) => { e.stopPropagation(); setActiveProfileCol(activeProfileCol === col ? null : col); }}
-                                 className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity ${activeProfileCol === col ? 'opacity-100 text-indigo-500' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`}
-                              >
-                                 <Info className="w-3.5 h-3.5" />
-                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); setActiveProfileCol(activeProfileCol === col ? null : col); }} className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity ${activeProfileCol === col ? 'opacity-100 text-indigo-500' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`}><Info className="w-3.5 h-3.5" /></button>
                            </div>
-                           {activeProfileCol === col && (
-                              <div onClick={e => e.stopPropagation()}>
-                                 <ColumnProfiler data={data} column={col} onClose={() => setActiveProfileCol(null)} />
-                              </div>
-                           )}
+                           {activeProfileCol === col && <div onClick={e => e.stopPropagation()}><ColumnProfiler data={data} column={col} onClose={() => setActiveProfileCol(null)} /></div>}
                         </th>
                      ))}
                   </tr>
@@ -424,25 +350,8 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                            {columns.map((col, cIdx) => {
                               const isEditing = editingCell?.rowIdx === realIdx && editingCell?.colKey === col;
                               return (
-                                 <td 
-                                    key={col} 
-                                    onDoubleClick={(e) => handleCellDoubleClick(e, idx, col, row[col])}
-                                    className={`px-4 py-2 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-slate-900 dark:group-hover:text-white transition-colors ${cIdx === 0 ? 'pl-6 font-medium' : ''} ${isAdvancedMode ? 'hover:bg-orange-50 dark:hover:bg-orange-900/20 cursor-text' : ''}`}
-                                    title={isAdvancedMode ? "Clique duplo para editar" : String(row[col])}
-                                 >
-                                    {isEditing ? (
-                                       <input 
-                                          ref={editInputRef}
-                                          value={editingCell.value}
-                                          onChange={(e) => setEditingCell({...editingCell, value: e.target.value})}
-                                          onBlur={handleEditSave}
-                                          onKeyDown={handleEditKeyDown}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="w-full h-full bg-white dark:bg-slate-800 border-2 border-indigo-500 rounded px-1 outline-none text-slate-900 dark:text-white shadow-lg z-20 relative -ml-1 -my-1"
-                                       />
-                                    ) : (
-                                       formatValue(col, row[col])
-                                    )}
+                                 <td key={col} onDoubleClick={(e) => handleCellDoubleClick(e, idx, col, row[col])} className={`px-4 py-2 text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-slate-900 dark:group-hover:text-white transition-colors ${cIdx === 0 ? 'pl-6 font-medium' : ''} ${isAdvancedMode ? 'hover:bg-orange-50 dark:hover:bg-orange-900/20 cursor-text' : ''}`} title={isAdvancedMode ? "Clique duplo para editar" : String(row[col])}>
+                                    {isEditing ? <input ref={editInputRef} value={editingCell.value} onChange={(e) => setEditingCell({...editingCell, value: e.target.value})} onBlur={handleEditSave} onKeyDown={handleEditKeyDown} onClick={(e) => e.stopPropagation()} className="w-full h-full bg-white dark:bg-slate-800 border-2 border-indigo-500 rounded px-1 outline-none text-slate-900 dark:text-white shadow-lg z-20 relative -ml-1 -my-1" /> : formatValue(col, row[col])}
                                  </td>
                               );
                            })}
@@ -464,7 +373,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
             </div>
             <div className="flex gap-1 pr-2">
                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
-               <span className="px-2 py-1 font-mono">{currentPage}/{totalPages}</span>
+               <span className="px-2 py-1 font-mono">{currentPage}/{Math.max(totalPages, 1)}</span>
                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
             </div>
          </div>
@@ -472,34 +381,23 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
    );
 };
 
-// ... (ExplainVisualizer & SmartFilterBar kept unchanged) ...
-// --- EXPLAIN VISUALIZER ---
 const ExplainVisualizer: React.FC<{ plan: ExplainNode | null, loading: boolean, error: string | null }> = ({ plan, loading, error }) => {
    if (loading) return <div className="p-10 text-center"><div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div><p className="text-slate-500">Analisando performance...</p></div>;
    if (error) return <div className="p-10 text-center flex flex-col items-center justify-center text-slate-400"><div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4"><AlertCircle className="w-8 h-8 text-red-500" /></div><h3 className="text-slate-700 dark:text-slate-200 font-bold mb-1">Falha na Análise</h3><p className="text-sm max-w-md">{error}</p></div>;
    if (!plan) return <div className="p-10 text-center text-slate-400">Nenhum plano disponível.</div>;
-
    const renderNode = (node: ExplainNode, depth: number = 0) => (
       <div key={Math.random()} style={{ marginLeft: depth * 20 }} className="mb-2 group">
          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-3 shadow-sm inline-block min-w-[300px] hover:border-indigo-400 transition-colors">
-            <div className="flex justify-between font-bold text-xs text-slate-700 dark:text-slate-200">
-               <span className="text-indigo-600 dark:text-indigo-400">{node.type}</span>
-               <span className="text-slate-400 bg-slate-100 dark:bg-slate-900 px-2 rounded-full">{node.cost.total.toFixed(2)} cost</span>
-            </div>
+            <div className="flex justify-between font-bold text-xs text-slate-700 dark:text-slate-200"><span className="text-indigo-600 dark:text-indigo-400">{node.type}</span><span className="text-slate-400 bg-slate-100 dark:bg-slate-900 px-2 rounded-full">{(node.cost?.total || 0).toFixed(2)} cost</span></div>
             {node.relation && <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 font-mono font-bold">{node.relation}</div>}
-            <div className="text-[10px] text-slate-500 mt-2 flex gap-4 pt-2 border-t border-slate-100 dark:border-slate-700">
-               <span className="flex items-center gap-1"><Hash className="w-3 h-3" /> Rows: {node.rows}</span>
-               <span className="flex items-center gap-1"><Database className="w-3 h-3" /> Width: {node.width}</span>
-            </div>
+            <div className="text-[10px] text-slate-500 mt-2 flex gap-4 pt-2 border-t border-slate-100 dark:border-slate-700"><span className="flex items-center gap-1"><Hash className="w-3 h-3" /> Rows: {node.rows}</span><span className="flex items-center gap-1"><Database className="w-3 h-3" /> Width: {node.width}</span></div>
          </div>
          {node.children && node.children.map(child => renderNode(child, depth + 1))}
       </div>
    );
-
    return <div className="p-6 overflow-auto bg-slate-50 dark:bg-slate-900 h-full">{renderNode(plan)}</div>;
 };
 
-// --- SMART FILTER COMPONENT ---
 interface FilterRule {
    id: string;
    column: string;
@@ -509,62 +407,13 @@ interface FilterRule {
 
 const SmartFilterBar: React.FC<{ columns: string[], filters: FilterRule[], onChange: (filters: FilterRule[]) => void, onClear: () => void }> = ({ columns, filters, onChange, onClear }) => {
    const [isOpen, setIsOpen] = useState(filters.length > 0);
-
-   const addFilter = () => {
-      onChange([...filters, { id: crypto.randomUUID(), column: columns[0], operator: 'contains', value: '' }]);
-      setIsOpen(true);
-   };
-
-   const updateFilter = (id: string, field: keyof FilterRule, value: string) => {
-      onChange(filters.map(f => f.id === id ? { ...f, [field]: value } : f));
-   };
-
-   const removeFilter = (id: string) => {
-      const newFilters = filters.filter(f => f.id !== id);
-      onChange(newFilters);
-      if (newFilters.length === 0) setIsOpen(false);
-   };
-
-   if (!isOpen && filters.length === 0) {
-      return (
-         <button onClick={addFilter} className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-indigo-600 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-indigo-300 transition-colors">
-            <SlidersHorizontal className="w-3.5 h-3.5" /> Filtros
-         </button>
-      );
-   }
-
-   return (
-      <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700 animate-in slide-in-from-top-2">
-         <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Filtros Locais</span>
-            <button onClick={() => { onClear(); setIsOpen(false); }} className="text-[10px] text-red-500 hover:underline">Limpar</button>
-         </div>
-         <div className="space-y-2">
-            {filters.map(f => (
-               <div key={f.id} className="flex items-center gap-2">
-                  <select value={f.column} onChange={(e) => updateFilter(f.id, 'column', e.target.value)} className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-indigo-500 max-w-[120px]">
-                     {columns.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <select value={f.operator} onChange={(e) => updateFilter(f.id, 'operator', e.target.value as any)} className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-indigo-500">
-                     <option value="contains">Contém</option>
-                     <option value="equals">Igual</option>
-                     <option value="starts">Começa com</option>
-                     <option value="gt">Maior que (&gt;)</option>
-                     <option value="lt">Menor que (&lt;)</option>
-                  </select>
-                  <input type="text" value={f.value} onChange={(e) => updateFilter(f.id, 'value', e.target.value)} placeholder="Valor..." className="text-xs flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-indigo-500 min-w-[80px]" />
-                  <button onClick={() => removeFilter(f.id)} className="text-slate-400 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
-               </div>
-            ))}
-            <button onClick={addFilter} className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline px-1">
-               <Plus className="w-3 h-3" /> Adicionar Regra
-            </button>
-         </div>
-      </div>
-   );
+   const addFilter = () => { onChange([...filters, { id: crypto.randomUUID(), column: columns[0] || '', operator: 'contains', value: '' }]); setIsOpen(true); };
+   const updateFilter = (id: string, field: keyof FilterRule, value: string) => { onChange(filters.map(f => f.id === id ? { ...f, [field]: value } : f)); };
+   const removeFilter = (id: string) => { const newFilters = filters.filter(f => f.id !== id); onChange(newFilters); if (newFilters.length === 0) setIsOpen(false); };
+   if (!isOpen && filters.length === 0) return <button onClick={addFilter} className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-indigo-600 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-indigo-300 transition-colors"><SlidersHorizontal className="w-3.5 h-3.5" /> Filtros</button>;
+   return <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700 animate-in slide-in-from-top-2"><div className="flex items-center justify-between mb-2 px-1"><span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Filtros Locais</span><button onClick={() => { onClear(); setIsOpen(false); }} className="text-[10px] text-red-500 hover:underline">Limpar</button></div><div className="space-y-2">{filters.map(f => (<div key={f.id} className="flex items-center gap-2"><select value={f.column} onChange={(e) => updateFilter(f.id, 'column', e.target.value)} className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-indigo-500 max-w-[120px]">{columns.map(c => <option key={c} value={c}>{c}</option>)}</select><select value={f.operator} onChange={(e) => updateFilter(f.id, 'operator', e.target.value as any)} className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-indigo-500"><option value="contains">Contém</option><option value="equals">Igual</option><option value="starts">Começa com</option><option value="gt">Maior que (&gt;)</option><option value="lt">Menor que (&lt;)</option></select><input type="text" value={f.value} onChange={(e) => updateFilter(f.id, 'value', e.target.value)} placeholder="Valor..." className="text-xs flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-indigo-500 min-w-[80px]" /><button onClick={() => removeFilter(f.id)} className="text-slate-400 hover:text-red-500"><X className="w-3.5 h-3.5" /></button></div>))}<button onClick={addFilter} className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline px-1"><Plus className="w-3 h-3" /> Adicionar Regra</button></div></div>;
 };
 
-// --- MAIN COMPONENT ---
 interface ResultsStepProps {
   data: any[];
   sql: string;
@@ -575,21 +424,17 @@ interface ResultsStepProps {
   onShowToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   credentials?: any; 
   executionDuration?: number;
-  schema?: DatabaseSchema; // Added schema
+  schema?: DatabaseSchema;
 }
 
 type ResultTab = 'table' | 'chart' | 'analysis' | 'explain';
 
 const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, onNewConnection, settings, onAddToDashboard, onShowToast, credentials, executionDuration, schema }) => {
   const [activeTab, setActiveTab] = useState<ResultTab>('table');
-  const [localData, setLocalData] = useState(data); // Local state for optimistic updates
-  
+  const [localData, setLocalData] = useState(data); 
   const columns = localData.length > 0 ? Object.keys(localData[0]) : [];
-  
-  // Smart Filters State
   const [filters, setFilters] = useState<FilterRule[]>([]);
   const [localSearch, setLocalSearch] = useState(''); 
-  
   const [sqlCopied, setSqlCopied] = useState(false);
   const [explainPlan, setExplainPlan] = useState<ExplainNode | null>(null);
   const [loadingExplain, setLoadingExplain] = useState(false);
@@ -597,39 +442,26 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCodeModal, setShowCodeModal] = useState(false);
-  
-  // New Modals
   const [selectedRow, setSelectedRow] = useState<any | null>(null);
   const [viewJson, setViewJson] = useState<any | null>(null);
   const [drillDownTarget, setDrillDownTarget] = useState<{table: string, col: string, val: any} | null>(null);
-
-  // Chart configuration state lifted for pinning
   const [currentChartConfig, setCurrentChartConfig] = useState<{xAxis: string, yKeys: string[]} | null>(null);
 
-  // Determine main table from SQL
   const mainTableName = useMemo(() => {
      const fromMatch = sql.match(/FROM\s+([a-zA-Z0-9_."]+)/i);
-     if (fromMatch) {
-        // clean quotes
-        return fromMatch[1].replace(/"/g, '');
-     }
+     if (fromMatch) return fromMatch[1].replace(/"/g, '');
      return null;
   }, [sql]);
 
-  useEffect(() => {
-     if (data) {
-        addToHistory({ sql, rowCount: data.length, durationMs: executionDuration || 0, status: 'success', schemaName: 'Database' });
-     }
-  }, []);
+  useEffect(() => { if (data) addToHistory({ sql, rowCount: data.length, durationMs: executionDuration || 0, status: 'success', schemaName: 'Database' }); }, []);
 
   const filteredData = React.useMemo(() => {
-     let res = localData;
+     let res = localData || [];
      if (filters.length > 0) {
-        res = res.filter(row => {
-           return filters.every(f => {
+        res = res.filter(row => filters.every(f => {
               const val = row[f.column];
-              const strVal = String(val).toLowerCase();
-              const filterVal = f.value.toLowerCase();
+              const strVal = String(val || '').toLowerCase();
+              const filterVal = (f.value || '').toLowerCase();
               if (f.value === '') return true;
               switch(f.operator) {
                  case 'contains': return strVal.includes(filterVal);
@@ -640,12 +472,9 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
                  case 'lt': return Number(val) < Number(f.value);
                  default: return true;
               }
-           });
-        });
+           }));
      }
-     if (localSearch) {
-        res = res.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(localSearch.toLowerCase())));
-     }
+     if (localSearch) res = res.filter(row => Object.values(row).some(val => String(val || '').toLowerCase().includes(localSearch.toLowerCase())));
      return res;
   }, [localData, filters, localSearch]);
 
@@ -673,10 +502,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
            }
         }
      }
-     if (!pkVal) {
-        onShowToast("Não foi possível identificar a Chave Primária (ID) para atualizar esta linha.", "error");
-        return;
-     }
+     if (!pkVal) { onShowToast("Não foi possível identificar a Chave Primária (ID) para atualizar esta linha.", "error"); return; }
      const updateSql = `UPDATE ${tableName} SET ${colKey} = '${newValue.replace(/'/g, "''")}' WHERE ${pkCol} = ${pkVal};`;
      const newData = [...localData];
      newData[rowIdx] = { ...newData[rowIdx], [colKey]: newValue };
@@ -684,310 +510,61 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      onShowToast(`UPDATE Gerado: ${updateSql}`, "info");
   };
 
-  // --- Chart Drill Down Handler ---
-  const handleChartDrillDown = (col: string, val: any) => {
-     // Try to determine which table this column likely belongs to or default to main table
-     if (mainTableName) {
-        setDrillDownTarget({ table: mainTableName, col, val });
-     }
-  };
-
-  // ... (Export handlers kept same) ...
-  const copyAsMarkdown = () => {
-     if (filteredData.length === 0) return;
-     const headers = `| ${columns.join(' | ')} |`;
-     const separator = `| ${columns.map(() => '---').join(' | ')} |`;
-     const rows = filteredData.map(row => `| ${columns.map(c => row[c]).join(' | ')} |`).join('\n');
-     navigator.clipboard.writeText(`${headers}\n${separator}\n${rows}`);
-     setShowExportMenu(false);
-     onShowToast("Copiado como Markdown!", "success");
-  };
-
-  const handleExportCSV = () => {
-    if (filteredData.length === 0) return;
-    const headers = columns.join(',');
-    const rows = filteredData.map(row => columns.map(col => {
-        const val = row[col];
-        if (typeof val === 'string' && val.includes(',')) return `"${val.replace(/"/g, '""')}"`;
-        return val;
-      }).join(','));
-    const csvContent = [headers, ...rows].join('\n');
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
-    link.setAttribute('download', 'results.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setShowExportMenu(false);
-    onShowToast("Download CSV iniciado.", "info");
-  };
-
-  const handleExportJSON = () => {
-     const jsonContent = JSON.stringify(filteredData, null, 2);
-     const link = document.createElement('a');
-     link.href = URL.createObjectURL(new Blob([jsonContent], { type: 'application/json' }));
-     link.setAttribute('download', 'results.json');
-     document.body.appendChild(link);
-     link.click();
-     document.body.removeChild(link);
-     setShowExportMenu(false);
-     onShowToast("Download JSON iniciado.", "info");
-  };
-
-  const handleExportInsert = () => {
-     if (filteredData.length === 0) return;
-     const tableName = "exported_data";
-     const cols = columns.join(', ');
-     const statements = filteredData.map(row => {
-        const values = columns.map(col => {
-           const val = row[col];
-           if (val === null) return 'NULL';
-           if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`; 
-           return val;
-        }).join(', ');
-        return `INSERT INTO ${tableName} (${cols}) VALUES (${values});`;
-     }).join('\n');
-     
-     navigator.clipboard.writeText(statements);
-     setShowExportMenu(false);
-     onShowToast("SQL INSERTs copiados para a área de transferência!", "success");
-  };
-
-  const handleExportPDF = async () => {
-     const content = document.getElementById('results-content');
-     if (!content) return;
-     
-     onShowToast("Gerando PDF... Aguarde.", "info");
-     setShowExportMenu(false);
-
-     try {
-        const canvas = await html2canvas(content, {
-           scale: 2,
-           backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#ffffff'
-        });
-        
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('l', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save("report.pdf");
-        onShowToast("PDF Gerado com sucesso!", "success");
-     } catch (e) {
-        console.error(e);
-        onShowToast("Erro ao gerar PDF.", "error");
-     }
-  };
-
-  const handleExplain = async () => {
-     setActiveTab('explain');
-     setExplainError(null);
-     if (!explainPlan && credentials) {
-        setLoadingExplain(true);
-        try {
-           const plan = await explainQueryReal(credentials, sql);
-           setExplainPlan(plan);
-        } catch (e: any) {
-           console.error(e);
-           setExplainError(e.message || "Erro desconhecido ao analisar performance.");
-        } finally {
-           setLoadingExplain(false);
-        }
-     }
-  };
-
-  const handlePinChart = () => {
-     if (!onAddToDashboard) return;
-     const config = currentChartConfig || { xAxis: columns[0], yKeys: columns.slice(1,3) };
-     onAddToDashboard({
-        title: `Gráfico ${new Date().toLocaleTimeString()}`,
-        type: 'bar',
-        data: data, 
-        config: config,
-        sql: sql
-     });
-     onShowToast("Gráfico fixado no Dashboard com sucesso!", "success");
-  };
-
-  const toggleFullscreen = () => {
-     setIsFullscreen(!isFullscreen);
-  };
+  const handleChartDrillDown = (col: string, val: any) => { if (mainTableName) setDrillDownTarget({ table: mainTableName, col, val }); };
+  const copyAsMarkdown = () => { if (filteredData.length === 0) return; const headers = `| ${columns.join(' | ')} |`; const separator = `| ${columns.map(() => '---').join(' | ')} |`; const rows = filteredData.map(row => `| ${columns.map(c => row[c]).join(' | ')} |`).join('\n'); navigator.clipboard.writeText(`${headers}\n${separator}\n${rows}`); setShowExportMenu(false); onShowToast("Copiado como Markdown!", "success"); };
+  const handleExportCSV = () => { if (filteredData.length === 0) return; const headers = columns.join(','); const rows = filteredData.map(row => columns.map(col => { const val = row[col]; if (typeof val === 'string' && val.includes(',')) return `"${val.replace(/"/g, '""')}"`; return val; }).join(',')); const csvContent = [headers, ...rows].join('\n'); const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })); link.setAttribute('download', 'results.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link); setShowExportMenu(false); onShowToast("Download CSV iniciado.", "info"); };
+  const handleExportJSON = () => { const jsonContent = JSON.stringify(filteredData, null, 2); const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([jsonContent], { type: 'application/json' })); link.setAttribute('download', 'results.json'); document.body.appendChild(link); link.click(); document.body.removeChild(link); setShowExportMenu(false); onShowToast("Download JSON iniciado.", "info"); };
+  const handleExportInsert = () => { if (filteredData.length === 0) return; const tableName = "exported_data"; const cols = columns.join(', '); const statements = filteredData.map(row => { const values = columns.map(col => { const val = row[col]; if (val === null) return 'NULL'; if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`; return val; }).join(', '); return `INSERT INTO ${tableName} (${cols}) VALUES (${values});`; }).join('\n'); navigator.clipboard.writeText(statements); setShowExportMenu(false); onShowToast("SQL INSERTs copiados para a área de transferência!", "success"); };
+  const handleExportPDF = async () => { const content = document.getElementById('results-content'); if (!content) return; onShowToast("Gerando PDF... Aguarde.", "info"); setShowExportMenu(false); try { const canvas = await html2canvas(content, { scale: 2, backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#ffffff' }); const imgData = canvas.toDataURL('image/png'); const pdf = new jsPDF('l', 'mm', 'a4'); const pdfWidth = pdf.internal.pageSize.getWidth(); const pdfHeight = (canvas.height * pdfWidth) / canvas.width; pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight); pdf.save("report.pdf"); onShowToast("PDF Gerado com sucesso!", "success"); } catch (e) { onShowToast("Erro ao gerar PDF.", "error"); } };
+  const handleExplain = async () => { setActiveTab('explain'); setExplainError(null); if (!explainPlan && credentials) { setLoadingExplain(true); try { const plan = await explainQueryReal(credentials, sql); setExplainPlan(plan); } catch (e: any) { setExplainError(e.message || "Erro desconhecido ao analisar performance."); } finally { setLoadingExplain(false); } } };
+  const handlePinChart = () => { if (!onAddToDashboard) return; const config = currentChartConfig || { xAxis: columns[0] || '', yKeys: columns.slice(1,3) }; onAddToDashboard({ title: `Gráfico ${new Date().toLocaleTimeString()}`, type: 'bar', data: data, config: config, sql: sql }); onShowToast("Gráfico fixado no Dashboard com sucesso!", "success"); };
+  const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
 
   return (
     <div className={`h-full flex flex-col space-y-4 ${isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-slate-900 p-6' : ''}`}>
-      
-      {/* Row Detail Modal */}
       {selectedRow && <RowInspector row={selectedRow} onClose={() => setSelectedRow(null)} />}
-      
-      {/* JSON Viewer Modal */}
       {viewJson && <JsonViewerModal json={viewJson} onClose={() => setViewJson(null)} />}
-
-      {/* Drill Down Modal */}
-      {drillDownTarget && (
-         <DrillDownModal 
-            targetTable={drillDownTarget.table} 
-            filterColumn={drillDownTarget.col} 
-            filterValue={drillDownTarget.val}
-            credentials={credentials || null}
-            onClose={() => setDrillDownTarget(null)}
-         />
-      )}
-      
-      {/* Code Snippet Modal */}
+      {drillDownTarget && <DrillDownModal targetTable={drillDownTarget.table} filterColumn={drillDownTarget.col} filterValue={drillDownTarget.val} credentials={credentials || null} onClose={() => setDrillDownTarget(null)} />}
       {showCodeModal && <CodeSnippetModal sql={sql} onClose={() => setShowCodeModal(false)} />}
-
-      {/* Header & Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-4">
-           {isFullscreen && (
-              <button onClick={toggleFullscreen} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 transition-colors">
-                 <Minimize2 className="w-5 h-5 text-slate-600 dark:text-slate-300" />
-              </button>
-           )}
-           <div>
-             <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
-                Resultados
-                <span className="text-xs font-normal text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">{filteredData.length} registros</span>
-                {settings?.advancedMode && <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-bold border border-orange-200 flex items-center gap-1"><PenTool className="w-3 h-3" /> Modo Edição</span>}
-             </h2>
-           </div>
+           {isFullscreen && <button onClick={toggleFullscreen} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 transition-colors"><Minimize2 className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>}
+           <div><h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-3">Resultados<span className="text-xs font-normal text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">{filteredData.length} registros</span>{settings?.advancedMode && <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-bold border border-orange-200 flex items-center gap-1"><PenTool className="w-3 h-3" /> Modo Edição</span>}</h2></div>
         </div>
-        
-        {/* Central Tabs */}
         <div className="flex bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
-           {[
-              { id: 'table', icon: <FileSpreadsheet className="w-4 h-4" />, label: 'Tabela' },
-              { id: 'chart', icon: <BarChart2 className="w-4 h-4" />, label: 'Gráficos' },
-              { id: 'analysis', icon: <MessageSquare className="w-4 h-4" />, label: 'AI Analyst' },
-              { id: 'explain', icon: <Activity className="w-4 h-4" />, label: 'Performance' },
-           ].map(tab => (
-              <button key={tab.id} onClick={() => { setActiveTab(tab.id as ResultTab); if(tab.id === 'explain') handleExplain(); }} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
-                 {tab.icon} {tab.label}
-              </button>
+           {[{ id: 'table', icon: <FileSpreadsheet className="w-4 h-4" />, label: 'Tabela' },{ id: 'chart', icon: <BarChart2 className="w-4 h-4" />, label: 'Gráficos' },{ id: 'analysis', icon: <MessageSquare className="w-4 h-4" />, label: 'AI Analyst' },{ id: 'explain', icon: <Activity className="w-4 h-4" />, label: 'Performance' }].map(tab => (
+              <button key={tab.id} onClick={() => { setActiveTab(tab.id as ResultTab); if(tab.id === 'explain') handleExplain(); }} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>{tab.icon} {tab.label}</button>
            ))}
         </div>
-
         <div className="flex items-center gap-2">
-           {/* Primary Action Button based on Tab */}
-           {activeTab === 'chart' && (
-              <button onClick={handlePinChart} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors animate-in fade-in">
-                 <Pin className="w-4 h-4" /> Fixar Gráfico
-              </button>
-           )}
-
-           {/* Filter/Search for Table */}
-           {activeTab === 'table' && (
-             <div className="flex items-center gap-2">
-               <SmartFilterBar columns={columns} filters={filters} onChange={setFilters} onClear={() => setFilters([])} />
-               {filters.length === 0 && (
-                  <div className="relative group">
-                     <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                     <input type="text" placeholder="Busca rápida..." value={localSearch} onChange={(e) => setLocalSearch(e.target.value)} className="pl-8 pr-4 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-48" />
-                  </div>
-               )}
-             </div>
-           )}
-           
-           {/* Export Menu */}
+           {activeTab === 'chart' && <button onClick={handlePinChart} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors animate-in fade-in"><Pin className="w-4 h-4" /> Fixar Gráfico</button>}
+           {activeTab === 'table' && (<div className="flex items-center gap-2"><SmartFilterBar columns={columns} filters={filters} onChange={setFilters} onClear={() => setFilters([])} />{filters.length === 0 && (<div className="relative group"><Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" /><input type="text" placeholder="Busca rápida..." value={localSearch} onChange={(e) => setLocalSearch(e.target.value)} className="pl-8 pr-4 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-48" /></div>)}</div>)}
            <div className="relative">
-              <button onClick={() => setShowExportMenu(!showExportMenu)} className={`flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors text-slate-700 dark:text-slate-300 ${showExportMenu ? 'ring-2 ring-indigo-500' : ''}`}>
-                 <Download className="w-4 h-4" /> Exportar
-              </button>
-              
-              {showExportMenu && (
-                 <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-in fade-in zoom-in-95" onClick={() => setShowExportMenu(false)}>
-                    <div className="p-2 border-b border-slate-100 dark:border-slate-700">
-                       <span className="text-[10px] font-bold text-slate-400 uppercase px-2 mb-1 block">Área de Transferência</span>
-                       <button onClick={() => { setShowCodeModal(true); setShowExportMenu(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300 font-medium text-indigo-600"><FileCode className="w-3.5 h-3.5 text-indigo-500" /> Exportar Código (Snippet)</button>
-                       <button onClick={copyAsMarkdown} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileCode className="w-3.5 h-3.5 text-slate-400" /> Markdown (Tabela)</button>
-                       <button onClick={handleExportInsert} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><Database className="w-3.5 h-3.5 text-slate-500" /> Copy as SQL INSERT</button>
-                       <button onClick={() => { navigator.clipboard.writeText(JSON.stringify(filteredData)); onShowToast("JSON copiado!", "success"); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileJson className="w-3.5 h-3.5 text-yellow-500" /> Copy JSON Raw</button>
-                    </div>
-                    <div className="p-2">
-                       <span className="text-[10px] font-bold text-slate-400 uppercase px-2 mb-1 block">Download Arquivo</span>
-                       <button onClick={handleExportPDF} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileText className="w-3.5 h-3.5 text-red-500" /> PDF Report (.pdf)</button>
-                       <button onClick={handleExportCSV} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> CSV (.csv)</button>
-                       <button onClick={handleExportJSON} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileJson className="w-3.5 h-3.5 text-yellow-500" /> JSON (.json)</button>
-                    </div>
-                 </div>
-              )}
+              <button onClick={() => setShowExportMenu(!showExportMenu)} className={`flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors text-slate-700 dark:text-slate-300 ${showExportMenu ? 'ring-2 ring-indigo-500' : ''}`}><Download className="w-4 h-4" /> Exportar</button>
+              {showExportMenu && (<div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-in fade-in zoom-in-95" onClick={() => setShowExportMenu(false)}><div className="p-2 border-b border-slate-100 dark:border-slate-700"><span className="text-[10px] font-bold text-slate-400 uppercase px-2 mb-1 block">Área de Transferência</span><button onClick={() => { setShowCodeModal(true); setShowExportMenu(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300 font-medium text-indigo-600"><FileCode className="w-3.5 h-3.5 text-indigo-500" /> Exportar Código (Snippet)</button><button onClick={copyAsMarkdown} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileCode className="w-3.5 h-3.5 text-slate-400" /> Markdown (Tabela)</button><button onClick={handleExportInsert} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><Database className="w-3.5 h-3.5 text-slate-500" /> Copy as SQL INSERT</button><button onClick={() => { navigator.clipboard.writeText(JSON.stringify(filteredData)); onShowToast("JSON copiado!", "success"); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileJson className="w-3.5 h-3.5 text-yellow-500" /> Copy JSON Raw</button></div><div className="p-2"><span className="text-[10px] font-bold text-slate-400 uppercase px-2 mb-1 block">Download Arquivo</span><button onClick={handleExportPDF} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileText className="w-3.5 h-3.5 text-red-500" /> PDF Report (.pdf)</button><button onClick={handleExportCSV} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> CSV (.csv)</button><button onClick={handleExportJSON} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-slate-700 dark:text-slate-300"><FileJson className="w-3.5 h-3.5 text-yellow-500" /> JSON (.json)</button></div></div>)}
            </div>
-           
-           {!isFullscreen && (
-              <button onClick={toggleFullscreen} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors" title="Tela Cheia">
-                 <Maximize2 className="w-5 h-5" />
-              </button>
-           )}
+           {!isFullscreen && <button onClick={toggleFullscreen} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors" title="Tela Cheia"><Maximize2 className="w-5 h-5" /></button>}
         </div>
       </div>
-
-      {settings && (
-         <BeginnerTip settings={settings} title="Leitura de Resultados">
-            Esta tabela exibe o resultado da execução do seu SQL. Lembre-se: estes dados são um "snapshot" (foto) do momento da consulta. Se o banco mudar, você precisará executar novamente para ver as atualizações.
-         </BeginnerTip>
-      )}
-
-      {/* Main Content Area */}
+      {settings && <BeginnerTip settings={settings} title="Leitura de Resultados">Esta tabela exibe o resultado da execução do seu SQL. Lembre-se: estes dados são um "snapshot" (foto) do momento da consulta. Se o banco mudar, você precisará executar novamente para ver as atualizações.</BeginnerTip>}
       <div id="results-content" className="flex-1 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col relative">
         {filteredData.length === 0 && data.length > 0 ? (
-           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8">
-              <Filter className="w-12 h-12 opacity-30 mb-4" />
-              <p>Nenhum resultado corresponde aos filtros atuais.</p>
-              <button onClick={() => setFilters([])} className="mt-2 text-indigo-500 hover:underline text-sm">Limpar Filtros</button>
-           </div>
+           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8"><Filter className="w-12 h-12 opacity-30 mb-4" /><p>Nenhum resultado corresponde aos filtros atuais.</p><button onClick={() => setFilters([])} className="mt-2 text-indigo-500 hover:underline text-sm">Limpar Filtros</button></div>
         ) : data.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8"><Database className="w-12 h-12 opacity-30 mb-4" /><p>Nenhum resultado retornado</p></div>
         ) : (
           <>
-            {activeTab === 'table' && (
-               <VirtualTable 
-                  data={filteredData} 
-                  columns={columns} 
-                  highlightMatch={highlightMatch} 
-                  onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} 
-                  isAdvancedMode={settings?.advancedMode}
-                  onUpdateCell={handleUpdateCell}
-                  onOpenJson={setViewJson}
-                  onDrillDown={(table, col, val) => setDrillDownTarget({ table, col, val })}
-                  schema={schema}
-                  defaultTableName={mainTableName}
-               />
-            )}
-            {activeTab === 'chart' && (
-               <div className="p-6 h-full w-full relative">
-                  <DataVisualizer 
-                     data={filteredData} 
-                     onDrillDown={handleChartDrillDown}
-                  /> 
-               </div>
-            )}
+            {activeTab === 'table' && <VirtualTable data={filteredData} columns={columns} highlightMatch={highlightMatch} onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} isAdvancedMode={settings?.advancedMode} onUpdateCell={handleUpdateCell} onOpenJson={setViewJson} onDrillDown={(table, col, val) => setDrillDownTarget({ table, col, val })} schema={schema} defaultTableName={mainTableName} />}
+            {activeTab === 'chart' && <div className="p-6 h-full w-full relative"><DataVisualizer data={filteredData} onDrillDown={handleChartDrillDown} /> </div>}
             {activeTab === 'analysis' && <div className="flex-1 h-full"><DataAnalysisChat data={filteredData} sql={sql} /></div>}
             {activeTab === 'explain' && <ExplainVisualizer plan={explainPlan} loading={loadingExplain} error={explainError} />}
           </>
         )}
       </div>
-
-      {/* Footer (SQL View) */}
       {!isFullscreen && (
          <>
-            <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-3 p-3 shadow-inner relative group shrink-0">
-               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded">SQL</span>
-               <div className="flex-1 font-mono text-xs text-slate-600 dark:text-slate-300 truncate" title={sql}>{sql}</div>
-               <button onClick={() => { navigator.clipboard.writeText(sql); setSqlCopied(true); setTimeout(()=>setSqlCopied(false), 2000); }} className="text-slate-400 hover:text-indigo-600 p-1 transition-colors">{sqlCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}</button>
-            </div>
-
-            <div className="flex items-center justify-between shrink-0">
-               <div className="flex items-center gap-4">
-                  <button onClick={onNewConnection} className="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-2 px-2 py-1"><Database className="w-4 h-4" /> Nova Conexão</button>
-                  {executionDuration !== undefined && executionDuration > 0 && (
-                     <span className="text-xs text-slate-400 flex items-center gap-1 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700">
-                        <Clock className="w-3 h-3" /> Executado em {executionDuration.toFixed(0)}ms
-                     </span>
-                  )}
-               </div>
-               <button onClick={onBackToBuilder} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2"><ArrowLeft className="w-4 h-4" /> Voltar</button>
-            </div>
+            <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-3 p-3 shadow-inner relative group shrink-0"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded">SQL</span><div className="flex-1 font-mono text-xs text-slate-600 dark:text-slate-300 truncate" title={sql}>{sql}</div><button onClick={() => { navigator.clipboard.writeText(sql); setSqlCopied(true); setTimeout(()=>setSqlCopied(false), 2000); }} className="text-slate-400 hover:text-indigo-600 p-1 transition-colors">{sqlCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}</button></div>
+            <div className="flex items-center justify-between shrink-0"><div className="flex items-center gap-4"><button onClick={onNewConnection} className="text-slate-400 hover:text-slate-600 text-sm flex items-center gap-2 px-2 py-1"><Database className="w-4 h-4" /> Nova Conexão</button>{executionDuration !== undefined && executionDuration > 0 && (<span className="text-xs text-slate-400 flex items-center gap-1 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700"><Clock className="w-3 h-3" /> Executado em {executionDuration.toFixed(0)}ms</span>)}</div><button onClick={onBackToBuilder} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2"><ArrowLeft className="w-4 h-4" /> Voltar</button></div>
          </>
       )}
     </div>
