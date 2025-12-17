@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Database, ArrowRight, Loader2, AlertCircle, LayoutGrid, List, Search, Copy, Check, Filter, MousePointer2, ChevronRight, Info, Table2, HelpCircle, Save, Key, AlertTriangle } from 'lucide-react';
+import { X, Database, ArrowRight, Loader2, AlertCircle, LayoutGrid, Search, Copy, Check, Filter, MousePointer2, ChevronRight, Info, Table2, HelpCircle, Save, Key, AlertTriangle, Maximize2, Minimize2 } from 'lucide-react';
 import { executeQueryReal } from '../services/dbService';
 import { DbCredentials, DatabaseSchema } from '../types';
 
@@ -25,11 +25,23 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
   const [ambiguousMatches, setAmbiguousMatches] = useState<AmbiguousMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('table'); // Padrão agora é tabela/lista
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [activeSearchCol, setActiveSearchCol] = useState(filterColumn);
   const [columnFilterTerm, setColumnFilterTerm] = useState('');
+  
+  // Estado para controlar campos expandidos (Texto longo)
+  const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
+
+  const toggleExpandCell = (key: string) => {
+    setExpandedCells(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const getUserMappings = () => {
     try {
@@ -44,7 +56,6 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
     localStorage.setItem('psql-buddy-drilldown-mappings', JSON.stringify(mappings));
   };
 
-  // Colunas da tabela alvo no schema
   const targetTableColumns = useMemo(() => {
     if (!schema) return [];
     const parts = targetTable.split('.');
@@ -58,7 +69,6 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
     return table ? table.columns : [];
   }, [schema, targetTable]);
 
-  // Colunas identificadoras para busca multicampos
   const getIdentifierColumns = () => {
     if (targetTableColumns.length > 0) {
       return targetTableColumns
@@ -78,7 +88,6 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
     const idCols = isManual && column ? [column] : getIdentifierColumns();
 
     try {
-      // 1. Construir busca ampla em todos os campos identificadores
       const conditions = idCols.map(col => `${col}::text = '${safeValue}'`).join(' OR ');
       const sql = `SELECT * FROM ${targetTable} WHERE ${conditions} LIMIT 100`;
       
@@ -94,9 +103,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
         return;
       }
 
-      // 2. Analisar Ambiguidade de ORIGEM (campos diferentes com o mesmo valor)
       const matches: AmbiguousMatch[] = results.map(row => {
-        // Tenta descobrir qual coluna deu o match para este registro específico
         const matchedCol = idCols.find(c => String(row[c]) === String(val)) || idCols[0];
         return { row, matchedColumn: matchedCol };
       });
@@ -104,14 +111,19 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
       const matchedColumnsSet = new Set(matches.map(m => m.matchedColumn));
 
       if (matchedColumnsSet.size > 1 && !isManual) {
-        // Encontrado o valor em mais de um tipo de campo (ex: grid=123 e codigo=123)
         setAmbiguousMatches(matches);
         setViewMode('select');
       } else {
-        // Encontrado em apenas um campo (mesmo que vários registros) ou vindo de seleção manual
         setData(results);
         setActiveSearchCol(matches[0].matchedColumn);
-        setViewMode('table');
+        
+        // Lógica de visualização padrão: 1 registro = Card, >1 = Tabela
+        if (results.length === 1) {
+          setViewMode('cards');
+        } else {
+          setViewMode('table');
+        }
+
         if (isManual && column) saveUserMapping(targetTable, column);
       }
     } catch (e: any) {
@@ -219,7 +231,6 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                  <span className="text-sm font-medium">Processando resultados...</span>
               </div>
            ) : viewMode === 'select' ? (
-              /* TELA DE DESAMBIGUAÇÃO */
               <div className="p-8 max-w-4xl mx-auto">
                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-2xl p-6 mb-8 flex items-start gap-4 shadow-sm">
                     <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-amber-500">
@@ -240,7 +251,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                        return (
                           <button 
                              key={idx}
-                             onClick={() => { setData([row]); setActiveSearchCol(match.matchedColumn); setViewMode('table'); }}
+                             onClick={() => { setData([row]); setActiveSearchCol(match.matchedColumn); setViewMode('cards'); }}
                              className="w-full flex items-center justify-between p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all group text-left"
                           >
                              <div className="flex items-center gap-5">
@@ -273,9 +284,8 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                  </div>
               </div>
            ) : viewMode === 'map_column' ? (
-              /* MAPEAMENTO MANUAL (FALLBACK) */
               <div className="p-8 max-w-4xl mx-auto">
-                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-6 mb-8 flex items-start gap-5 shadow-sm">
+                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-2xl p-6 mb-8 flex items-start gap-5 shadow-sm">
                     <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm text-amber-500 shrink-0">
                        <HelpCircle className="w-8 h-8" />
                     </div>
@@ -327,7 +337,6 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
            ) : (
               <div className="p-4 sm:p-6 space-y-6">
                  {viewMode === 'table' ? (
-                    /* LISTAGEM EM TABELA (RESTAURADA) */
                     <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto custom-scrollbar">
                        <table className="w-full text-left text-sm border-collapse min-w-max">
                           <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 shadow-sm z-10 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -340,9 +349,27 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                                 <tr key={i} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group">
                                    {columns.map(col => {
                                       const isPkMatch = col === activeSearchCol;
+                                      const cellKey = `table-${i}-${col}`;
+                                      const isExpanded = expandedCells.has(cellKey);
+                                      const val = row[col];
+                                      const valStr = val === null ? 'null' : String(val);
+                                      const isLong = valStr.length > 50;
+
                                       return (
                                         <td key={col} className={`px-4 py-3 text-xs font-mono border-b border-transparent group-hover:border-slate-100 dark:group-hover:border-slate-800 ${isPkMatch ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/20' : 'text-slate-600 dark:text-slate-400'}`}>
-                                           {row[col] === null ? <span className="text-slate-300 italic opacity-50">null</span> : String(row[col])}
+                                           <div className="flex items-start gap-2 max-w-[300px]">
+                                              <span className={isExpanded ? 'whitespace-pre-wrap break-all' : 'truncate'}>
+                                                 {val === null ? <span className="text-slate-300 italic opacity-50">null</span> : valStr}
+                                              </span>
+                                              {isLong && (
+                                                 <button 
+                                                    onClick={() => toggleExpandCell(cellKey)}
+                                                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-indigo-500 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                 >
+                                                    {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+                                                 </button>
+                                              )}
+                                           </div>
                                         </td>
                                       );
                                    })}
@@ -352,10 +379,9 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                        </table>
                     </div>
                  ) : (
-                    /* VISUALIZAÇÃO EM CARDS */
                     <div className="space-y-6">
                        {filteredData.map((row, rowIndex) => (
-                          <div key={rowIndex} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                          <div key={rowIndex} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                              <div className="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                                    <Database className="w-3 h-3" /> Registro #{rowIndex + 1}
@@ -364,21 +390,37 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                              </div>
                              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-0.5">
                                 {columns.map(col => {
+                                   const cellKey = `card-${rowIndex}-${col}`;
+                                   const isExpanded = expandedCells.has(cellKey);
                                    const val = row[col];
                                    const valStr = val === null ? 'null' : String(val);
+                                   const isLong = valStr.length > 80;
                                    const isMatch = searchTerm && (col.toLowerCase().includes(searchTerm.toLowerCase()) || valStr.toLowerCase().includes(searchTerm.toLowerCase()));
                                    const isPkMatch = col === activeSearchCol;
                                    
                                    return (
-                                      <div key={col} className={`group flex items-center justify-between py-1.5 px-2 rounded transition-colors border-b border-slate-50 dark:border-slate-800/40 last:border-0 ${isMatch ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}>
-                                         <span className={`text-[11px] font-bold uppercase truncate pr-4 max-w-[140px] ${isPkMatch ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} title={col}>
+                                      <div key={col} className={`group flex items-start justify-between py-1.5 px-2 rounded transition-colors border-b border-slate-50 dark:border-slate-800/40 last:border-0 ${isMatch ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'} ${isExpanded ? 'flex-col md:col-span-2 gap-2' : ''}`}>
+                                         <span className={`text-[11px] font-bold uppercase truncate pr-4 shrink-0 mt-0.5 ${isExpanded ? 'w-full' : 'max-w-[140px]'} ${isPkMatch ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} title={col}>
                                             {col}
                                          </span>
-                                         <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
-                                            <div className={`text-xs font-mono truncate text-right ${val === null ? 'text-slate-300 italic' : isPkMatch ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-700 dark:text-slate-300'}`}>{valStr}</div>
-                                            <button onClick={() => handleCopy(val, `${rowIndex}-${col}`)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all shrink-0">
-                                               {copiedField === `${rowIndex}-${col}` ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
-                                            </button>
+                                         <div className={`flex items-start gap-2 min-w-0 flex-1 ${isExpanded ? 'w-full' : 'justify-end'}`}>
+                                            <div className={`text-xs font-mono break-all ${isExpanded ? 'whitespace-pre-wrap w-full bg-slate-50 dark:bg-slate-900/80 p-3 rounded-lg border border-slate-100 dark:border-slate-700' : 'truncate text-right'} ${val === null ? 'text-slate-300 italic' : isPkMatch ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-700 dark:text-slate-300'}`}>
+                                               {valStr}
+                                            </div>
+                                            <div className="flex shrink-0">
+                                               {isLong && (
+                                                  <button 
+                                                     onClick={() => toggleExpandCell(cellKey)}
+                                                     className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all"
+                                                     title={isExpanded ? "Recolher campo" : "Ver valor completo"}
+                                                  >
+                                                     {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+                                                  </button>
+                                               )}
+                                               <button onClick={() => handleCopy(val, `${rowIndex}-${col}`)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all">
+                                                  {copiedField === `${rowIndex}-${col}` ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                                               </button>
+                                            </div>
                                          </div>
                                       </div>
                                    );
