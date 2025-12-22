@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon } from 'lucide-react';
 import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema, Table } from '../../types';
@@ -160,27 +161,90 @@ const ManualMappingPopover: React.FC<{
 
   const hasMultipleSchemas = schemasPresent.length > 1;
 
-  const tablesBySchema = useMemo(() => {
+  // Lógica de filtragem e ordenação por relevância (mesma do SchemaViewer)
+  const filteredAndSortedTables = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    
     const list = schema.tables.filter(t => 
-      t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      (t.schema || 'public').toLowerCase().includes(searchTerm.toLowerCase())
+      !term ||
+      t.name.toLowerCase().includes(term) || 
+      (t.schema || 'public').toLowerCase().includes(term)
     );
 
-    list.sort((a, b) => {
-       const sA = (a.schema || 'public').toLowerCase();
-       const sB = (b.schema || 'public').toLowerCase();
-       if (sA !== sB) return sA.localeCompare(sB);
-       return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-    });
+    if (term) {
+      list.sort((a, b) => {
+        const nameA = a.name.toLowerCase();
+        const nameB = b.name.toLowerCase();
+        
+        // 1. Exato
+        if (nameA === term && nameB !== term) return -1;
+        if (nameB === term && nameA !== term) return 1;
+        
+        // 2. Começa com
+        const startsA = nameA.startsWith(term);
+        const startsB = nameB.startsWith(term);
+        if (startsA && !startsB) return -1;
+        if (!startsA && startsB) return 1;
+        
+        // 3. Contém
+        const includesA = nameA.includes(term);
+        const includesB = nameB.includes(term);
+        if (includesA && !includesB) return -1;
+        if (!includesA && includesB) return 1;
+        
+        // Fallback: Schema e Nome
+        const sA = (a.schema || 'public').toLowerCase();
+        const sB = (b.schema || 'public').toLowerCase();
+        if (sA !== sB) return sA.localeCompare(sB);
+        return nameA.localeCompare(nameB);
+      });
+    } else {
+      // Ordenação padrão se não houver busca
+      list.sort((a, b) => {
+        const sA = (a.schema || 'public').toLowerCase();
+        const sB = (b.schema || 'public').toLowerCase();
+        if (sA !== sB) return sA.localeCompare(sB);
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
+    }
 
+    return list;
+  }, [schema.tables, searchTerm]);
+
+  // Agrupa os resultados já ordenados por schema
+  const groupedTables = useMemo(() => {
     const grouped: Record<string, Table[]> = {};
-    list.forEach(t => {
+    filteredAndSortedTables.forEach(t => {
       const s = t.schema || 'public';
       if (!grouped[s]) grouped[s] = [];
       grouped[s].push(t);
     });
     return grouped;
-  }, [schema.tables, searchTerm]);
+  }, [filteredAndSortedTables]);
+
+  // Ordena as chaves dos schemas pela posição do melhor resultado encontrado
+  const sortedSchemaKeys = useMemo(() => {
+    const keys = Object.keys(groupedTables);
+    const term = searchTerm.toLowerCase().trim();
+
+    if (term) {
+      const schemaRank: Record<string, number> = {};
+      filteredAndSortedTables.forEach((t, idx) => {
+        const s = t.schema || 'public';
+        if (schemaRank[s] === undefined) {
+          schemaRank[s] = idx;
+        }
+      });
+      
+      return keys.sort((a, b) => {
+        const rankA = schemaRank[a] ?? Infinity;
+        const rankB = schemaRank[b] ?? Infinity;
+        return rankA - rankB;
+      });
+    }
+    
+    return keys.sort((a, b) => a.localeCompare(b));
+  }, [groupedTables, filteredAndSortedTables, searchTerm]);
 
   const targetColumns = useMemo(() => {
     if (!selectedTable) return [];
@@ -216,10 +280,10 @@ const ManualMappingPopover: React.FC<{
                 />
              </div>
              <div className="max-h-48 overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-lg mt-1 custom-scrollbar bg-white dark:bg-slate-900">
-                {Object.entries(tablesBySchema).length === 0 ? (
+                {sortedSchemaKeys.length === 0 ? (
                   <div className="p-4 text-center text-slate-400 text-[10px]">Nenhuma tabela encontrada.</div>
                 ) : (
-                  Object.entries(tablesBySchema).map(([schemaName, tables]) => (
+                  sortedSchemaKeys.map((schemaName) => (
                     <div key={schemaName} className="mb-1">
                       {hasMultipleSchemas && (
                         <div className="px-2 py-1 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700 flex items-center gap-1.5">
@@ -228,10 +292,10 @@ const ManualMappingPopover: React.FC<{
                         </div>
                       )}
                       <div className="py-0.5">
-                        {tables.map(t => {
+                        {groupedTables[schemaName].map(t => {
                            const fullId = `${t.schema || 'public'}.${t.name}`;
                            const isSelected = selectedTable === fullId;
-                           const displayName = !hasMultipleSchemas && t.schema === 'public' ? t.name : t.name;
+                           const displayName = t.name;
 
                            return (
                               <button 
