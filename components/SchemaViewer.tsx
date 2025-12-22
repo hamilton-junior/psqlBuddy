@@ -38,16 +38,16 @@ const getRefTableId = (ref: string, currentSchema: string) => {
 
 interface SchemaColumnItemProps {
   col: Column;
-  tableId: string; // Changed from tableName to tableId (schema.table)
-  tableName: string; // Display name
+  tableId: string; 
+  tableName: string; 
   isHovered: boolean;
-  isSelected: boolean; // Add selected state
+  isSelected: boolean; 
   isRelTarget: boolean;
   isRelSource: boolean;
   debouncedTerm: string;
   onHover: (tableId: string, col: string, ref?: string) => void;
   onHoverOut: () => void;
-  onClick: (tableId: string, col: string, ref?: string) => void; // Add click handler
+  onClick: (tableId: string, col: string, ref?: string) => void; 
 }
 
 const SchemaColumnItem = memo(({ 
@@ -78,21 +78,16 @@ const SchemaColumnItem = memo(({
      );
   }
 
-  // Enhanced Tooltip Generation
   const getTooltip = () => {
     let lines = [`Coluna: ${col.name}`, `Tipo: ${col.type.toUpperCase()}`];
-    
     if (col.isPrimaryKey) lines.push("Constraint: PRIMARY KEY (PK)");
     if (col.isForeignKey) {
        lines.push("Constraint: FOREIGN KEY (FK)");
        lines.push(`References: ${col.references}`);
     }
-    
-    // Simulate index info if it's a key
     if (col.isPrimaryKey || col.isForeignKey) {
        lines.push(`Index: idx_${tableName}_${col.name}`);
     }
-
     return lines.join('\n');
   };
   
@@ -112,7 +107,6 @@ const SchemaColumnItem = memo(({
           <Key className="w-3.5 h-3.5 text-amber-500 transform rotate-45" />
         )}
       </div>
-      
       <div className="flex-1 flex items-center min-w-0">
          <div className="flex flex-col truncate flex-1">
             <div className="flex items-center">
@@ -129,7 +123,6 @@ const SchemaColumnItem = memo(({
                 </span>
               )}
             </div>
-
             {col.isForeignKey && !isRelSource && (
               <span className={`text-[9px] flex items-center gap-0.5 transition-colors mt-0.5 truncate ${
                  isRelSource ? 'text-emerald-600 dark:text-emerald-400' :
@@ -139,7 +132,6 @@ const SchemaColumnItem = memo(({
               </span>
             )}
          </div>
-         
          {colBadge ? colBadge : (
             <span className="text-[10px] text-slate-400 ml-2 font-mono shrink-0" title={`Type: ${col.type}`}>{col.type.toLowerCase()}</span>
          )}
@@ -163,10 +155,9 @@ interface SchemaTableItemProps {
   selectedTypeFilter: string;
   sortField: SortField;
   sortDirection: SortDirection;
-  hoveredColumnKey: string | null; // "schema.table.col"
-  hoveredColumnRef: string | null; // "targetTable.targetCol" or "schema.table.col"
-  selectedColumnKey: string | null; // "schema.table.col"
-  
+  hoveredColumnKey: string | null; 
+  hoveredColumnRef: string | null; 
+  selectedColumnKey: string | null; 
   onToggleExpand: (e: React.MouseEvent, tableId: string) => void;
   onTableClick: (tableId: string) => void;
   onMouseEnter: (tableId: string) => void;
@@ -189,8 +180,6 @@ const SchemaTableItem = memo(({
 }: SchemaTableItemProps) => {
 
   const tableId = getTableId(table);
-
-  // Styling logic based on VisualState
   let containerClass = 'opacity-100 border-l-4 border-l-transparent border-slate-200 dark:border-slate-700 dark:bg-slate-800';
   let label = null;
 
@@ -225,12 +214,9 @@ const SchemaTableItem = memo(({
       break;
   }
 
-  // Column Filtering & Sorting Logic
   const getColumns = () => {
     let cols = [...table.columns];
     if (selectedTypeFilter) cols = cols.filter(c => c.type.toUpperCase().includes(selectedTypeFilter));
-    
-    // Sort columns if needed, otherwise default order
     if (sortField) {
         cols.sort((a, b) => {
           let valA: any = '', valB: any = '';
@@ -279,7 +265,6 @@ const SchemaTableItem = memo(({
         <div className="flex-1 min-w-0 pr-2">
            <div className="flex items-center gap-2">
               <span className={`font-medium text-sm truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-700 dark:text-slate-200'}`}>{table.name}</span>
-              {/* Star Button */}
               <button 
                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(tableId); }}
                  className={`p-1 rounded opacity-0 group-hover/table:opacity-100 transition-opacity ${isFavorite ? 'opacity-100 text-amber-400 hover:text-amber-500' : 'text-slate-300 hover:text-amber-400'}`}
@@ -287,11 +272,10 @@ const SchemaTableItem = memo(({
               >
                  <Star className={`w-3 h-3 ${isFavorite ? 'fill-current' : ''}`} />
               </button>
-              {/* Preview Button Action */}
               {onPreview && (
                 <button 
                   onClick={(e) => { e.stopPropagation(); onPreview(table.name); }}
-                  className="p-1 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded opacity-0 group-hover/table:opacity-100 transition-opacity"
+                  className="p-1 text-slate-400 hover:text-emerald-500 hover:bg-emerald-900/20 rounded opacity-0 group-hover/table:opacity-100 transition-opacity"
                   title="Visualizar 10 primeiros registros"
                 >
                   <Play className="w-3 h-3 fill-current" />
@@ -331,7 +315,6 @@ const SchemaTableItem = memo(({
            </div>
         </div>
       </div>
-
       {isExpanded && (
         <div className="px-3 pb-3 pt-0 border-t border-slate-50 dark:border-slate-700/50">
           <div className="flex gap-2 py-2 mb-1 border-b border-slate-50 dark:border-slate-700/50 justify-end">
@@ -344,49 +327,24 @@ const SchemaTableItem = memo(({
                const colKey = `${tableId}.${col.name}`;
                const isHovered = hoveredColumnKey === colKey;
                const isSelected = selectedColumnKey === colKey;
-               
-               // Complex Relationship Matching logic (Hover OR Selection)
-               // Priority: Selected > Hovered
                const activeRef = selectedColumnKey ? (hoveredColumnRef || null) : hoveredColumnRef;
                const activeKey = selectedColumnKey || hoveredColumnKey;
-
-               // Check if this column is the target of the active relationship
                let isRelTarget = false;
                if (activeRef) {
                  const refParts = activeRef.split('.');
-                 const targetColName = refParts[refParts.length - 1]; // last part is column
-                 
-                 // Check if the table portion matches THIS table
-                 if (refParts.length === 3) {
-                    // schema.table.col
-                    isRelTarget = activeRef === colKey; // Exact match
-                 } else {
-                    // legacy table.col
-                    // Does hoveredColumnRef match table.col? 
-                    // AND table matches
-                    isRelTarget = activeRef === `${table.name}.${col.name}`;
-                 }
+                 if (refParts.length === 3) isRelTarget = activeRef === colKey;
+                 else isRelTarget = activeRef === `${table.name}.${col.name}`;
                }
-               
-               // Check if this column is the source of a relationship to the active column
                let isRelSource = false;
                if (col.references && activeKey) {
                   const refParts = col.references.split('.');
-                  if (refParts.length === 3) {
-                     // Reference is schema.table.col
-                     isRelSource = col.references === activeKey;
-                  } else {
-                     // Reference is table.col
+                  if (refParts.length === 3) isRelSource = col.references === activeKey;
+                  else {
                      const [targetTable, targetCol] = refParts;
-                     // activeKey is schema.table.col
                      const [hSchema, hTable, hCol] = activeKey.split('.');
                      isRelSource = (targetTable === hTable && targetCol === hCol);
                   }
-               } else if (activeRef && activeRef === colKey) {
-                  // Special case: reverse highlight
-                  isRelSource = true;
-               }
-               
+               } else if (activeRef && activeRef === colKey) isRelSource = true;
                return (
                  <SchemaColumnItem 
                    key={col.name} 
@@ -404,7 +362,6 @@ const SchemaTableItem = memo(({
                  />
                );
             })}
-            {getColumns().length === 0 && <div className="text-[10px] text-slate-400 py-2 text-center italic">Nenhuma coluna corresponde ao filtro.</div>}
           </div>
         </div>
       )}
@@ -434,43 +391,32 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   schema, onRegenerateClick, loading = false, onDescriptionChange,
   selectionMode = false, selectedTableIds = [], onToggleTable, onPreviewTable
 }) => {
-  // Search State
   const [inputValue, setInputValue] = useState('');
   const [debouncedTerm, setDebouncedTerm] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  
-  // Filtering & Sorting
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('');
   const [sortField, setSortField] = useState<SortField>('key');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
-  // UI State - PERSISTED (Uses table names for now, but safer to stick to IDs in future)
   const [expandedTables, setExpandedTables] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem(`psql-buddy-viewer-tables-${schema.name}`);
       return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
+    } catch { return new Set(); }
   });
 
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem(`psql-buddy-viewer-schemas-${schema.name}`);
       return stored ? new Set(JSON.parse(stored)) : new Set(['public']);
-    } catch {
-      return new Set(['public']);
-    }
+    } catch { return new Set(['public']); }
   });
 
-  // Favorite Tables State
   const [favoriteTables, setFavoriteTables] = useState<Set<string>>(() => {
      try {
         const stored = localStorage.getItem(`psql-buddy-favorites-${schema.name}`);
         return stored ? new Set(JSON.parse(stored)) : new Set();
-     } catch {
-        return new Set();
-     }
+     } catch { return new Set(); }
   });
 
   useEffect(() => {
@@ -485,7 +431,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
      localStorage.setItem(`psql-buddy-favorites-${schema.name}`, JSON.stringify(Array.from(favoriteTables)));
   }, [favoriteTables, schema.name]);
 
-  // Shortcut Listener (Ctrl+K)
   useEffect(() => {
      const handleKeyDown = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -499,45 +444,34 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   const [editingTable, setEditingTable] = useState<string | null>(null);
   const [tempDesc, setTempDesc] = useState('');
-
-  // Hover & Selection States 
   const [hoveredTableId, setHoveredTableId] = useState<string | null>(null);
-  const [hoveredColumnKey, setHoveredColumnKey] = useState<string | null>(null); // "schema.table.col"
-  const [hoveredColumnRef, setHoveredColumnRef] = useState<string | null>(null); // "schema.table.col" (preferred) or "table.col"
-  const [selectedColumnKey, setSelectedColumnKey] = useState<string | null>(null); // "schema.table.col" (for click-to-highlight)
+  const [hoveredColumnKey, setHoveredColumnKey] = useState<string | null>(null);
+  const [hoveredColumnRef, setHoveredColumnRef] = useState<string | null>(null);
+  const [selectedColumnKey, setSelectedColumnKey] = useState<string | null>(null);
 
   const deferredHoveredTableId = useDeferredValue(hoveredTableId);
   const deferredHoveredColumnRef = useDeferredValue(hoveredColumnRef);
   const deferredHoveredColumnKey = useDeferredValue(hoveredColumnKey);
   const deferredSelectedColumnKey = useDeferredValue(selectedColumnKey);
 
-  // Lazy Loading
   const [renderLimit, setRenderLimit] = useState(40);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Relationship Graph
   const relationshipGraph = useMemo(() => {
     const parents: Record<string, Set<string>> = {};
     const children: Record<string, Set<string>> = {};
-
     schema.tables.forEach(table => {
       const tableId = getTableId(table);
       if (!parents[tableId]) parents[tableId] = new Set();
       if (!children[tableId]) children[tableId] = new Set();
-
       table.columns.forEach(col => {
         if (col.isForeignKey && col.references) {
-          // Refs can be 2-part or 3-part. 
           const refTableId = getRefTableId(col.references, table.schema);
-          
           if (refTableId && refTableId !== tableId) {
-             // Find matching table in schema to ensure it exists
              const exists = schema.tables.some(t => getTableId(t) === refTableId);
-             
              if (exists) {
                 if (!parents[tableId]) parents[tableId] = new Set();
                 parents[tableId].add(refTableId);
-
                 if (!children[refTableId]) children[refTableId] = new Set();
                 children[refTableId].add(tableId);
              }
@@ -545,20 +479,15 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
         }
       });
     });
-
     return { parents, children };
   }, [schema.name]); 
 
-  // Debounce Search
   useEffect(() => {
     const timer = setTimeout(() => {
        setDebouncedTerm(inputValue);
        setRenderLimit(40); 
        if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
-       
-       if (inputValue) {
-         setExpandedSchemas(new Set(schema.tables.map(t => t.schema || 'public')));
-       }
+       if (inputValue) setExpandedSchemas(new Set(schema.tables.map(t => t.schema || 'public')));
     }, 300);
     return () => clearTimeout(timer);
   }, [inputValue, schema.tables]);
@@ -584,7 +513,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   const filteredTables = useMemo(() => {
     const term = debouncedTerm.toLowerCase().trim();
     let tables = schema.tables;
-    
     if (term || selectedTypeFilter) {
       tables = tables.filter(table => {
         const nameMatch = !term || table.name.toLowerCase().includes(term);
@@ -592,18 +520,13 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
         const colMatch = !term || table.columns.some(col => col.name.toLowerCase().includes(term));
         const matchesSearch = nameMatch || descMatch || colMatch;
         let matchesType = true;
-        if (selectedTypeFilter) {
-          matchesType = table.columns.some(col => col.type.toUpperCase().includes(selectedTypeFilter));
-        }
+        if (selectedTypeFilter) matchesType = table.columns.some(col => col.type.toUpperCase().includes(selectedTypeFilter));
         return matchesSearch && matchesType;
       });
     }
-
     const sorted = [...tables];
-    
     sorted.sort((a, b) => {
       if (term) {
-        // ... (existing sort logic)
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
         if (nameA === term && nameB !== term) return -1;
@@ -617,53 +540,39 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
         if (includesA && !includesB) return -1;
         if (!includesA && includesB) return 1;
       }
-
       const idA = getTableId(a);
       const idB = getTableId(b);
-
       const isSelA = selectedTableIds.includes(idA);
       const isSelB = selectedTableIds.includes(idB);
-      
       if (!term) {
         if (isSelA && !isSelB) return -1;
         if (!isSelA && isSelB) return 1;
       }
-
       return a.name.localeCompare(b.name);
     });
-
     return sorted;
   }, [schema.tables, debouncedTerm, selectedTypeFilter, selectedTableIds]);
 
   const groupedTables = useMemo(() => {
     const groups: Record<string, Table[]> = {};
     const visible = filteredTables.slice(0, renderLimit);
-
-    // If searching, we just show schemas naturally
-    // If NOT searching, we inject the "Favorites" group
     const showFavorites = !debouncedTerm && favoriteTables.size > 0;
 
-    if (showFavorites) {
-       groups['__favorites__'] = [];
-    }
+    if (showFavorites) groups['__favorites__'] = [];
 
     visible.forEach(table => {
       const s = table.schema || 'public';
       const tId = getTableId(table);
       
+      // Se for favorita, move para a seção de favoritos e remove da seção original
       if (showFavorites && favoriteTables.has(tId)) {
          groups['__favorites__'].push(table);
+      } else {
+         if (!groups[s]) groups[s] = [];
+         groups[s].push(table);
       }
-      
-      if (!groups[s]) groups[s] = [];
-      groups[s].push(table);
     });
-    
-    // If favorite group ended up empty (because of pagination limit), clean it
-    if (showFavorites && groups['__favorites__'].length === 0) {
-       delete groups['__favorites__'];
-    }
-
+    if (showFavorites && groups['__favorites__'].length === 0) delete groups['__favorites__'];
     return groups;
   }, [filteredTables, renderLimit, debouncedTerm, favoriteTables]);
 
@@ -673,18 +582,14 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
          const schemaRank: Record<string, number> = {};
          filteredTables.forEach((t, idx) => {
             const s = t.schema || 'public';
-            if (schemaRank[s] === undefined) {
-               schemaRank[s] = idx;
-            }
+            if (schemaRank[s] === undefined) schemaRank[s] = idx;
          });
-         
          return schemas.sort((a, b) => {
             const rankA = schemaRank[a] ?? Infinity;
             const rankB = schemaRank[b] ?? Infinity;
             return rankA - rankB;
          });
      }
-     
      return schemas.sort((a, b) => {
         if (a === '__favorites__') return -1;
         if (b === '__favorites__') return 1;
@@ -692,7 +597,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
      });
   }, [groupedTables, filteredTables, debouncedTerm]);
 
-  // Handlers
   const handleToggleExpand = useCallback((e: React.MouseEvent, tableId: string) => {
     e.stopPropagation();
     setExpandedTables(prev => {
@@ -703,7 +607,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   }, []);
 
   const handleToggleSchema = useCallback((schemaName: string) => {
-    if (schemaName === '__favorites__') return; // Always open
+    if (schemaName === '__favorites__') return; 
     setExpandedSchemas(prev => {
       const newSet = new Set(prev);
       if (newSet.has(schemaName)) newSet.delete(schemaName); else newSet.add(schemaName);
@@ -731,13 +635,10 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
      setHoveredColumnKey(`${tableId}.${col}`);
      setHoveredColumnRef(ref || null);
      if (ref) {
-       // Try to resolve ref to a tableId
-       const refTableId = getRefTableId(ref, tableId.split('.')[0]); // Best effort schema
+       const refTableId = getRefTableId(ref, tableId.split('.')[0]); 
        if (refTableId) setHoveredTableId(refTableId);
-     } else {
-       setHoveredTableId(tableId);
-     }
-  }, [schema.tables]);
+     } else setHoveredTableId(tableId);
+  }, []);
 
   const handleColumnHoverOut = useCallback(() => {
      setHoveredColumnKey(null);
@@ -746,13 +647,9 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   const handleColumnClick = useCallback((tableId: string, col: string, ref?: string) => {
      const colKey = `${tableId}.${col}`;
-     
-     // Toggle selection
-     if (selectedColumnKey === colKey) {
-        setSelectedColumnKey(null);
-     } else {
+     if (selectedColumnKey === colKey) setSelectedColumnKey(null);
+     else {
         setSelectedColumnKey(colKey);
-        // Force update the hover states to match the selection immediately
         setHoveredColumnKey(colKey);
         setHoveredColumnRef(ref || null);
      }
@@ -798,81 +695,45 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   const visualStateMap = useMemo(() => {
     const map = new Map<string, VisualState>();
-    
-    // Determine active column (Selected > Hovered)
     const activeColumnKey = deferredSelectedColumnKey || deferredHoveredColumnKey;
-    const activeColumnRef = deferredSelectedColumnKey ? 
-        // If selected, we need to find the ref again or rely on state being coherent
-        (deferredSelectedColumnKey === deferredHoveredColumnKey ? deferredHoveredColumnRef : null) 
-        : deferredHoveredColumnRef;
-
-    // Use current hover if selected is not active, otherwise selected dictates
+    const activeColumnRef = deferredSelectedColumnKey ? (deferredSelectedColumnKey === deferredHoveredColumnKey ? deferredHoveredColumnRef : null) : deferredHoveredColumnRef;
     const activeTableId = deferredSelectedColumnKey ? (activeColumnKey?.split('.')[0] + '.' + activeColumnKey?.split('.')[1]) : deferredHoveredTableId;
-
     if (!activeTableId && !activeColumnRef) return map;
-
-    // 1. Column Logic (Detailed FK/PK highlight)
-    // If a column is active (hovered/selected), highlight connections
     if (activeColumnKey) {
        const [s, t, c] = activeColumnKey.split('.');
        const sourceTableId = `${s}.${t}`;
-       
-       // Find relationships
        schema.tables.forEach(table => {
           const tId = getTableId(table);
-          
-          // Check if this table is the Target of the active column (if active is FK)
           if (activeColumnRef) {
              const parts = activeColumnRef.split('.');
              let isTarget = false;
              if (parts.length === 3) {
-                isTarget = activeColumnRef === `${tId}.${parts[2]}`; // imprecise check for table match logic, better to check table name
                 if (parts[0] === table.schema && parts[1] === table.name) isTarget = true;
-             } else {
-                if (parts[0] === table.name) isTarget = true;
-             }
+             } else if (parts[0] === table.name) isTarget = true;
              if (isTarget) map.set(tId, 'target');
           }
-
-          // Check if this table has columns referencing the active column (if active is PK)
           table.columns.forEach(col => {
              if (col.references) {
                 const parts = col.references.split('.');
-                // Check if reference points to activeColumnKey
                 let pointsToActive = false;
                 if (parts.length === 3) {
                    if (`${parts[0]}.${parts[1]}.${parts[2]}` === activeColumnKey) pointsToActive = true;
-                } else {
-                   if (`${parts[0]}.${parts[1]}` === `${t}.${c}`) pointsToActive = true;
-                }
-                
-                if (pointsToActive) map.set(tId, 'child'); // This table is a child/source of a ref to active
+                } else if (`${parts[0]}.${parts[1]}` === `${t}.${c}`) pointsToActive = true;
+                if (pointsToActive) map.set(tId, 'child'); 
              }
           });
        });
-       
-       // Mark source table as source if it has the FK
-       if (activeColumnRef) {
-          map.set(sourceTableId, 'source');
-       } else {
-          // If no ref (PK), mark as focused
-          map.set(sourceTableId, 'focused');
-       }
-       
+       if (activeColumnRef) map.set(sourceTableId, 'source');
+       else map.set(sourceTableId, 'focused');
        return map;
     }
-
-    // 2. Table Hover Logic (General Parent/Child)
     if (activeTableId) {
        map.set(activeTableId, 'focused');
-       
        const parents = relationshipGraph.parents[activeTableId];
        if (parents) parents.forEach(p => map.set(p, 'parent'));
-
        const children = relationshipGraph.children[activeTableId];
        if (children) children.forEach(c => map.set(c, 'child'));
     }
-
     return map;
   }, [deferredHoveredTableId, deferredHoveredColumnRef, deferredHoveredColumnKey, deferredSelectedColumnKey, relationshipGraph, schema.tables]);
 
@@ -884,7 +745,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   return (
     <div id="schema-viewer-container" className="h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 overflow-hidden select-none" onClick={() => setSelectedColumnKey(null)}>
-      {/* Header */}
       {!selectionMode && (
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
@@ -899,8 +759,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
           )}
         </div>
       )}
-
-      {/* Search & Controls */}
       <div className={`p-2 border-b border-slate-100 dark:border-slate-800 shrink-0 space-y-2 ${selectionMode ? 'bg-slate-50 dark:bg-slate-900' : ''}`}>
         <div className="flex gap-2">
            <div className="relative flex-1">
@@ -914,7 +772,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
            </div>
            <div className="relative">
              <div className="absolute left-2 top-2 pointer-events-none"><Filter className={`w-4 h-4 ${selectedTypeFilter ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} /></div>
-             <select value={selectedTypeFilter} onChange={(e) => { setSelectedTypeFilter(e.target.value); setRenderLimit(40); }} className={`w-[100px] h-full pl-8 pr-2 py-2 border rounded text-xs outline-none appearance-none cursor-pointer font-medium ${selectedTypeFilter ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
+             <select value={selectedTypeFilter} onChange={(e) => { setSelectedTypeFilter(e.target.value); setRenderLimit(40); }} className={`w-[100px] h-full pl-8 pr-2 py-2 border rounded text-xs outline-none appearance-none cursor-pointer font-medium ${selectedTypeFilter ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300' : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
                 <option value="">Tipos</option>
                 {allColumnTypes.map(t => <option key={t} value={t}>{t}</option>)}
              </select>
@@ -928,8 +786,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
            </div>
         </div>
       </div>
-      
-      {/* Content Area with Lazy Loading Scroll */}
       <div 
          ref={scrollContainerRef}
          onScroll={handleScroll}
@@ -945,13 +801,10 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
             {sortedSchemas.map(schemaName => {
                const tablesInSchema = groupedTables[schemaName];
                if (!tablesInSchema || tablesInSchema.length === 0) return null;
-               
                const isFavoritesGroup = schemaName === '__favorites__';
                const isSchemaExpanded = isFavoritesGroup ? true : expandedSchemas.has(schemaName);
-
                return (
                   <div key={schemaName} className="mb-2">
-                     {/* Schema Header */}
                      <div 
                         className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 rounded select-none group sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-transparent ${isSchemaExpanded ? 'border-slate-100 dark:border-slate-800' : ''}`}
                         onClick={() => handleToggleSchema(schemaName)}
@@ -970,8 +823,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
                            {tablesInSchema.length}
                         </span>
                      </div>
-                     
-                     {/* Tables in Schema */}
                      {isSchemaExpanded && (
                         <div className="pl-3 pr-1 pt-1 space-y-2 border-l border-slate-100 dark:border-slate-800 ml-2">
                            {tablesInSchema.map((table, index) => {
@@ -979,7 +830,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
                               const isSelected = selectedTableIds.includes(tableId);
                               const prevTable = index > 0 ? tablesInSchema[index-1] : null;
                               const showSeparator = !debouncedTerm && !isFavoritesGroup && prevTable && selectedTableIds.includes(getTableId(prevTable)) && !isSelected;
-
                               return (
                                  <React.Fragment key={`${schemaName}-${tableId}`}>
                                     {showSeparator && (
@@ -1027,8 +877,8 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
                   </div>
                );
             })}
-            
-            {filteredTables.length > renderLimit && (
+            {/* O indicador de carregamento agora só aparece se houver algo expandido ou busca ativa */}
+            {filteredTables.length > renderLimit && (expandedSchemas.size > 0 || debouncedTerm) && (
               <div className="py-4 text-center text-slate-400 flex items-center justify-center gap-2">
                  <Loader2 className="w-4 h-4 animate-spin" />
                  <span className="text-xs">Carregando mais tabelas...</span>
@@ -1037,8 +887,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
           </>
         )}
       </div>
-      
-      {/* Legend */}
       <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 shrink-0">
         <p className="flex items-center gap-3">
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500"></span> Sel</span>
