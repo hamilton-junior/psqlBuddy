@@ -34,7 +34,14 @@ const HoverPreviewTooltip: React.FC<{
       setLoading(true);
       try {
         const safeValue = typeof value === 'string' ? `'${value.replace(/'/g, "''")}'` : value;
-        const sql = `SELECT "${displayColumn}" FROM ${targetTable} WHERE "${pkColumn}"::text = ${safeValue}::text LIMIT 1`;
+        
+        // Busca robusta: Tenta a PK sugerida, mas aceita fallback para colunas identificadoras comuns
+        // Isso resolve o problema de não encontrar resultados quando não é exatamente a coluna "grid"
+        const idCols = Array.from(new Set([pkColumn, 'grid', 'id', 'codigo', 'cod', 'mlid']));
+        const conditions = idCols.map(col => `"${col}"::text = ${safeValue}::text`).join(' OR ');
+        
+        const sql = `SELECT "${displayColumn}" FROM ${targetTable} WHERE ${conditions} LIMIT 1;`;
+        
         const results = await executeQueryReal(credentials, sql);
         if (isMounted) {
           if (results && results.length > 0) {
@@ -57,7 +64,7 @@ const HoverPreviewTooltip: React.FC<{
   return (
     <div 
       className="fixed z-[100] pointer-events-none bg-slate-900 text-white p-2.5 rounded-lg shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-150"
-      style={{ left: x + 15, top: y - 10 }}
+      style={{ left: Math.min(x + 15, window.innerWidth - 200), top: Math.max(10, y - 10) }}
     >
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2 border-b border-slate-700 pb-1.5 mb-1">
@@ -94,14 +101,16 @@ const ManualMappingPopover: React.FC<{
   const [selectedTable, setSelectedTable] = useState(currentValue || '');
   const [previewCol, setPreviewCol] = useState(currentPreviewCol || '');
   
-  const filteredTables = schema.tables.filter(t => 
+  const filteredTables = useMemo(() => schema.tables.filter(t => 
     t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     t.schema.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  ), [schema.tables, searchTerm]);
 
   const targetColumns = useMemo(() => {
     if (!selectedTable) return [];
-    const [s, t] = selectedTable.split('.');
+    const parts = selectedTable.split('.');
+    const s = parts.length > 1 ? parts[0] : 'public';
+    const t = parts.length > 1 ? parts[1] : parts[0];
     const tbl = schema.tables.find(table => table.name === t && (table.schema || 'public') === s);
     return tbl ? tbl.columns.map(c => c.name) : [];
   }, [selectedTable, schema]);
@@ -109,8 +118,8 @@ const ManualMappingPopover: React.FC<{
   return (
     <div className="absolute z-[70] top-full mt-2 right-0 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right">
        <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
-          <span className="text-[10px] font-bold uppercase text-slate-500">Configurar Vínculo: {column}</span>
-          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded"><X className="w-3 h-3" /></button>
+          <span className="text-[10px] font-bold uppercase text-slate-500 truncate mr-2">Vínculo: {column}</span>
+          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded shrink-0"><X className="w-3 h-3" /></button>
        </div>
        
        <div className="p-3 space-y-4">
@@ -130,7 +139,7 @@ const ManualMappingPopover: React.FC<{
              </div>
              <div className="max-h-32 overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-lg mt-1 custom-scrollbar">
                 {filteredTables.map(t => {
-                   const fullId = `${t.schema}.${t.name}`;
+                   const fullId = `${t.schema || 'public'}.${t.name}`;
                    const isSelected = selectedTable === fullId;
                    return (
                       <button 
@@ -292,6 +301,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
    const startIndex = (currentPage - 1) * rowsPerPage;
    const currentData = data.slice(startIndex, startIndex + rowsPerPage);
 
+   // Função centralizada para detectar o alvo de um link (manual ou automático)
    const getLinkTarget = (colName: string): { table: string, pk: string, previewCol?: string } | null => {
       // 1. Prioridade: Mapeamento Manual do Usuário
       if (manualMappings[colName]) {
@@ -302,6 +312,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
       const lowerCol = colName.toLowerCase();
       const leafName = lowerCol.split('.').pop() || '';
 
+      // Heurística de colunas globais (grid/mlid)
       if (leafName === 'grid' || leafName === 'mlid') {
          const parts = lowerCol.split('.');
          let targetTableObj = null;
@@ -316,6 +327,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
          if (targetTableObj) return { table: `${targetTableObj.schema || 'public'}.${targetTableObj.name}`, pk: leafName };
       }
 
+      // Detecção via Schema (Foreign Keys Reais)
       for (const t of schema.tables) {
          const col = t.columns.find(c => c.name === colName);
          if (col && col.isForeignKey && col.references) {
@@ -325,6 +337,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
          }
       }
 
+      // Heurística por Sufixo (_id, _grid, etc)
       const suffixes = ['_id', '_grid', '_mlid'];
       for (const suffix of suffixes) {
          if (lowerCol.endsWith(suffix) && lowerCol !== suffix) {
@@ -390,6 +403,9 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                      {columns.map((col, idx) => {
                         const mapping = manualMappings[col];
                         const hasManualMapping = !!mapping;
+                        // Busca se já existe um link automático detectado pelo sistema
+                        const autoTarget = getLinkTarget(col);
+
                         return (
                            <th key={col} className={`px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase border-b border-slate-200 dark:border-slate-700 w-[160px] group relative ${idx === 0 ? 'pl-6' : ''}`}>
                               <div className="flex items-center justify-between">
@@ -414,7 +430,8 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                                  <ManualMappingPopover 
                                     column={col} 
                                     schema={schema} 
-                                    currentValue={mapping?.table}
+                                    // Pré-seleciona a tabela caso já tenha sido detectada automaticamente (heurística/fk)
+                                    currentValue={mapping?.table || autoTarget?.table}
                                     currentPreviewCol={mapping?.previewCol}
                                     onSave={(tbl, previewCol) => handleSaveManualMapping(col, tbl, previewCol)} 
                                     onClose={() => setActiveMappingCol(null)} 
