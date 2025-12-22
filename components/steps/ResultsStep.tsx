@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2 } from 'lucide-react';
-import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema } from '../../types';
+import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema, Table } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
 import CodeSnippetModal from '../CodeSnippetModal';
@@ -20,9 +20,10 @@ const HoverPreviewTooltip: React.FC<{
   value: any;
   displayColumn: string;
   credentials: any;
+  schema: DatabaseSchema;
   x: number;
   y: number;
-}> = ({ targetTable, pkColumn, value, displayColumn, credentials, x, y }) => {
+}> = ({ targetTable, pkColumn, value, displayColumn, credentials, schema, x, y }) => {
   const [data, setData] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -30,19 +31,38 @@ const HoverPreviewTooltip: React.FC<{
   useEffect(() => {
     let isMounted = true;
     const fetchPreview = async () => {
-      if (!credentials || !targetTable || !displayColumn) return;
+      if (!credentials || !targetTable || !displayColumn || !schema) return;
       setLoading(true);
       try {
-        // Sanitização e formatação da tabela (schema.table -> "schema"."table")
+        // 1. Identificar a tabela real no schema para validar colunas existentes
         const tableParts = targetTable.split('.');
-        const formattedTable = tableParts.map(p => `"${p.replace(/"/g, '')}"`).join('.');
+        const sName = tableParts.length > 1 ? tableParts[0] : 'public';
+        const tName = tableParts.length > 1 ? tableParts[1] : tableParts[0];
         
-        // Formata o valor para busca textual idêntica ao modal de drilldown
+        const tableObj = schema.tables.find(t => 
+           t.name.toLowerCase() === tName.toLowerCase() && 
+           (t.schema || 'public').toLowerCase() === sName.toLowerCase()
+        );
+
+        if (!tableObj) {
+           if (isMounted) setData("Tabela não mapeada");
+           setLoading(false);
+           return;
+        }
+
+        // 2. Filtrar apenas as colunas que REALMENTE existem na tabela para evitar erro "column does not exist"
+        const existingColNames = new Set(tableObj.columns.map(c => c.name.toLowerCase()));
+        const candidates = [pkColumn, 'grid', 'id', 'codigo', 'cod', 'mlid'].filter(Boolean);
+        const validIdCols = candidates.filter(c => existingColNames.has(c.toLowerCase()));
+
+        if (validIdCols.length === 0) {
+           // Fallback extremo: tenta usar a primeira coluna encontrada se nada bater
+           validIdCols.push(tableObj.columns[0].name);
+        }
+
+        const formattedTable = `"${sName}"."${tName}"`;
         const valStr = String(value).replace(/'/g, "''");
-        
-        // Lista de colunas para tentativa de match
-        const idCols = Array.from(new Set([pkColumn, 'grid', 'id', 'codigo', 'cod', 'mlid'].filter(Boolean)));
-        const conditions = idCols.map(col => `"${col}"::text = '${valStr}'`).join(' OR ');
+        const conditions = validIdCols.map(col => `"${col}"::text = '${valStr}'`).join(' OR ');
         
         const sql = `SELECT "${displayColumn.replace(/"/g, '')}" FROM ${formattedTable} WHERE ${conditions} LIMIT 1;`;
         
@@ -64,7 +84,7 @@ const HoverPreviewTooltip: React.FC<{
 
     fetchPreview();
     return () => { isMounted = false; };
-  }, [targetTable, pkColumn, value, displayColumn, credentials]);
+  }, [targetTable, pkColumn, value, displayColumn, credentials, schema]);
 
   return (
     <div 
@@ -120,7 +140,7 @@ const ManualMappingPopover: React.FC<{
   }, [selectedTable, schema]);
 
   return (
-    <div className="absolute z-[70] top-full mt-2 right-0 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right">
+    <div className="absolute z-[70] top-full mt-2 right-0 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right" onClick={e => e.stopPropagation()}>
        <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
           <span className="text-[10px] font-bold uppercase text-slate-500 truncate mr-2">Vínculo: {column}</span>
           <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded shrink-0"><X className="w-3 h-3" /></button>
@@ -409,7 +429,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
    return (
       <div className="flex flex-col h-full relative">
          {/* Hover Preview Dynamic Component */}
-         {hoverPreview && credentials && (
+         {hoverPreview && credentials && schema && (
             <HoverPreviewTooltip 
                {...hoverPreview}
                targetTable={hoverPreview.table}
@@ -417,6 +437,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                value={hoverPreview.val}
                displayColumn={hoverPreview.displayCol}
                credentials={credentials}
+               schema={schema}
             />
          )}
 
@@ -452,6 +473,7 @@ const VirtualTable: React.FC<VirtualTableProps> = ({ data, columns, highlightMat
                                  <ManualMappingPopover 
                                     column={col} 
                                     schema={schema} 
+                                    // Pré-seleciona a tabela caso já tenha sido detectada automaticamente (heurística/fk)
                                     currentValue={mapping?.table || autoTarget?.table}
                                     currentPreviewCol={mapping?.previewCol}
                                     onSave={(tbl, previewCol) => handleSaveManualMapping(col, tbl, previewCol)} 
