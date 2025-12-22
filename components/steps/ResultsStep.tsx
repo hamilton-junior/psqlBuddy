@@ -125,18 +125,31 @@ const ManualMappingPopover: React.FC<{
   const [selectedTable, setSelectedTable] = useState(currentValue || '');
   const [previewCol, setPreviewCol] = useState(currentPreviewCol || '');
   
-  const filteredTables = useMemo(() => schema.tables.filter(t => 
-    t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    t.schema.toLowerCase().includes(searchTerm.toLowerCase())
-  ), [schema.tables, searchTerm]);
+  // Lista de tabelas filtrada e ORDENADA alfabeticamente por Schema e Nome
+  const filteredTables = useMemo(() => {
+    const list = schema.tables.filter(t => 
+      t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      t.schema.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    return list.sort((a, b) => {
+       const sA = (a.schema || 'public').toLowerCase();
+       const sB = (b.schema || 'public').toLowerCase();
+       if (sA !== sB) return sA.localeCompare(sB);
+       return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+  }, [schema.tables, searchTerm]);
 
+  // Lista de colunas da tabela selecionada ORDENADA alfabeticamente
   const targetColumns = useMemo(() => {
     if (!selectedTable) return [];
     const parts = selectedTable.split('.');
     const s = parts.length > 1 ? parts[0] : 'public';
     const t = parts.length > 1 ? parts[1] : parts[0];
     const tbl = schema.tables.find(table => table.name === t && (table.schema || 'public') === s);
-    return tbl ? tbl.columns.map(c => c.name) : [];
+    if (!tbl) return [];
+    return tbl.columns
+      .map(c => c.name)
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
   }, [selectedTable, schema]);
 
   return (
@@ -186,7 +199,7 @@ const ManualMappingPopover: React.FC<{
                <select 
                   value={previewCol}
                   onChange={e => setPreviewCol(e.target.value)}
-                  className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
                >
                   <option value="">-- Selecione uma coluna --</option>
                   {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
