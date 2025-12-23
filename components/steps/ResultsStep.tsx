@@ -339,7 +339,7 @@ const ManualMappingPopover: React.FC<{
                 <button onClick={() => setIsAdding(false)} className="w-full py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-bold">Cancelar</button>
              </div>
           ) : (
-             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 text-xs font-bold">
+             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 text-sm font-bold">
                 <Plus className="w-4 h-4" /> Adicionar Outro Vínculo
              </button>
           )}
@@ -797,7 +797,12 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      if (filters.length > 0) {
         res = res.filter(row => filters.every(f => {
               const val = row[f.column];
-              const strVal = String(val || '').toLowerCase();
+              /**
+               * Fix: Ensure val is handled safely by converting it to string explicitly.
+               * Changed to a more robust check to satisfy type inference.
+               */
+              const strVal = (val !== null && val !== undefined) ? String(val).toLowerCase() : '';
+              
               /* Fixed: explicitly use String() to ensure f.value is handled as a string by the TS compiler */
               const filterVal = String(f.value || '').toLowerCase();
               if (f.value === '') return true;
