@@ -1,16 +1,25 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Database, ArrowRight, Loader2, AlertCircle, LayoutGrid, Search, Copy, Check, Filter, MousePointer2, ChevronRight, Info, Table2, HelpCircle, Save, Key, AlertTriangle, Maximize2, Minimize2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Database, ArrowRight, Loader2, AlertCircle, LayoutGrid, Search, Copy, Check, Filter, MousePointer2, ChevronRight, Info, Table2, HelpCircle, Save, Key, AlertTriangle, Maximize2, Minimize2, Layers, DatabaseZap } from 'lucide-react';
 import { executeQueryReal } from '../services/dbService';
-import { DbCredentials, DatabaseSchema } from '../types';
+import { DbCredentials, DatabaseSchema, AppSettings } from '../types';
+
+interface ManualLink {
+  id: string;
+  table: string;
+  keyCol: string;
+  previewCol: string;
+}
 
 interface DrillDownModalProps {
-  targetTable: string; // "schema.table"
+  targetTable: string; // Current "schema.table" being viewed
   filterColumn: string; 
   filterValue: any;
   credentials: DbCredentials | null;
   onClose: () => void;
   schema?: DatabaseSchema;
+  allLinks?: ManualLink[]; // Full list of targets for the source column
+  settings?: AppSettings;
 }
 
 type ViewMode = 'table' | 'cards' | 'select' | 'map_column';
@@ -20,19 +29,32 @@ interface AmbiguousMatch {
   matchedColumn: string;
 }
 
-const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColumn, filterValue, credentials, onClose, schema }) => {
-  const [data, setData] = useState<any[]>([]);
-  const [ambiguousMatches, setAmbiguousMatches] = useState<AmbiguousMatch[]>([]);
+interface LinkCache {
+   data: any[];
+   loading: boolean;
+   error: string | null;
+   activeSearchCol: string;
+}
+
+const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColumn, filterValue, credentials, onClose, schema, allLinks = [], settings }) => {
+  const [activeLinkId, setActiveLinkId] = useState<string>(() => {
+     // Find the initial link matching the starting table
+     const initial = allLinks.find(l => l.table === targetTable);
+     return initial ? initial.id : (allLinks[0]?.id || 'manual');
+  });
+
+  // Central storage for link data (Cache for background loading)
+  const [linkDataMap, setLinkDataMap] = useState<Record<string, LinkCache>>({});
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [activeSearchCol, setActiveSearchCol] = useState(filterColumn);
-  const [columnFilterTerm, setColumnFilterTerm] = useState('');
-  
-  // Estado para controlar campos expandidos (Texto longo)
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
+  const [columnFilterTerm, setColumnFilterTerm] = useState('');
+
+  const activeLink = useMemo(() => allLinks.find(l => l.id === activeLinkId), [activeLinkId, allLinks]);
 
   const toggleExpandCell = (key: string) => {
     setExpandedCells(prev => {
@@ -43,22 +65,9 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
     });
   };
 
-  const getUserMappings = () => {
-    try {
-      const stored = localStorage.getItem('psql-buddy-drilldown-mappings');
-      return stored ? JSON.parse(stored) : {};
-    } catch { return {}; }
-  };
-
-  const saveUserMapping = (targetTable: string, column: string) => {
-    const mappings = getUserMappings();
-    mappings[targetTable] = column;
-    localStorage.setItem('psql-buddy-drilldown-mappings', JSON.stringify(mappings));
-  };
-
-  const targetTableColumns = useMemo(() => {
-    if (!schema) return [];
-    const parts = targetTable.split('.');
+  const getIdentifierColumns = (tableName: string) => {
+    if (!schema) return ['grid', 'id', 'codigo', 'cod'];
+    const parts = tableName.split('.');
     const sName = parts.length > 1 ? parts[0] : 'public';
     const tName = parts.length > 1 ? parts[1] : parts[0];
     
@@ -66,99 +75,128 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
       t.name.toLowerCase() === tName.toLowerCase() && 
       (t.schema || 'public').toLowerCase() === sName.toLowerCase()
     );
-    return table ? table.columns : [];
-  }, [schema, targetTable]);
 
-  const getIdentifierColumns = () => {
-    if (targetTableColumns.length > 0) {
-      return targetTableColumns
+    if (table) {
+      return table.columns
         .filter(c => c.isPrimaryKey || c.name.toLowerCase().includes('id') || c.name.toLowerCase().includes('cod') || c.isForeignKey || c.name.toLowerCase() === 'grid')
         .map(c => c.name);
     }
     return ['grid', 'id', 'codigo', 'cod'];
   };
 
-  const fetchData = async (column?: string, value?: any, isManual = false) => {
+  // Generic fetch function for one link
+  const fetchSingleLink = async (link: ManualLink) => {
     if (!credentials) return;
-    setLoading(true);
-    setError(null);
     
-    const val = value !== undefined ? value : filterValue;
+    const val = filterValue;
     const safeValue = String(val).replace(/'/g, "''");
-    const idCols = isManual && column ? [column] : getIdentifierColumns();
+    const idCols = [link.keyCol];
 
     try {
       const conditions = idCols.map(col => `${col}::text = '${safeValue}'`).join(' OR ');
-      const sql = `SELECT * FROM ${targetTable} WHERE ${conditions} LIMIT 100`;
+      const sql = `SELECT * FROM ${link.table} WHERE ${conditions} LIMIT 100`;
       
       const results = await executeQueryReal(credentials, sql);
       
-      if (results.length === 0) {
-        if (isManual) {
-          setError(`O valor "${val}" não foi encontrado na coluna "${column}".`);
-        } else {
-          setViewMode('map_column');
-        }
-        setLoading(false);
-        return;
-      }
-
-      const matches: AmbiguousMatch[] = results.map(row => {
-        const matchedCol = idCols.find(c => String(row[c]) === String(val)) || idCols[0];
-        return { row, matchedColumn: matchedCol };
-      });
-
-      const matchedColumnsSet = new Set(matches.map(m => m.matchedColumn));
-
-      if (matchedColumnsSet.size > 1 && !isManual) {
-        setAmbiguousMatches(matches);
-        setViewMode('select');
-      } else {
-        setData(results);
-        setActiveSearchCol(matches[0].matchedColumn);
-        
-        // Lógica de visualização padrão: 1 registro = Card, >1 = Tabela
-        if (results.length === 1) {
-          setViewMode('cards');
-        } else {
-          setViewMode('table');
-        }
-
-        if (isManual && column) saveUserMapping(targetTable, column);
-      }
+      return {
+         data: results,
+         loading: false,
+         error: results.length === 0 ? `Valor "${val}" não encontrado em ${link.table}.` : null,
+         activeSearchCol: link.keyCol
+      };
     } catch (e: any) {
-      setError(e.message);
-      setViewMode('map_column');
-    } finally {
-      setLoading(false);
+      return {
+         data: [],
+         loading: false,
+         error: e.message,
+         activeSearchCol: link.keyCol
+      };
     }
   };
 
+  // Initial load + Background Logic
   useEffect(() => {
-    const mappings = getUserMappings();
-    if (mappings[targetTable]) {
-      fetchData(mappings[targetTable], filterValue, true);
-    } else {
-      fetchData();
-    }
-  }, [targetTable, filterValue, credentials]);
+    const startLoad = async () => {
+       if (!credentials) return;
+       
+       // 1. If background loading is enabled, start fetching ALL in parallel threads (Promises)
+       if (settings?.backgroundLoadLinks) {
+          allLinks.forEach(link => {
+             // Mark as loading in map
+             setLinkDataMap(prev => ({ ...prev, [link.id]: { data: [], loading: true, error: null, activeSearchCol: link.keyCol } }));
+             
+             // Run async fetch
+             fetchSingleLink(link).then(result => {
+                if (result) {
+                   setLinkDataMap(prev => ({ ...prev, [link.id]: result }));
+                   // If this is the active link, update global loading state
+                   if (link.id === activeLinkId) {
+                      setLoading(false);
+                      if (result.error) setError(result.error);
+                      else setViewMode(result.data.length === 1 ? 'cards' : 'table');
+                   }
+                }
+             });
+          });
+       } else {
+          // 2. Load only current active link
+          if (activeLink) {
+             setLoading(true);
+             const result = await fetchSingleLink(activeLink);
+             if (result) {
+                setLinkDataMap(prev => ({ ...prev, [activeLinkId]: result }));
+                setLoading(false);
+                if (result.error) setError(result.error);
+                else setViewMode(result.data.length === 1 ? 'cards' : 'table');
+             }
+          }
+       }
+    };
+    
+    startLoad();
+  }, [credentials, filterValue]); // Runs once on mount for specific value
 
-  const columns = useMemo(() => (data.length > 0 ? Object.keys(data[0]) : []), [data]);
+  // Handler to switch active link
+  const handleSwitchLink = async (id: string) => {
+     setActiveLinkId(id);
+     setError(null);
+     setSearchTerm('');
+     setExpandedCells(new Set());
+
+     const cached = linkDataMap[id];
+     if (cached && !cached.loading) {
+        // Instant switch from cache
+        if (cached.error) setError(cached.error);
+        else setViewMode(cached.data.length === 1 ? 'cards' : 'table');
+     } else {
+        // Fetch on demand
+        setLoading(true);
+        const link = allLinks.find(l => l.id === id);
+        if (link) {
+           const result = await fetchSingleLink(link);
+           if (result) {
+              setLinkDataMap(prev => ({ ...prev, [id]: result }));
+              setLoading(false);
+              if (result.error) setError(result.error);
+              else setViewMode(result.data.length === 1 ? 'cards' : 'table');
+           }
+        }
+     }
+  };
+
+  const currentCache = useMemo(() => linkDataMap[activeLinkId], [linkDataMap, activeLinkId]);
+  const activeData = useMemo(() => currentCache?.data || [], [currentCache]);
+  const columns = useMemo(() => (activeData.length > 0 ? Object.keys(activeData[0]) : []), [activeData]);
 
   const filteredData = useMemo(() => {
-    if (!searchTerm.trim()) return data;
+    if (!searchTerm.trim()) return activeData;
     const term = searchTerm.toLowerCase();
-    return data.filter(row => 
+    return activeData.filter(row => 
       Object.entries(row).some(([key, val]) => 
         key.toLowerCase().includes(term) || String(val).toLowerCase().includes(term)
       )
     );
-  }, [data, searchTerm]);
-
-  const filteredTargetColumns = useMemo(() => {
-    if (!columnFilterTerm.trim()) return targetTableColumns;
-    return targetTableColumns.filter(c => c.name.toLowerCase().includes(columnFilterTerm.toLowerCase()));
-  }, [targetTableColumns, columnFilterTerm]);
+  }, [activeData, searchTerm]);
 
   const handleCopy = (val: any, fieldKey: string) => {
     navigator.clipboard.writeText(String(val));
@@ -178,16 +216,34 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
               </div>
               <div className="min-w-0">
                  <h3 className="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-2 truncate">
-                    <span className="opacity-60">{targetTable}</span>
-                    <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
-                    <span className="text-indigo-600 dark:text-indigo-400 font-mono truncate">{viewMode === 'select' ? 'Conflito de Identificadores' : `${activeSearchCol}: ${filterValue}`}</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-mono truncate">{activeLink?.keyCol}: {filterValue}</span>
                  </h3>
-                 <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold">Detalhamento Avançado</p>
+                 {allLinks.length > 1 ? (
+                    <div className="flex items-center gap-1.5 mt-1">
+                       <Layers className="w-3 h-3 text-slate-400" />
+                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Trocar Alvo:</span>
+                       <div className="flex gap-1 overflow-x-auto max-w-[400px] scrollbar-none py-0.5">
+                          {allLinks.map(link => (
+                             <button
+                                key={link.id}
+                                onClick={() => handleSwitchLink(link.id)}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all flex items-center gap-1 shrink-0 ${activeLinkId === link.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-500'}`}
+                             >
+                                {link.table.split('.').pop()}
+                                {linkDataMap[link.id]?.loading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                {linkDataMap[link.id]?.data.length > 0 && activeLinkId !== link.id && <Check className="w-2.5 h-2.5 text-emerald-500" />}
+                             </button>
+                          ))}
+                       </div>
+                    </div>
+                 ) : (
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold">Detalhamento: {activeLink?.table}</p>
+                 )}
               </div>
            </div>
 
            <div className="flex items-center gap-2 w-full sm:w-auto">
-              {['cards', 'table'].includes(viewMode) && (
+              {['cards', 'table'].includes(viewMode) && !loading && (
                 <>
                   <div className="relative flex-1 sm:w-56">
                     <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
@@ -195,7 +251,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                         type="text"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        placeholder="Filtrar nesta lista..."
+                        placeholder="Filtrar campos..."
                         className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
@@ -228,116 +284,21 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
            {loading ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 bg-white/50 dark:bg-slate-900/50 z-20">
                  <Loader2 className="w-10 h-10 animate-spin mb-4 text-indigo-500" />
-                 <span className="text-sm font-medium">Processando resultados...</span>
-              </div>
-           ) : viewMode === 'select' ? (
-              <div className="p-8 max-w-4xl mx-auto">
-                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-2xl p-6 mb-8 flex items-start gap-4 shadow-sm">
-                    <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-amber-500">
-                       <AlertTriangle className="w-6 h-6" />
-                    </div>
-                    <div>
-                       <h4 className="font-bold text-amber-900 dark:text-amber-100 text-lg">Múltiplas correspondências em campos diferentes</h4>
-                       <p className="text-amber-700 dark:text-amber-300 text-sm mt-1">
-                          O valor <strong>"{filterValue}"</strong> foi encontrado em diferentes colunas identificadoras da tabela. Selecione qual registro você deseja detalhar:
-                       </p>
-                    </div>
-                 </div>
-
-                 <div className="grid grid-cols-1 gap-3">
-                    {ambiguousMatches.map((match, idx) => {
-                       const row = match.row;
-                       const descCol = columns.find(c => ['nome', 'descricao', 'desc', 'full_name', 'name'].includes(c.toLowerCase())) || columns[1] || columns[0];
-                       return (
-                          <button 
-                             key={idx}
-                             onClick={() => { setData([row]); setActiveSearchCol(match.matchedColumn); setViewMode('cards'); }}
-                             className="w-full flex items-center justify-between p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl hover:border-indigo-500 hover:shadow-lg transition-all group text-left"
-                          >
-                             <div className="flex items-center gap-5">
-                                <div className="flex flex-col items-center gap-1 shrink-0">
-                                  <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                                     <MousePointer2 className="w-5 h-5" />
-                                  </div>
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Opção {idx + 1}</span>
-                                </div>
-                                <div className="min-w-0">
-                                   <div className="text-[10px] font-bold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded w-fit mb-1 border border-indigo-100 dark:border-indigo-800">
-                                      Encontrado via coluna: <strong>{match.matchedColumn}</strong>
-                                   </div>
-                                   <div className="font-bold text-slate-800 dark:text-slate-100 text-base truncate">
-                                      {String(row[descCol] || 'Registro sem descrição disponível')}
-                                   </div>
-                                   <div className="flex flex-wrap gap-2 mt-2">
-                                      {getIdentifierColumns().filter(c => row[c] !== undefined).map(c => (
-                                         <span key={c} className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${c === match.matchedColumn ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 border-amber-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200'}`}>
-                                            {c}: {row[c]}
-                                         </span>
-                                      ))}
-                                   </div>
-                                </div>
-                             </div>
-                             <ChevronRight className="w-6 h-6 text-slate-300 group-hover:text-indigo-500 transition-colors" />
-                          </button>
-                       );
-                    })}
-                 </div>
-              </div>
-           ) : viewMode === 'map_column' ? (
-              <div className="p-8 max-w-4xl mx-auto">
-                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-2xl p-6 mb-8 flex items-start gap-5 shadow-sm">
-                    <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm text-amber-500 shrink-0">
-                       <HelpCircle className="w-8 h-8" />
-                    </div>
-                    <div>
-                       <h4 className="font-bold text-amber-900 dark:text-amber-100 text-xl">Não encontramos resultados</h4>
-                       <p className="text-amber-700 dark:text-amber-300 text-sm mt-1 leading-relaxed">
-                          O valor <strong>"{filterValue}"</strong> não foi localizado nos campos padrão. 
-                          Deseja realizar a busca em qual coluna específica desta tabela?
-                       </p>
-                    </div>
-                 </div>
-
-                 <div className="mb-6 relative">
-                    <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
-                    <input 
-                       type="text"
-                       placeholder="Buscar coluna específica..."
-                       value={columnFilterTerm}
-                       onChange={e => setColumnFilterTerm(e.target.value)}
-                       className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                    />
-                 </div>
-
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {filteredTargetColumns.map((col) => (
-                       <button 
-                          key={col.name}
-                          onClick={() => fetchData(col.name, filterValue, true)}
-                          className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group text-left"
-                       >
-                          <div className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                             {col.isPrimaryKey ? <Key className="w-4 h-4 text-amber-500" /> : <Table2 className="w-4 h-4" />}
-                          </div>
-                          <div className="min-w-0">
-                             <div className="font-bold text-slate-800 dark:text-slate-100 text-sm truncate">{col.name}</div>
-                             <div className="text-[10px] text-slate-400 font-mono uppercase">{col.type}</div>
-                          </div>
-                       </button>
-                    ))}
-                 </div>
+                 <span className="text-sm font-medium">Buscando em {activeLink?.table}...</span>
               </div>
            ) : error ? (
               <div className="p-12 text-center text-red-500 flex flex-col items-center">
                  <AlertCircle className="w-12 h-12 mb-4 opacity-50" />
-                 <p className="font-bold text-lg">Erro na consulta</p>
+                 <p className="font-bold text-lg">Registro não localizado</p>
                  <p className="text-sm opacity-80 mt-2 max-w-md">{error}</p>
-                 <button onClick={() => setViewMode('map_column')} className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors">Tentar outra coluna</button>
+                 <div className="mt-8 flex flex-col items-center gap-2">
+                    <p className="text-xs text-slate-500 uppercase font-bold tracking-widest">Tente outro vínculo disponível no cabeçalho</p>
+                 </div>
               </div>
            ) : (
               <div className="p-4 sm:p-6 space-y-6">
                  {viewMode === 'table' ? (
-                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto custom-scrollbar">
+                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-x-auto custom-scrollbar">
                        <table className="w-full text-left text-sm border-collapse min-w-max">
                           <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0 shadow-sm z-10 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                              <tr>
@@ -348,7 +309,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                              {filteredData.map((row, i) => (
                                 <tr key={i} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group">
                                    {columns.map(col => {
-                                      const isPkMatch = col === activeSearchCol;
+                                      const isPkMatch = col === currentCache?.activeSearchCol;
                                       const cellKey = `table-${i}-${col}`;
                                       const isExpanded = expandedCells.has(cellKey);
                                       const val = row[col];
@@ -384,7 +345,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                           <div key={rowIndex} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                              <div className="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                   <Database className="w-3 h-3" /> Registro #{rowIndex + 1}
+                                   <Database className="w-3 h-3" /> Detalhes em {activeLink?.table}
                                 </span>
                                 <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-800">{columns.length} colunas</span>
                              </div>
@@ -396,7 +357,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                                    const valStr = val === null ? 'null' : String(val);
                                    const isLong = valStr.length > 80;
                                    const isMatch = searchTerm && (col.toLowerCase().includes(searchTerm.toLowerCase()) || valStr.toLowerCase().includes(searchTerm.toLowerCase()));
-                                   const isPkMatch = col === activeSearchCol;
+                                   const isPkMatch = col === currentCache?.activeSearchCol;
                                    
                                    return (
                                       <div key={col} className={`group flex items-start justify-between py-1.5 px-2 rounded transition-colors border-b border-slate-50 dark:border-slate-800/40 last:border-0 ${isMatch ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'} ${isExpanded ? 'flex-col md:col-span-2 gap-2' : ''}`}>
@@ -437,8 +398,8 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
         {/* Footer */}
         <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Save className="w-3.5 h-3.5" />
-              <span>Memória ativa para <strong>{targetTable}</strong> ({activeSearchCol})</span>
+              {settings?.backgroundLoadLinks ? <DatabaseZap className="w-3.5 h-3.5 text-indigo-500" /> : <Save className="w-3.5 h-3.5" />}
+              <span>{settings?.backgroundLoadLinks ? 'Background links prontos' : `Lendo: ${activeLink?.table}`}</span>
            </div>
            <button onClick={onClose} className="px-8 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg transition-all">Fechar Detalhes</button>
         </div>

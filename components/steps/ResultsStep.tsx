@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight } from 'lucide-react';
 import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema, Table } from '../../types';
@@ -181,10 +182,42 @@ const ManualMappingPopover: React.FC<{
   const [previewCol, setPreviewCol] = useState('');
   const [isAdding, setIsAdding] = useState(currentLinks.length === 0);
 
-  const filteredTables = useMemo(() => {
+  const schemasPresent = useMemo(() => {
+    return Array.from(new Set(schema.tables.map(t => t.schema || 'public'))).sort();
+  }, [schema.tables]);
+
+  const hasMultipleSchemas = schemasPresent.length > 1;
+
+  const filteredAndSortedTables = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
-    return schema.tables.filter(t => !term || t.name.toLowerCase().includes(term) || (t.schema || 'public').toLowerCase().includes(term))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    let list = schema.tables.filter(t => 
+      !term || 
+      t.name.toLowerCase().includes(term) || 
+      (t.schema || 'public').toLowerCase().includes(term)
+    );
+
+    if (term) {
+      list.sort((a, b) => {
+        const nameA = a.name.toLowerCase();
+        const nameB = b.name.toLowerCase();
+        
+        // Exato
+        if (nameA === term && nameB !== term) return -1;
+        if (nameB === term && nameA !== term) return 1;
+        
+        // Começa com
+        const startsA = nameA.startsWith(term);
+        const startsB = nameB.startsWith(term);
+        if (startsA && !startsB) return -1;
+        if (!startsA && startsB) return 1;
+        
+        // Contém (já filtrado, resta ordem alfabética)
+        return nameA.localeCompare(nameB);
+      });
+    } else {
+       list.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return list;
   }, [schema.tables, searchTerm]);
 
   const targetColumns = useMemo(() => {
@@ -223,6 +256,7 @@ const ManualMappingPopover: React.FC<{
        </div>
        
        <div className="p-3 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+          {/* Lista de Vínculos Atuais */}
           {currentLinks.length > 0 && (
              <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase">Vínculos Ativos ({currentLinks.length})</label>
@@ -262,7 +296,11 @@ const ManualMappingPopover: React.FC<{
                       onChange={e => setSelectedTable(e.target.value)}
                       className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none custom-scrollbar"
                    >
-                      {filteredTables.map(t => <option key={getTableId(t)} value={getTableId(t)}>{t.schema}.{t.name}</option>)}
+                      {filteredAndSortedTables.map(t => {
+                         const tableId = getTableId(t);
+                         const label = hasMultipleSchemas ? `${t.schema}.${t.name}` : t.name;
+                         return <option key={tableId} value={tableId}>{label}</option>;
+                      })}
                    </select>
                 </div>
 
@@ -294,7 +332,7 @@ const ManualMappingPopover: React.FC<{
                 <button onClick={() => setIsAdding(false)} className="w-full py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">Cancelar</button>
              </div>
           ) : (
-             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-500 hover:text-indigo-600 hover:border-indigo-400 transition-all flex items-center justify-center gap-2 text-xs font-bold">
+             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 hover:border-cyan-500 hover:text-cyan-600 transition-all flex items-center justify-center gap-2 text-sm font-bold">
                 <Plus className="w-4 h-4" /> Adicionar Outro Vínculo
              </button>
           )}
@@ -367,7 +405,7 @@ interface VirtualTableProps {
    isAdvancedMode?: boolean;
    onUpdateCell?: (rowIdx: number, colKey: string, newValue: string) => void;
    onOpenJson: (json: any) => void;
-   onDrillDown: (table: string, col: string, val: any) => void;
+   onDrillDown: (table: string, col: string, val: any, allLinks?: ManualLink[]) => void;
    schema?: DatabaseSchema;
    defaultTableName?: string | null;
    credentials?: any;
@@ -467,8 +505,11 @@ const VirtualTable = ({
             <button 
                onClick={(e) => { 
                   e.stopPropagation(); 
+                  setHoverPreview(null); // Immediate close hover tooltip
+                  if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+
                   if (links.length === 1) {
-                     onDrillDown(links[0].table, links[0].keyCol, val);
+                     onDrillDown(links[0].table, links[0].keyCol, val, links);
                   } else {
                      setMultiLinkMenu({ links, val, x: e.clientX, y: e.clientY });
                   }
@@ -521,7 +562,7 @@ const VirtualTable = ({
                {multiLinkMenu.links.map(link => (
                   <button 
                      key={link.id}
-                     onClick={() => { onDrillDown(link.table, link.keyCol, multiLinkMenu.val); setMultiLinkMenu(null); }}
+                     onClick={() => { onDrillDown(link.table, link.keyCol, multiLinkMenu.val, multiLinkMenu.links); setMultiLinkMenu(null); }}
                      className="w-full text-left px-4 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex flex-col transition-colors"
                   >
                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{link.table}</span>
@@ -696,7 +737,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [selectedRow, setSelectedRow] = useState<any | null>(null);
   const [viewJson, setViewJson] = useState<any | null>(null);
-  const [drillDownTarget, setDrillDownTarget] = useState<{table: string, col: string, val: any} | null>(null);
+  const [drillDownTarget, setDrillDownTarget] = useState<{table: string, col: string, val: any, allLinks?: ManualLink[]} | null>(null);
 
   const mainTableName = useMemo(() => {
      const fromMatch = sql.match(/FROM\s+([a-zA-Z0-9_."]+)/i);
@@ -810,7 +851,18 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
     <div className={`h-full flex flex-col space-y-4 ${isFullscreen ? 'fixed inset-0 z-[100] bg-white dark:bg-slate-900 p-6' : ''}`}>
       {selectedRow && <RowInspector row={selectedRow} onClose={() => setSelectedRow(null)} />}
       {viewJson && <JsonViewerModal json={viewJson} onClose={() => setViewJson(null)} />}
-      {drillDownTarget && <DrillDownModal targetTable={drillDownTarget.table} filterColumn={drillDownTarget.col} filterValue={drillDownTarget.val} credentials={credentials || null} onClose={() => setDrillDownTarget(null)} schema={schema} />}
+      {drillDownTarget && (
+        <DrillDownModal 
+           targetTable={drillDownTarget.table} 
+           filterColumn={drillDownTarget.col} 
+           filterValue={drillDownTarget.val} 
+           credentials={credentials || null} 
+           onClose={() => setDrillDownTarget(null)} 
+           schema={schema}
+           allLinks={drillDownTarget.allLinks}
+           settings={settings}
+        />
+      )}
       {showCodeModal && <CodeSnippetModal sql={sql} onClose={() => setShowCodeModal(false)} />}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-4">
@@ -853,7 +905,21 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8"><Database className="w-12 h-12 opacity-30 mb-4" /><p>Nenhum resultado retornado</p></div>
         ) : (
           <>
-            {activeTab === 'table' && <VirtualTable data={filteredData} columns={columns} highlightMatch={highlightMatch} onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} isAdvancedMode={settings?.advancedMode} onUpdateCell={handleUpdateCell} onOpenJson={setViewJson} onDrillDown={(table, col, val) => setDrillDownTarget({ table, col, val })} schema={schema} defaultTableName={mainTableName} credentials={credentials} />}
+            {activeTab === 'table' && (
+              <VirtualTable 
+                 data={filteredData} 
+                 columns={columns} 
+                 highlightMatch={highlightMatch} 
+                 onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} 
+                 isAdvancedMode={settings?.advancedMode} 
+                 onUpdateCell={handleUpdateCell} 
+                 onOpenJson={setViewJson} 
+                 onDrillDown={(table, col, val, allLinks) => setDrillDownTarget({ table, col, val, allLinks })} 
+                 schema={schema} 
+                 defaultTableName={mainTableName} 
+                 credentials={credentials} 
+              />
+            )}
             {activeTab === 'terminal' && <AnsiTerminal text={ansiTableString} />}
             {activeTab === 'chart' && <div className="p-6 h-full w-full relative"><DataVisualizer data={filteredData} onDrillDown={handleChartDrillDown} /> </div>}
             {activeTab === 'analysis' && <div className="flex-1 h-full"><DataAnalysisChat data={filteredData} sql={sql} /></div>}

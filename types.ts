@@ -131,6 +131,7 @@ export interface AppSettings {
   enableAiTips: boolean;
   beginnerMode: boolean; 
   advancedMode: boolean; 
+  backgroundLoadLinks: boolean; // New: pre-fetch linked data
   aiGenerationTimeout: number; 
   defaultDbHost: string;
   defaultDbPort: string;
@@ -147,6 +148,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enableAiTips: true,
   beginnerMode: true, 
   advancedMode: false, 
+  backgroundLoadLinks: false,
   aiGenerationTimeout: 3000,
   defaultDbHost: 'localhost',
   defaultDbPort: '5432',

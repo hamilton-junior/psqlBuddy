@@ -1,7 +1,6 @@
 
-
 import React from 'react';
-import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, AlertCircle, GraduationCap, PenTool } from 'lucide-react';
+import { Settings, Moon, Sun, Save, X, AlertTriangle, Bot, Zap, ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, AlertCircle, GraduationCap, PenTool, DatabaseZap } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -44,7 +43,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-8 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">
           
-          {/* Modes Section */}
           <div className="space-y-3">
              <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Modos de Interface</h4>
              
@@ -70,6 +68,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
                        className="sr-only peer" 
                      />
                      <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                   </label>
+                </div>
+             </div>
+
+             {/* Background Loading Toggle */}
+             <div className="bg-indigo-50/50 dark:bg-indigo-900/10 p-3 rounded-lg border border-indigo-100 dark:border-indigo-800/30">
+                <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                         <DatabaseZap className="w-5 h-5" />
+                      </div>
+                      <div>
+                         <h4 className="font-bold text-slate-800 dark:text-white text-sm">Otimização de Vínculos</h4>
+                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Carregar todos os vínculos em background ao abrir detalhes.
+                         </p>
+                      </div>
+                   </div>
+                   <label className="relative inline-flex items-center cursor-pointer">
+                     <input 
+                       type="checkbox" 
+                       checked={formData.backgroundLoadLinks} 
+                       onChange={e => setFormData({...formData, backgroundLoadLinks: e.target.checked})}
+                       className="sr-only peer" 
+                     />
+                     <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                    </label>
                 </div>
              </div>
@@ -187,7 +211,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ settings, onSave, onClose
           <div>
             <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Padrões do Banco</h4>
             
-            {/* Limit Warning */}
             <div className="mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-3 flex gap-2">
                <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5" />
                <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
