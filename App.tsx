@@ -61,6 +61,7 @@ const App: React.FC = () => {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [executionResult, setExecutionResult] = useState<any[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [executionDuration, setExecutionDuration] = useState(0);
 
   const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>(() => {
@@ -92,6 +93,7 @@ const App: React.FC = () => {
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
 
   useEffect(() => {
+    document.documentElement.classList.toggle('dark', settings.theme === 'dark');
     localStorage.setItem('psql-buddy-settings', JSON.stringify(settings));
   }, [settings]);
 
@@ -178,6 +180,9 @@ const App: React.FC = () => {
     try {
        let data: any[] = [];
        if (credentials.host === 'simulated') {
+          if (sqlOverride && sqlOverride !== queryResult?.sql) {
+             handleShowToast("Nota: Em modo simulação, edições manuais no SQL podem não refletir nos dados fictícios complexos. Usando lógica do construtor.", 'info');
+          }
           data = executeOfflineQuery(schema, simulationData, builderState);
           await new Promise(r => setTimeout(r, 600));
        } else {
@@ -283,7 +288,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#0f172a] text-slate-200 overflow-hidden font-sans">
+    <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
       <Toaster position="top-right" toastOptions={{ className: 'text-sm font-medium', style: { background: '#1e293b', color: '#fff' } }} />
       
       <Sidebar 
@@ -337,7 +342,7 @@ const App: React.FC = () => {
                  onExecute={handleExecuteQuery}
                  onBack={() => setCurrentStep('builder')}
                  isExecuting={isExecuting}
-                 isValidating={false}
+                 isValidating={isValidating}
                  validationDisabled={!settings.enableAiValidation}
                  schema={schema || undefined}
               />

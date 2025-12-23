@@ -67,14 +67,12 @@ export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'dashbo
 
 export type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'ILIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL';
 export type JoinType = 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
-export type WildcardPosition = 'start' | 'end' | 'both';
 
 export interface Filter {
   id: string;
   column: string;
   operator: Operator;
   value: string;
-  wildcardPosition?: WildcardPosition; // New: control % placement
 }
 
 export type AggregateFunction = 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'NONE';
@@ -127,12 +125,13 @@ export interface ChatMessage {
 }
 
 export interface AppSettings {
+  theme: 'light' | 'dark';
   enableAiGeneration: boolean;
   enableAiValidation: boolean;
   enableAiTips: boolean;
   beginnerMode: boolean; 
   advancedMode: boolean; 
-  backgroundLoadLinks: boolean; 
+  backgroundLoadLinks: boolean; // New: pre-fetch linked data
   aiGenerationTimeout: number; 
   defaultDbHost: string;
   defaultDbPort: string;
@@ -143,6 +142,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  theme: 'light',
   enableAiGeneration: true,
   enableAiValidation: true,
   enableAiTips: true,
@@ -226,6 +226,7 @@ export interface VirtualRelation {
   confidence?: number; 
 }
 
+// Fixed: Added missing SAMPLE_SCHEMA export
 export const SAMPLE_SCHEMA: DatabaseSchema = {
   name: 'Ecommerce_Sample',
   tables: [
