@@ -63,7 +63,7 @@ const AnsiTerminal: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-// --- Sub-componente de Preview no Hover (Multi-vínculo) ---
+// --- Sub-componente de Preview no Hover (Multi-vínculo + Interativo) ---
 const HoverPreviewTooltip: React.FC<{
   links: ManualLink[];
   value: any;
@@ -71,23 +71,21 @@ const HoverPreviewTooltip: React.FC<{
   schema: DatabaseSchema;
   x: number;
   y: number;
-}> = ({ links, value, credentials, schema, x, y }) => {
+  isPersistent?: boolean;
+  onSelect?: (table: string, key: string, links: ManualLink[]) => void;
+  onClose?: () => void;
+}> = ({ links, value, credentials, schema, x, y, isPersistent, onSelect, onClose }) => {
   const [previews, setPreviews] = useState<Record<string, { data: string, loading: boolean, error: boolean }>>({});
 
   useEffect(() => {
     let isMounted = true;
-    
-    if (value === undefined || value === null || value === '') {
-      return;
-    }
+    if (value === undefined || value === null || value === '') return;
 
     const fetchAllPreviews = async () => {
-      // Inicializa estado de loading para todos os links
       const initial: Record<string, any> = {};
       links.forEach(l => initial[l.id] = { data: '', loading: true, error: false });
       setPreviews(initial);
 
-      // Busca cada preview em paralelo
       links.forEach(async (link) => {
         try {
           const tableParts = link.table.split('.');
@@ -126,40 +124,55 @@ const HoverPreviewTooltip: React.FC<{
     return () => { isMounted = false; };
   }, [links, value, credentials, schema]);
 
-  // Mostra apenas os 3 primeiros links no hover
   const visibleLinks = links.slice(0, 3);
   const hiddenCount = links.length - 3;
 
   return (
     <div 
-      className="fixed z-[110] pointer-events-none bg-slate-900 text-white p-3 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-3 min-w-[200px] max-w-[300px]"
-      style={{ left: Math.min(x + 15, window.innerWidth - 320), top: Math.max(10, y - 10) }}
+      className={`fixed z-[120] bg-slate-900 text-white p-3 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-3 min-w-[220px] max-w-[320px] ${isPersistent ? 'pointer-events-auto ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-900' : 'pointer-events-none'}`}
+      style={{ left: Math.min(x + 15, window.innerWidth - 340), top: Math.max(10, y - 10) }}
+      onClick={e => e.stopPropagation()}
     >
+      {isPersistent && (
+         <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Escolher Destino</span>
+            <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-500" /></button>
+         </div>
+      )}
+
       {visibleLinks.map((link, idx) => {
         const state = previews[link.id];
         return (
-          <div key={link.id} className={`${idx > 0 ? 'pt-2 border-t border-slate-800' : ''}`}>
-            <div className="flex items-center justify-between mb-1">
+          <button 
+            key={link.id} 
+            disabled={!isPersistent}
+            onClick={() => isPersistent && onSelect?.(link.table, link.keyCol, links)}
+            className={`text-left group/item flex flex-col w-full rounded-lg transition-colors ${idx > 0 ? 'pt-2 border-t border-slate-800' : ''} ${isPersistent ? 'hover:bg-slate-800 p-1.5 -m-1.5' : ''}`}
+          >
+            <div className="flex items-center justify-between mb-1 w-full">
                <div className="flex items-center gap-1.5 overflow-hidden">
                   <Database className="w-3 h-3 text-indigo-400 shrink-0" />
-                  <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500 truncate">{link.table.split('.').pop()}</span>
+                  <span className={`text-[9px] font-extrabold uppercase tracking-widest truncate ${isPersistent ? 'group-hover/item:text-indigo-300' : 'text-slate-500'}`}>{link.table.split('.').pop()}</span>
                </div>
-               <span className="text-[9px] font-bold text-slate-400 bg-slate-800 px-1 rounded">{link.previewCol}</span>
+               <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-bold text-slate-400 bg-slate-800 px-1 rounded">{link.previewCol}</span>
+                  {isPersistent && <ArrowRight className="w-2.5 h-2.5 text-slate-600 opacity-0 group-hover/item:opacity-100 group-hover/item:translate-x-0.5 transition-all" />}
+               </div>
             </div>
             {state?.loading ? (
               <div className="flex items-center gap-2 text-xs opacity-50"><Loader2 className="w-3 h-3 animate-spin" /> <span>Carregando...</span></div>
             ) : state?.error ? (
               <span className="text-xs text-red-400 italic">Erro na consulta</span>
             ) : (
-              <span className="text-sm font-bold text-indigo-100 whitespace-pre-wrap block">{state?.data || '---'}</span>
+              <span className={`text-sm font-bold whitespace-pre-wrap block transition-colors ${isPersistent ? 'text-indigo-100 group-hover/item:text-white' : 'text-indigo-100'}`}>{state?.data || '---'}</span>
             )}
-          </div>
+          </button>
         );
       })}
       
       {hiddenCount > 0 && (
          <div className="pt-2 border-t border-slate-800 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500 uppercase italic">
-            <Plus className="w-3 h-3" /> {hiddenCount} outros vínculos ativos
+            <Plus className="w-3 h-3" /> {hiddenCount} outros destinos
          </div>
       )}
 
@@ -211,7 +224,7 @@ const ManualMappingPopover: React.FC<{
         if (startsA && !startsB) return -1;
         if (!startsA && startsB) return 1;
         
-        // Contém (já filtrado, resta ordem alfabética)
+        // Contém
         return nameA.localeCompare(nameB);
       });
     } else {
@@ -251,15 +264,14 @@ const ManualMappingPopover: React.FC<{
   return (
     <div className="absolute z-[100] top-full mt-2 right-0 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right flex flex-col" onClick={e => e.stopPropagation()}>
        <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
-          <span className="text-[10px] font-bold uppercase text-slate-500">Configurar Vínculos: {column}</span>
+          <span className="text-[10px] font-bold uppercase text-slate-500 truncate mr-2">Vínculos: {column}</span>
           <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded transition-colors"><X className="w-4 h-4" /></button>
        </div>
        
        <div className="p-3 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          {/* Lista de Vínculos Atuais */}
           {currentLinks.length > 0 && (
              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase">Vínculos Ativos ({currentLinks.length})</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Vínculos Ativos ({currentLinks.length})</label>
                 {currentLinks.map(link => (
                    <div key={link.id} className="flex items-center justify-between p-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg group">
                       <div className="min-w-0">
@@ -279,10 +291,11 @@ const ManualMappingPopover: React.FC<{
           {isAdding ? (
              <div className="space-y-4 pt-2 animate-in slide-in-from-top-2">
                 <div className="space-y-1.5">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase">Novo Alvo</label>
+                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Novo Alvo</label>
                    <div className="relative">
                       <Search className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
                       <input 
+                         autoFocus
                          type="text" 
                          value={searchTerm}
                          onChange={e => setSearchTerm(e.target.value)}
@@ -307,15 +320,15 @@ const ManualMappingPopover: React.FC<{
                 {selectedTable && (
                    <>
                       <div className="space-y-1.5">
-                         <label className="text-[10px] font-bold text-slate-400 uppercase">Chave no Destino</label>
-                         <select value={keyCol} onChange={e => setKeyCol(e.target.value)} className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none">
+                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Chave no Destino</label>
+                         <select value={keyCol} onChange={e => setKeyCol(e.target.value)} className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none font-medium">
                             <option value="">-- Selecione a Chave --</option>
                             {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
                          </select>
                       </div>
                       <div className="space-y-1.5">
-                         <label className="text-[10px] font-bold text-slate-400 uppercase">Preview no Hover</label>
-                         <select value={previewCol} onChange={e => setPreviewCol(e.target.value)} className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none">
+                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Preview no Hover</label>
+                         <select value={previewCol} onChange={e => setPreviewCol(e.target.value)} className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none font-medium">
                             <option value="">-- Selecione a Coluna --</option>
                             {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
                          </select>
@@ -323,16 +336,16 @@ const ManualMappingPopover: React.FC<{
                       <button 
                          onClick={handleAddLink}
                          disabled={!selectedTable || !keyCol || !previewCol}
-                         className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                         className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-sm"
                       >
-                         Confirmar Novo Alvo
+                         Confirmar Alvo
                       </button>
                    </>
                 )}
-                <button onClick={() => setIsAdding(false)} className="w-full py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">Cancelar</button>
+                <button onClick={() => setIsAdding(false)} className="w-full py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-bold">Cancelar</button>
              </div>
           ) : (
-             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 hover:border-cyan-500 hover:text-cyan-600 transition-all flex items-center justify-center gap-2 text-sm font-bold">
+             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-slate-500 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 text-xs font-bold">
                 <Plus className="w-4 h-4" /> Adicionar Outro Vínculo
              </button>
           )}
@@ -429,8 +442,7 @@ const VirtualTable = ({
    const [activeProfileCol, setActiveProfileCol] = useState<string | null>(null);
    const [activeMappingCol, setActiveMappingCol] = useState<string | null>(null);
    
-   const [hoverPreview, setHoverPreview] = useState<{links: ManualLink[], val: any, x: number, y: number} | null>(null);
-   const [multiLinkMenu, setMultiLinkMenu] = useState<{links: ManualLink[], val: any, x: number, y: number} | null>(null);
+   const [hoverPreview, setHoverPreview] = useState<{links: ManualLink[], val: any, x: number, y: number, persistent: boolean} | null>(null);
    const hoverTimeoutRef = useRef<any>(null);
 
    const [manualMappings, setManualMappings] = useState<Record<string, ManualLink[]>>(() => {
@@ -505,27 +517,31 @@ const VirtualTable = ({
             <button 
                onClick={(e) => { 
                   e.stopPropagation(); 
-                  setHoverPreview(null); // Immediate close hover tooltip
+                  // Fechar tooltip transient e limpar timeout
                   if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
 
                   if (links.length === 1) {
+                     setHoverPreview(null);
                      onDrillDown(links[0].table, links[0].keyCol, val, links);
                   } else {
-                     setMultiLinkMenu({ links, val, x: e.clientX, y: e.clientY });
+                     // FIXAR o menu de hover para seleção direta
+                     setHoverPreview({ links, val, x: e.clientX, y: e.clientY, persistent: true });
                   }
                }} 
                onMouseEnter={(e) => {
                   const x = e.clientX;
                   const y = e.clientY;
-                  if (links.some(l => l.previewCol)) {
+                  if (!hoverPreview?.persistent && links.some(l => l.previewCol)) {
                      hoverTimeoutRef.current = setTimeout(() => {
-                        setHoverPreview({ links, val, x, y });
+                        setHoverPreview({ links, val, x, y, persistent: false });
                      }, 350); 
                   }
                }}
                onMouseLeave={() => {
-                  if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-                  setHoverPreview(null);
+                  if (!hoverPreview?.persistent) {
+                     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                     setHoverPreview(null);
+                  }
                }}
                className={`hover:underline flex items-center gap-1 group/link text-left min-w-0 ${links.length > 1 ? 'text-purple-600 dark:text-purple-400' : 'text-indigo-600 dark:text-indigo-400'}`}
             >
@@ -538,38 +554,22 @@ const VirtualTable = ({
    };
 
    return (
-      <div className="flex flex-col h-full relative" onClick={() => setMultiLinkMenu(null)}>
+      <div className="flex flex-col h-full relative" onClick={() => setHoverPreview(prev => prev?.persistent ? null : prev)}>
          {hoverPreview && credentials && schema && (
             <HoverPreviewTooltip 
-               links={hoverPreview.links.filter(l => !!l.previewCol)}
+               links={hoverPreview.links.filter(l => !!l.previewCol || hoverPreview.persistent)}
                value={hoverPreview.val}
                credentials={credentials}
                schema={schema}
                x={hoverPreview.x}
                y={hoverPreview.y}
+               isPersistent={hoverPreview.persistent}
+               onClose={() => setHoverPreview(null)}
+               onSelect={(tbl, key, all) => {
+                  setHoverPreview(null);
+                  onDrillDown(tbl, key, hoverPreview.val, all);
+               }}
             />
-         )}
-
-         {multiLinkMenu && (
-            <div 
-               className="fixed z-[120] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-2 w-56 animate-in fade-in zoom-in-95 duration-100"
-               style={{ left: Math.min(multiLinkMenu.x, window.innerWidth - 240), top: Math.min(multiLinkMenu.y, window.innerHeight - 200) }}
-               onClick={e => e.stopPropagation()}
-            >
-               <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-700 mb-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selecionar Destino</span>
-               </div>
-               {multiLinkMenu.links.map(link => (
-                  <button 
-                     key={link.id}
-                     onClick={() => { onDrillDown(link.table, link.keyCol, multiLinkMenu.val, multiLinkMenu.links); setMultiLinkMenu(null); }}
-                     className="w-full text-left px-4 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex flex-col transition-colors"
-                  >
-                     <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{link.table}</span>
-                     <span className="text-[9px] text-slate-400">Via {link.keyCol}</span>
-                  </button>
-               ))}
-            </div>
          )}
 
          <div className="flex-1 overflow-auto custom-scrollbar">

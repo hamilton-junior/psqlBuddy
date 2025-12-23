@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Database, ArrowRight, Loader2, AlertCircle, LayoutGrid, Search, Copy, Check, Filter, MousePointer2, ChevronRight, Info, Table2, HelpCircle, Save, Key, AlertTriangle, Maximize2, Minimize2, Layers, DatabaseZap } from 'lucide-react';
+import { X, Database, ArrowRight, Loader2, AlertCircle, LayoutGrid, Search, Copy, Check, Filter, MousePointer2, ChevronRight, Info, Table2, HelpCircle, Save, Key, AlertTriangle, Maximize2, Minimize2, Layers, DatabaseZap, Target } from 'lucide-react';
 import { executeQueryReal } from '../services/dbService';
 import { DbCredentials, DatabaseSchema, AppSettings } from '../types';
 
@@ -12,22 +12,17 @@ interface ManualLink {
 }
 
 interface DrillDownModalProps {
-  targetTable: string; // Current "schema.table" being viewed
+  targetTable: string; // Tabela inicial que disparou o modal
   filterColumn: string; 
   filterValue: any;
   credentials: DbCredentials | null;
   onClose: () => void;
   schema?: DatabaseSchema;
-  allLinks?: ManualLink[]; // Full list of targets for the source column
+  allLinks?: ManualLink[]; // Lista completa de destinos para esta coluna
   settings?: AppSettings;
 }
 
-type ViewMode = 'table' | 'cards' | 'select' | 'map_column';
-
-interface AmbiguousMatch {
-  row: any;
-  matchedColumn: string;
-}
+type ViewMode = 'table' | 'cards';
 
 interface LinkCache {
    data: any[];
@@ -38,12 +33,11 @@ interface LinkCache {
 
 const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColumn, filterValue, credentials, onClose, schema, allLinks = [], settings }) => {
   const [activeLinkId, setActiveLinkId] = useState<string>(() => {
-     // Find the initial link matching the starting table
      const initial = allLinks.find(l => l.table === targetTable);
      return initial ? initial.id : (allLinks[0]?.id || 'manual');
   });
 
-  // Central storage for link data (Cache for background loading)
+  // Cache para dados dos links (Suporte ao background loading)
   const [linkDataMap, setLinkDataMap] = useState<Record<string, LinkCache>>({});
   
   const [loading, setLoading] = useState(true);
@@ -52,7 +46,6 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
-  const [columnFilterTerm, setColumnFilterTerm] = useState('');
 
   const activeLink = useMemo(() => allLinks.find(l => l.id === activeLinkId), [activeLinkId, allLinks]);
 
@@ -65,43 +58,17 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
     });
   };
 
-  const getIdentifierColumns = (tableName: string) => {
-    if (!schema) return ['grid', 'id', 'codigo', 'cod'];
-    const parts = tableName.split('.');
-    const sName = parts.length > 1 ? parts[0] : 'public';
-    const tName = parts.length > 1 ? parts[1] : parts[0];
-    
-    const table = schema.tables.find(t => 
-      t.name.toLowerCase() === tName.toLowerCase() && 
-      (t.schema || 'public').toLowerCase() === sName.toLowerCase()
-    );
-
-    if (table) {
-      return table.columns
-        .filter(c => c.isPrimaryKey || c.name.toLowerCase().includes('id') || c.name.toLowerCase().includes('cod') || c.isForeignKey || c.name.toLowerCase() === 'grid')
-        .map(c => c.name);
-    }
-    return ['grid', 'id', 'codigo', 'cod'];
-  };
-
-  // Generic fetch function for one link
+  // Função genérica de busca para um link
   const fetchSingleLink = async (link: ManualLink) => {
     if (!credentials) return;
-    
-    const val = filterValue;
-    const safeValue = String(val).replace(/'/g, "''");
-    const idCols = [link.keyCol];
-
+    const safeValue = String(filterValue).replace(/'/g, "''");
     try {
-      const conditions = idCols.map(col => `${col}::text = '${safeValue}'`).join(' OR ');
-      const sql = `SELECT * FROM ${link.table} WHERE ${conditions} LIMIT 100`;
-      
+      const sql = `SELECT * FROM ${link.table} WHERE "${link.keyCol}"::text = '${safeValue}' LIMIT 100`;
       const results = await executeQueryReal(credentials, sql);
-      
       return {
          data: results,
          loading: false,
-         error: results.length === 0 ? `Valor "${val}" não encontrado em ${link.table}.` : null,
+         error: results.length === 0 ? `Registro "${filterValue}" não localizado em ${link.table}.` : null,
          activeSearchCol: link.keyCol
       };
     } catch (e: any) {
@@ -114,22 +81,22 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
     }
   };
 
-  // Initial load + Background Logic
+  // Carga inicial e lógica de fundo
   useEffect(() => {
     const startLoad = async () => {
        if (!credentials) return;
        
-       // 1. If background loading is enabled, start fetching ALL in parallel threads (Promises)
+       // Se background loading ativo, dispara TUDO em paralelo
        if (settings?.backgroundLoadLinks) {
           allLinks.forEach(link => {
-             // Mark as loading in map
+             // Iniciar como loading
              setLinkDataMap(prev => ({ ...prev, [link.id]: { data: [], loading: true, error: null, activeSearchCol: link.keyCol } }));
              
-             // Run async fetch
+             // Disparar busca assíncrona (thread simulada via Promise)
              fetchSingleLink(link).then(result => {
                 if (result) {
                    setLinkDataMap(prev => ({ ...prev, [link.id]: result }));
-                   // If this is the active link, update global loading state
+                   // Se for o link atual que acabou de carregar, atualizar loading global
                    if (link.id === activeLinkId) {
                       setLoading(false);
                       if (result.error) setError(result.error);
@@ -139,7 +106,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
              });
           });
        } else {
-          // 2. Load only current active link
+          // Apenas o ativo sob demanda
           if (activeLink) {
              setLoading(true);
              const result = await fetchSingleLink(activeLink);
@@ -154,9 +121,8 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
     };
     
     startLoad();
-  }, [credentials, filterValue]); // Runs once on mount for specific value
+  }, [credentials, filterValue]);
 
-  // Handler to switch active link
   const handleSwitchLink = async (id: string) => {
      setActiveLinkId(id);
      setError(null);
@@ -165,11 +131,9 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
 
      const cached = linkDataMap[id];
      if (cached && !cached.loading) {
-        // Instant switch from cache
         if (cached.error) setError(cached.error);
         else setViewMode(cached.data.length === 1 ? 'cards' : 'table');
      } else {
-        // Fetch on demand
         setLoading(true);
         const link = allLinks.find(l => l.id === id);
         if (link) {
@@ -205,10 +169,10 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
   };
 
   return (
-    <div className="fixed inset-0 z-[110] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[130] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
         
-        {/* Header */}
+        {/* Header com Switcher */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
            <div className="flex items-center gap-3 min-w-0">
               <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
@@ -219,31 +183,42 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                     <span className="text-indigo-600 dark:text-indigo-400 font-mono truncate">{activeLink?.keyCol}: {filterValue}</span>
                  </h3>
                  {allLinks.length > 1 ? (
-                    <div className="flex items-center gap-1.5 mt-1">
+                    <div className="flex items-center gap-1.5 mt-1.5">
                        <Layers className="w-3 h-3 text-slate-400" />
-                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Trocar Alvo:</span>
-                       <div className="flex gap-1 overflow-x-auto max-w-[400px] scrollbar-none py-0.5">
-                          {allLinks.map(link => (
-                             <button
-                                key={link.id}
-                                onClick={() => handleSwitchLink(link.id)}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all flex items-center gap-1 shrink-0 ${activeLinkId === link.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-500'}`}
-                             >
-                                {link.table.split('.').pop()}
-                                {linkDataMap[link.id]?.loading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                                {linkDataMap[link.id]?.data.length > 0 && activeLinkId !== link.id && <Check className="w-2.5 h-2.5 text-emerald-500" />}
-                             </button>
-                          ))}
+                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Vínculos:</span>
+                       <div className="flex gap-1 overflow-x-auto max-w-[400px] scrollbar-none py-0.5 px-1 bg-slate-200/50 dark:bg-slate-800 rounded-lg">
+                          {allLinks.map(link => {
+                             const cache = linkDataMap[link.id];
+                             const hasData = cache?.data && cache.data.length > 0;
+                             const isCurrent = activeLinkId === link.id;
+                             
+                             return (
+                                <button
+                                   key={link.id}
+                                   onClick={() => handleSwitchLink(link.id)}
+                                   className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1.5 shrink-0 shadow-sm
+                                      ${isCurrent 
+                                        ? 'bg-indigo-600 text-white' 
+                                        : 'bg-white dark:bg-slate-700 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 dark:border-slate-600'
+                                      }
+                                   `}
+                                >
+                                   {link.table.split('.').pop()}
+                                   {cache?.loading && <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-400" />}
+                                   {hasData && !isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                                </button>
+                             );
+                          })}
                        </div>
                     </div>
                  ) : (
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold">Detalhamento: {activeLink?.table}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold">Origem: {activeLink?.table}</p>
                  )}
               </div>
            </div>
 
            <div className="flex items-center gap-2 w-full sm:w-auto">
-              {['cards', 'table'].includes(viewMode) && !loading && (
+              {!loading && (
                 <>
                   <div className="relative flex-1 sm:w-56">
                     <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
@@ -256,26 +231,12 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                     />
                   </div>
                   <div className="flex bg-slate-200 dark:bg-slate-700 p-1 rounded-lg shrink-0">
-                    <button 
-                        onClick={() => setViewMode('table')} 
-                        className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-300' : 'text-slate-500 opacity-50'}`}
-                        title="Modo Lista"
-                    >
-                        <Table2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                        onClick={() => setViewMode('cards')} 
-                        className={`p-1.5 rounded-md transition-all ${viewMode === 'cards' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-300' : 'text-slate-500 opacity-50'}`}
-                        title="Modo Cards"
-                    >
-                        <LayoutGrid className="w-4 h-4" />
-                    </button>
+                    <button onClick={() => setViewMode('table')} className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-300' : 'text-slate-500 opacity-50'}`} title="Tabela"><Table2 className="w-4 h-4" /></button>
+                    <button onClick={() => setViewMode('cards')} className={`p-1.5 rounded-md transition-all ${viewMode === 'cards' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-300' : 'text-slate-500 opacity-50'}`} title="Cards"><LayoutGrid className="w-4 h-4" /></button>
                   </div>
                 </>
               )}
-              <button onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-500 transition-colors">
-                 <X className="w-5 h-5" />
-              </button>
+              <button onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-500 transition-colors"><X className="w-5 h-5" /></button>
            </div>
         </div>
 
@@ -284,16 +245,25 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
            {loading ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 bg-white/50 dark:bg-slate-900/50 z-20">
                  <Loader2 className="w-10 h-10 animate-spin mb-4 text-indigo-500" />
-                 <span className="text-sm font-medium">Buscando em {activeLink?.table}...</span>
+                 <span className="text-sm font-medium">Buscando detalhes em {activeLink?.table}...</span>
               </div>
            ) : error ? (
               <div className="p-12 text-center text-red-500 flex flex-col items-center">
                  <AlertCircle className="w-12 h-12 mb-4 opacity-50" />
                  <p className="font-bold text-lg">Registro não localizado</p>
                  <p className="text-sm opacity-80 mt-2 max-w-md">{error}</p>
-                 <div className="mt-8 flex flex-col items-center gap-2">
-                    <p className="text-xs text-slate-500 uppercase font-bold tracking-widest">Tente outro vínculo disponível no cabeçalho</p>
-                 </div>
+                 {allLinks.length > 1 && (
+                    <div className="mt-8 p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                       <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mb-3">Tente outros vínculos para o mesmo valor:</p>
+                       <div className="flex gap-2 flex-wrap justify-center">
+                          {allLinks.filter(l => l.id !== activeLinkId).map(link => (
+                             <button key={link.id} onClick={() => handleSwitchLink(link.id)} className="px-3 py-1.5 bg-slate-100 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition-all border border-slate-200 dark:border-slate-600">
+                                {link.table.split('.').pop()}
+                             </button>
+                          ))}
+                       </div>
+                    </div>
+                 )}
               </div>
            ) : (
               <div className="p-4 sm:p-6 space-y-6">
@@ -305,7 +275,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                                 {columns.map(col => <th key={col} className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">{col}</th>)}
                              </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-xs">
                              {filteredData.map((row, i) => (
                                 <tr key={i} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group">
                                    {columns.map(col => {
@@ -317,16 +287,13 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                                       const isLong = valStr.length > 50;
 
                                       return (
-                                        <td key={col} className={`px-4 py-3 text-xs font-mono border-b border-transparent group-hover:border-slate-100 dark:group-hover:border-slate-800 ${isPkMatch ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/20' : 'text-slate-600 dark:text-slate-400'}`}>
+                                        <td key={col} className={`px-4 py-3 border-b border-transparent group-hover:border-slate-100 dark:group-hover:border-slate-800 ${isPkMatch ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/20' : 'text-slate-600 dark:text-slate-400'}`}>
                                            <div className="flex items-start gap-2 max-w-[300px]">
                                               <span className={isExpanded ? 'whitespace-pre-wrap break-all' : 'truncate'}>
                                                  {val === null ? <span className="text-slate-300 italic opacity-50">null</span> : valStr}
                                               </span>
                                               {isLong && (
-                                                 <button 
-                                                    onClick={() => toggleExpandCell(cellKey)}
-                                                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-indigo-500 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                 >
+                                                 <button onClick={() => toggleExpandCell(cellKey)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-indigo-500 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
                                                  </button>
                                               )}
@@ -345,7 +312,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                           <div key={rowIndex} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                              <div className="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                   <Database className="w-3 h-3" /> Detalhes em {activeLink?.table}
+                                   <Database className="w-3 h-3" /> Destino: {activeLink?.table}
                                 </span>
                                 <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-800">{columns.length} colunas</span>
                              </div>
@@ -370,11 +337,7 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
                                             </div>
                                             <div className="flex shrink-0">
                                                {isLong && (
-                                                  <button 
-                                                     onClick={() => toggleExpandCell(cellKey)}
-                                                     className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all"
-                                                     title={isExpanded ? "Recolher campo" : "Ver valor completo"}
-                                                  >
+                                                  <button onClick={() => toggleExpandCell(cellKey)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all">
                                                      {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
                                                   </button>
                                                )}
@@ -398,10 +361,10 @@ const DrillDownModal: React.FC<DrillDownModalProps> = ({ targetTable, filterColu
         {/* Footer */}
         <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
            <div className="flex items-center gap-2 text-xs text-slate-400">
-              {settings?.backgroundLoadLinks ? <DatabaseZap className="w-3.5 h-3.5 text-indigo-500" /> : <Save className="w-3.5 h-3.5" />}
-              <span>{settings?.backgroundLoadLinks ? 'Background links prontos' : `Lendo: ${activeLink?.table}`}</span>
+              {settings?.backgroundLoadLinks ? <DatabaseZap className="w-3.5 h-3.5 text-indigo-500" /> : <Target className="w-3.5 h-3.5 text-slate-300" />}
+              <span>{settings?.backgroundLoadLinks ? 'Vínculos pré-carregados (Thread-safe)' : `Ativo: ${activeLink?.table}`}</span>
            </div>
-           <button onClick={onClose} className="px-8 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg transition-all">Fechar Detalhes</button>
+           <button onClick={onClose} className="px-8 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg transition-all">Fechar</button>
         </div>
       </div>
     </div>

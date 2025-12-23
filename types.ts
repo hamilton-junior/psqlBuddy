@@ -148,7 +148,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enableAiTips: true,
   beginnerMode: true, 
   advancedMode: false, 
-  backgroundLoadLinks: false,
+  backgroundLoadLinks: true,
   aiGenerationTimeout: 3000,
   defaultDbHost: 'localhost',
   defaultDbPort: '5432',
