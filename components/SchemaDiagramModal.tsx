@@ -1,12 +1,16 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
-import { DatabaseSchema, Table } from '../types';
-import { X, ZoomIn, ZoomOut, Maximize, Loader2, Search, Key, Link, Target, CornerDownRight, Copy, Eye, Download, Map as MapIcon, Palette, FileCode, Upload, Save, Trash2, Tag, Filter, Eraser, Route, PlayCircle, StopCircle, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { DatabaseSchema, Table, VirtualRelation, DbCredentials } from '../types';
+// Fixed: Added missing CheckCircle2 import from lucide-react.
+import { X, ZoomIn, ZoomOut, Maximize, Loader2, Search, Key, Link, Target, CornerDownRight, Copy, Eye, Download, Map as MapIcon, Palette, FileCode, Upload, Save, Trash2, Tag, Filter, Eraser, Route, PlayCircle, StopCircle, ArrowRight, ChevronDown, ChevronUp, Sparkles, CheckCircle2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import IntersectionValidatorModal from './IntersectionValidatorModal';
 
 interface SchemaDiagramModalProps {
   schema: DatabaseSchema;
   onClose: () => void;
+  onAddVirtualRelation?: (rel: VirtualRelation) => void;
+  credentials?: DbCredentials | null;
 }
 
 interface NodePosition {
@@ -139,7 +143,7 @@ const DiagramNode = memo(({
   table, pos, lodLevel, isHovered, opacity, isSelected, ringClass, 
   tableColors, columnColors, hasTags, 
   onMouseDown, onMouseEnter, onMouseLeave, onContextMenu, onDoubleClick, onClearTableColor,
-  onColumnEnter, onColumnLeave, onColumnClick, selectedColumn
+  onColumnEnter, onColumnLeave, onColumnClick, selectedColumn, secondSelectedColumn
 }: any) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const colorId = tableColors[table.name] || 'default';
@@ -199,19 +203,21 @@ const DiagramNode = memo(({
                         {visibleColumns.map((col: any) => {
                            const colKey = `${table.name}.${col.name}`;
                            const isSelectedCol = selectedColumn?.table === table.name && selectedColumn?.col === col.name;
+                           const isSecondSelectedCol = secondSelectedColumn?.table === table.name && secondSelectedColumn?.col === col.name;
                            const colColorId = columnColors[colKey];
                            const colStyle = colColorId ? TABLE_COLORS.find(c => c.id === colColorId) : null;
                            const isKey = col.isPrimaryKey || col.isForeignKey;
                            
                            return (
-                             <div key={col.name} className={`px-4 flex items-center justify-between text-xs h-[30px] transition-colors border-b border-transparent hover:border-slate-100 dark:hover:border-slate-700 cursor-pointer
-                                   ${isSelectedCol ? 'bg-indigo-100 dark:bg-indigo-900/40 ring-1 ring-inset ring-indigo-500 font-bold' : ''}
+                             <div key={col.name} className={`px-4 flex items-center justify-between text-xs h-[30px] transition-all border-b border-transparent hover:border-slate-100 dark:hover:border-slate-700 cursor-pointer
+                                   ${isSelectedCol ? 'bg-indigo-100 dark:bg-indigo-900/40 ring-1 ring-inset ring-indigo-500 font-bold shadow-inner' : ''}
+                                   ${isSecondSelectedCol ? 'bg-emerald-100 dark:bg-emerald-900/40 ring-1 ring-inset ring-emerald-500 font-bold shadow-inner' : ''}
                                    ${colStyle ? colStyle.bg : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}
-                                   ${isKey ? 'bg-slate-50/50 dark:bg-slate-800/80' : ''}
+                                   ${isKey && !isSelectedCol && !isSecondSelectedCol ? 'bg-slate-50/50 dark:bg-slate-800/80' : ''}
                                 `}
                                 onContextMenu={(e) => onContextMenu(e, table.name, col.name)}
                                 onMouseEnter={() => onColumnEnter(table.name, col.name, col.references)}
-                                onMouseLeave={onColumnLeave}
+                                onColumnLeave={handleColumnLeave}
                                 onClick={(e) => { e.stopPropagation(); onColumnClick(table.name, col.name, col.references); }}
                              >
                                 <div className="flex items-center gap-2 overflow-hidden text-slate-700 dark:text-slate-300">
@@ -222,6 +228,7 @@ const DiagramNode = memo(({
                                    <span className={`truncate font-mono ${isKey ? 'font-semibold' : ''}`} title={col.name}>{col.name}</span>
                                 </div>
                                 <div className="flex items-center gap-1 pl-2">
+                                   {(isSelectedCol || isSecondSelectedCol) && <CheckCircle2 className={`w-3 h-3 ${isSelectedCol ? 'text-indigo-500' : 'text-emerald-500'}`} />}
                                    <span className="text-slate-400 dark:text-slate-500 text-[10px] truncate max-w-[60px] text-right" title={col.type}>{col.type.split('(')[0].toLowerCase()}</span>
                                 </div>
                              </div>
@@ -243,7 +250,7 @@ const DiagramNode = memo(({
   );
 });
 
-const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose }) => {
+const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose, onAddVirtualRelation, credentials }) => {
   const [positions, setPositions] = useState<Record<string, NodePosition>>({});
   const [scale, setScale] = useState(0.8);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -263,6 +270,9 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [hoveredColumn, setHoveredColumn] = useState<HoveredColumnState | null>(null);
   const [selectedColumn, setSelectedColumn] = useState<HoveredColumnState | null>(null);
+  const [secondSelectedColumn, setSecondSelectedColumn] = useState<HoveredColumnState | null>(null);
+  const [showValidator, setShowValidator] = useState(false);
+
   const [selectedRelationship, setSelectedRelationship] = useState<SelectedRelationship | null>(null);
   const [tableColors, setTableColors] = useState<Record<string, string>>({});
   const [columnColors, setColumnColors] = useState<Record<string, string>>({}); 
@@ -410,6 +420,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
     if (!tableName) {
        setSelectedRelationship(null);
        setSelectedColumn(null); 
+       setSecondSelectedColumn(null);
     }
     lastMousePos.current = { x: e.clientX, y: e.clientY };
     if (tableName) setDraggedNode(tableName);
@@ -455,12 +466,21 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
   }, []);
 
   const handleColumnClick = useCallback((table: string, col: string, ref?: string) => {
+     const target = { table, col, isPk: false, ref };
      if (selectedColumn?.table === table && selectedColumn?.col === col) {
         setSelectedColumn(null);
+     } else if (secondSelectedColumn?.table === table && secondSelectedColumn?.col === col) {
+        setSecondSelectedColumn(null);
+     } else if (!selectedColumn) {
+        setSelectedColumn(target);
+     } else if (!secondSelectedColumn) {
+        setSecondSelectedColumn(target);
      } else {
-        setSelectedColumn({ table, col, isPk: false, ref });
+        // Shift old ones
+        setSelectedColumn(secondSelectedColumn);
+        setSecondSelectedColumn(target);
      }
-  }, [selectedColumn]);
+  }, [selectedColumn, secondSelectedColumn]);
 
   const lodLevel = useMemo(() => {
     if (isInteracting) return scale < 0.6 ? 'low' : 'medium';
@@ -597,15 +617,71 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      } catch (e) { alert("Erro ao exportar imagem."); }
   };
 
+  const handleAddRelation = (rel: VirtualRelation) => {
+     if (onAddVirtualRelation) onAddVirtualRelation(rel);
+     setSelectedColumn(null);
+     setSecondSelectedColumn(null);
+  };
+
   return (
     <div className="fixed inset-0 z-[70] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-slate-100 dark:bg-slate-900 w-full h-full rounded-xl shadow-2xl overflow-hidden relative border border-slate-700 flex flex-col">
+        
+        {showValidator && selectedColumn && secondSelectedColumn && (
+           <IntersectionValidatorModal 
+              tableA={selectedColumn.table}
+              columnA={selectedColumn.col}
+              tableB={secondSelectedColumn.table}
+              columnB={secondSelectedColumn.col}
+              credentials={credentials || null}
+              onClose={() => setShowValidator(false)}
+              onCreateRelation={handleAddRelation}
+           />
+        )}
+
         {!isLayoutReady && (
            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/50 text-white backdrop-blur-[2px]">
               <Loader2 className="w-10 h-10 animate-spin mb-2 text-indigo-500" />
               <p className="text-sm font-bold">Processando {schema.tables.length} tabelas...</p>
            </div>
         )}
+
+        {/* Validator Floating Action Bar */}
+        {(selectedColumn || secondSelectedColumn) && !showValidator && (
+           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-top-4 duration-300">
+              <div className="flex items-center gap-2">
+                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${selectedColumn ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>1</div>
+                 <div className="min-w-[80px]">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Coluna A</div>
+                    <div className="text-xs font-mono truncate max-w-[100px]">{selectedColumn?.col || '---'}</div>
+                 </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-300" />
+              <div className="flex items-center gap-2">
+                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${secondSelectedColumn ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'}`}>2</div>
+                 <div className="min-w-[80px]">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Coluna B</div>
+                    <div className="text-xs font-mono truncate max-w-[100px]">{secondSelectedColumn?.col || '---'}</div>
+                 </div>
+              </div>
+              
+              {selectedColumn && secondSelectedColumn ? (
+                 <button 
+                    onClick={() => setShowValidator(true)}
+                    className="ml-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition-all"
+                 >
+                    <Sparkles className="w-3.5 h-3.5" /> Validar Interseção
+                 </button>
+              ) : (
+                 <span className="ml-2 text-[10px] text-slate-400 italic">Selecione outra coluna para validar</span>
+              )}
+              
+              <button onClick={() => { setSelectedColumn(null); setSecondSelectedColumn(null); }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400">
+                 <X className="w-4 h-4" />
+              </button>
+           </div>
+        )}
+
         <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-none minimap-ignore">
            <div className="bg-white dark:bg-slate-800 p-1.5 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex gap-1 pointer-events-auto">
               <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><ZoomIn className="w-5 h-5" /></button>
@@ -640,7 +716,30 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
                {connections}
              </svg>
              {visibleTables.map(table => (
-                <DiagramNode key={table.name} table={table} pos={positions[table.name]} lodLevel={lodLevel} isHovered={hoveredNode === table.name} isSelected={selectedRelationship?.source === table.name || selectedRelationship?.target === table.name} opacity={pathMode && foundPath.length > 0 && !foundPath.includes(table.name) ? 0.1 : 1} ringClass={pathMode && foundPath.includes(table.name) ? 'ring-2 ring-cyan-400' : ''} tableColors={tableColors} columnColors={columnColors} hasTags={!!tableColors[table.name]} onMouseDown={handleMouseDown} onMouseEnter={(name: string) => !isInteracting && setHoveredNode(name)} onMouseLeave={() => setHoveredNode(null)} onContextMenu={(e: any, t: string, c?: string) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, tableName: t, columnName: c }); }} onDoubleClick={(e: any, t: string) => { e.stopPropagation(); setViewingDDL(schema.tables.find(tbl => tbl.name === t) || null); }} onClearTableColor={(t: string) => { const nc = {...tableColors}; delete nc[t]; setTableColors(nc); }} onColumnEnter={handleColumnEnter} onColumnLeave={handleColumnLeave} onColumnClick={handleColumnClick} selectedColumn={selectedColumn} />
+                <DiagramNode 
+                   key={table.name} 
+                   table={table} 
+                   pos={positions[table.name]} 
+                   lodLevel={lodLevel} 
+                   isHovered={hoveredNode === table.name} 
+                   isSelected={selectedRelationship?.source === table.name || selectedRelationship?.target === table.name} 
+                   opacity={pathMode && foundPath.length > 0 && !foundPath.includes(table.name) ? 0.1 : 1} 
+                   ringClass={pathMode && foundPath.includes(table.name) ? 'ring-2 ring-cyan-400' : ''} 
+                   tableColors={tableColors} 
+                   columnColors={columnColors} 
+                   hasTags={!!tableColors[table.name]} 
+                   onMouseDown={handleMouseDown} 
+                   onMouseEnter={(name: string) => !isInteracting && setHoveredNode(name)} 
+                   onMouseLeave={() => setHoveredNode(null)} 
+                   onContextMenu={(e: any, t: string, c?: string) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, tableName: t, columnName: c }); }} 
+                   onDoubleClick={(e: any, t: string) => { e.stopPropagation(); setViewingDDL(schema.tables.find(tbl => tbl.name === t) || null); }} 
+                   onClearTableColor={(t: string) => { const nc = {...tableColors}; delete nc[t]; setTableColors(nc); }} 
+                   onColumnEnter={handleColumnEnter} 
+                   onColumnLeave={handleColumnLeave} 
+                   onColumnClick={handleColumnClick} 
+                   selectedColumn={selectedColumn} 
+                   secondSelectedColumn={secondSelectedColumn}
+                />
              ))}
           </div>
         </div>

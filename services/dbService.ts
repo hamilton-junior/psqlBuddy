@@ -1,8 +1,7 @@
-import { DatabaseSchema, DbCredentials, ExplainNode } from "../types";
+
+import { DatabaseSchema, DbCredentials, ExplainNode, IntersectionResult } from "../types";
 
 const API_URL = 'http://localhost:3000/api';
-
-// ... (Existing Connect/Execute) ...
 
 export const connectToDatabase = async (creds: DbCredentials): Promise<DatabaseSchema> => {
   try {
@@ -48,10 +47,48 @@ export const executeQueryReal = async (creds: DbCredentials, sql: string): Promi
   }
 };
 
-// NEW: Feature #2 Explain Plan
+export const fetchIntersectionDetail = async (
+  creds: DbCredentials, 
+  tableA: string, 
+  colA: string, 
+  tableB: string, 
+  colB: string
+): Promise<IntersectionResult> => {
+   if (creds.host === 'simulated') {
+      await new Promise(r => setTimeout(r, 800));
+      return {
+         count: 15,
+         sample: [1, 2, 3, 4, 5],
+         tableA, columnA: colA,
+         tableB, columnB: colB,
+         matchPercentage: 75
+      };
+   }
+
+   const countSql = `SELECT COUNT(DISTINCT A."${colA}") as count 
+                     FROM ${tableA} A 
+                     INNER JOIN ${tableB} B ON A."${colA}"::text = B."${colB}"::text`;
+   
+   const sampleSql = `SELECT DISTINCT A."${colA}" as val 
+                      FROM ${tableA} A 
+                      INNER JOIN ${tableB} B ON A."${colA}"::text = B."${colB}"::text 
+                      LIMIT 20`;
+
+   const [countRes, sampleRes] = await Promise.all([
+      executeQueryReal(creds, countSql),
+      executeQueryReal(creds, sampleSql)
+   ]);
+
+   return {
+      count: parseInt(countRes[0].count),
+      sample: sampleRes.map(r => r.val),
+      tableA, columnA: colA,
+      tableB, columnB: colB
+   };
+};
+
 export const explainQueryReal = async (creds: DbCredentials, sql: string): Promise<ExplainNode> => {
    if (creds.host === 'simulated') {
-      // Return a Mock Plan for offline mode
       await new Promise(r => setTimeout(r, 600));
       return {
          type: "Result",
@@ -77,9 +114,6 @@ export const explainQueryReal = async (creds: DbCredentials, sql: string): Promi
       
       if (result && result.length > 0) {
          const planRow = result[0];
-         
-         // Robustly find the plan column (case-insensitive search for 'QUERY PLAN' or 'JSON')
-         // Postgres usually returns "QUERY PLAN", but node-postgres might lower-case it depending on config
          const key = Object.keys(planRow).find(k => 
             k.toUpperCase() === 'QUERY PLAN' || 
             k.toUpperCase() === 'JSON' || 
@@ -90,7 +124,6 @@ export const explainQueryReal = async (creds: DbCredentials, sql: string): Promi
 
          let planData = planRow[key];
 
-         // If node-postgres didn't parse the JSON column automatically, it comes as a string
          if (typeof planData === 'string') {
             try {
                planData = JSON.parse(planData);
@@ -99,16 +132,12 @@ export const explainQueryReal = async (creds: DbCredentials, sql: string): Promi
             }
          }
 
-         // Postgres Explain JSON structure is usually: [ { "Plan": { ... } } ]
          if (Array.isArray(planData) && planData.length > 0 && planData[0].Plan) {
             return planData[0].Plan as ExplainNode;
          }
-         
-         console.warn("Estrutura de plano desconhecida:", planData);
       }
       throw new Error("Formato de plano inválido retornado pelo banco.");
    } catch (e: any) {
-      console.error("Explain Error:", e);
       throw new Error("Falha ao gerar plano de execução: " + e.message);
    }
 };

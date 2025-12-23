@@ -19,9 +19,9 @@ import SqlCheatSheetModal from './components/SqlCheatSheetModal';
 import VirtualRelationsModal from './components/VirtualRelationsModal';
 import TablePreviewModal from './components/TablePreviewModal';
 import AiPreferenceModal from './components/AiPreferenceModal';
-import LogAnalyzerModal from './components/LogAnalyzerModal'; // New
-import TemplateModal from './components/TemplateModal'; // New
-import HistoryModal from './components/HistoryModal'; // New
+import LogAnalyzerModal from './components/LogAnalyzerModal'; 
+import TemplateModal from './components/TemplateModal'; 
+import HistoryModal from './components/HistoryModal'; 
 import TourGuide, { TourStep } from './components/TourGuide';
 import { generateSqlFromBuilderState } from './services/geminiService';
 import { generateLocalSql } from './services/localSqlService';
@@ -49,25 +49,21 @@ const INITIAL_BUILDER_STATE: BuilderState = {
 };
 
 const App: React.FC = () => {
-  // Application State
   const [currentStep, setCurrentStep] = useState<AppStep>('connection');
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
   const [credentials, setCredentials] = useState<DbCredentials | null>(null);
   const [simulationData, setSimulationData] = useState<SimulationData>({});
   
-  // Builder State
   const [builderState, setBuilderState] = useState<BuilderState>(INITIAL_BUILDER_STATE);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progressMessage, setProgressMessage] = useState('');
   
-  // Query & Execution State
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [executionResult, setExecutionResult] = useState<any[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [executionDuration, setExecutionDuration] = useState(0);
 
-  // Dashboard & Diff
   const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>(() => {
     try {
       const stored = localStorage.getItem('psql-buddy-dashboard');
@@ -75,7 +71,6 @@ const App: React.FC = () => {
     } catch { return []; }
   });
 
-  // Settings
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
       const stored = localStorage.getItem('psql-buddy-settings');
@@ -83,7 +78,6 @@ const App: React.FC = () => {
     } catch { return DEFAULT_SETTINGS; }
   });
 
-  // UI Toggles & Modals
   const [showSettings, setShowSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCheatSheet, setShowCheatSheet] = useState(false);
@@ -96,10 +90,7 @@ const App: React.FC = () => {
   const [tablePreview, setTablePreview] = useState<{name: string, data: any[], loading: boolean, error: string | null} | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false); 
 
-  // Virtual Relations
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
-
-  // --- Effects ---
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', settings.theme === 'dark');
@@ -109,8 +100,6 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('psql-buddy-dashboard', JSON.stringify(dashboardItems));
   }, [dashboardItems]);
-
-  // --- Handlers ---
 
   const handleSchemaLoaded = (loadedSchema: DatabaseSchema, creds: DbCredentials) => {
     setSchema(loadedSchema);
@@ -250,6 +239,7 @@ const App: React.FC = () => {
      }
   };
 
+  // Fixed: Replaced 'tableB' with the correct parameter name 'tB' in the template string.
   const handleCheckOverlap = async (tA: string, cA: string, tB: string, cB: string): Promise<number> => {
      if (!credentials) return 0;
      if (credentials.host === 'simulated') return 10; 
@@ -289,7 +279,6 @@ const App: React.FC = () => {
      else toast(msg, { icon: <Info className="w-4 h-4 text-blue-500" /> });
   };
 
-  // Run SQL from External Components (Templates, Analyzer)
   const handleRunExternalSql = (sql: string) => {
      setQueryResult({
         sql: sql,
@@ -393,13 +382,17 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Modals */}
       {showSettings && (
          <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} />
       )}
 
       {showDiagram && schema && (
-         <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} />
+         <SchemaDiagramModal 
+            schema={schema} 
+            onClose={() => setShowDiagram(false)} 
+            onAddVirtualRelation={handleAddVirtualRelation}
+            credentials={credentials}
+         />
       )}
 
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
