@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight, AlertTriangle, Undo2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight, AlertTriangle, Undo2, ShieldAlert } from 'lucide-react';
 import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema, Table } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
@@ -136,7 +136,7 @@ const HoverPreviewTooltip: React.FC<{
       {isPersistent && (
          <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Escolher Destino</span>
-            <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-500" /></button>
+            <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-50" /></button>
          </div>
       )}
 
@@ -213,18 +213,12 @@ const ManualMappingPopover: React.FC<{
       list.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
-        
-        // Exato
         if (nameA === term && nameB !== term) return -1;
         if (nameB === term && nameA !== term) return 1;
-        
-        // Começa com
         const startsA = nameA.startsWith(term);
         const startsB = nameB.startsWith(term);
         if (startsA && !startsB) return -1;
         if (!startsA && startsB) return 1;
-        
-        // Contém
         return nameA.localeCompare(nameB);
       });
     } else {
@@ -269,7 +263,6 @@ const ManualMappingPopover: React.FC<{
        </div>
        
        <div className="p-3 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          {/* Lista de Vínculos Atuais */}
           {currentLinks.length > 0 && (
              <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Vínculos Ativos ({currentLinks.length})</label>
@@ -346,7 +339,7 @@ const ManualMappingPopover: React.FC<{
                 <button onClick={() => setIsAdding(false)} className="w-full py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-bold">Cancelar</button>
              </div>
           ) : (
-             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-slate-500 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 text-xs font-bold">
+             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 text-xs font-bold">
                 <Plus className="w-4 h-4" /> Adicionar Outro Vínculo
              </button>
           )}
@@ -787,7 +780,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   const [viewJson, setViewJson] = useState<any | null>(null);
   const [drillDownTarget, setDrillDownTarget] = useState<{table: string, col: string, val: any, allLinks?: ManualLink[]} | null>(null);
   
-  // Pending Edits State (Advanced Mode)
   const [pendingEdits, setPendingEdits] = useState<Record<string, string>>({});
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -850,12 +842,10 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
         const val = row[col];
         let str = val === null ? 'NULL' : String(val);
         let color = "";
-        
         if (val === null) color = red;
         else if (typeof val === 'boolean') color = val ? green : red;
         else if (typeof val === 'number') color = yellow;
         else if (col.toLowerCase().includes('id') || col.toLowerCase() === 'grid') color = cyan;
-        
         return `${color}${str.padEnd(colWidths[i])}${reset}`;
       }).join(" │ ") + " │\n";
     });
@@ -877,15 +867,10 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      setPendingEdits(prev => ({ ...prev, [editKey]: newValue }));
   };
 
-  const handleSaveChanges = async () => {
-    if (!credentials || Object.keys(pendingEdits).length === 0) return;
-    
-    setIsSaving(true);
+  const sqlStatementsPreview = useMemo(() => {
+    if (Object.keys(pendingEdits).length === 0) return "";
     const tableName = mainTableName || "table_name";
-    
-    let sqlStatements = ["BEGIN;"];
-    
-    // Group edits by row to create efficient UPDATE statements
+    let lines = ["BEGIN;"];
     const editsByRow: Record<number, Record<string, string>> = {};
     Object.entries(pendingEdits).forEach(([key, val]) => {
        const [rowIdx] = key.split('-').map(Number);
@@ -897,63 +882,82 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
     for (const [rowIdxStr, cols] of Object.entries(editsByRow)) {
        const rowIdx = Number(rowIdxStr);
        const row = localData[rowIdx];
-       
        let pkCol = 'id';
-       let pkVal = row['id'];
-       if (!pkVal) {
-          if (row['grid']) { pkCol = 'grid'; pkVal = row['grid']; }
-          else if (schema) {
-             const t = schema.tables.find(tbl => tableName.includes(tbl.name));
-             if (t) {
-                const pk = t.columns.find(c => c.isPrimaryKey);
-                if (pk) { pkCol = pk.name; pkVal = row[pkCol]; }
-             }
-          }
+       let pkVal = row['id'] ?? row['grid'];
+       if (!pkVal && schema) {
+          const t = schema.tables.find(tbl => tableName.includes(tbl.name));
+          const pk = t?.columns.find(c => c.isPrimaryKey);
+          if (pk) pkVal = row[pk.name];
        }
-
-       if (pkVal === undefined || pkVal === null) {
-          onShowToast(`Impossível salvar linha ${rowIdx + 1}: Chave primária não encontrada.`, "error");
-          setIsSaving(false);
-          setShowConfirmation(false);
-          return;
-       }
-
-       const setClause = Object.entries(cols).map(([col, val]) => {
-          const safeVal = val === null || val === 'NULL' ? 'NULL' : `'${val.replace(/'/g, "''")}'`;
-          return `"${col}" = ${safeVal}`;
-       }).join(', ');
-
-       sqlStatements.push(`UPDATE ${tableName} SET ${setClause} WHERE "${pkCol}" = ${pkVal};`);
+       if (pkVal === undefined) continue;
+       const setClause = Object.entries(cols).map(([col, val]) => `"${col}" = '${val.replace(/'/g, "''")}'`).join(', ');
+       lines.push(`UPDATE ${tableName} SET ${setClause} WHERE "${pkCol}" = ${pkVal};`);
     }
+    lines.push("COMMIT;");
+    return lines.join('\n');
+  }, [pendingEdits, localData, mainTableName, schema]);
 
-    sqlStatements.push("COMMIT;");
-    const fullSql = sqlStatements.join('\n');
-
+  const handleSaveChanges = async () => {
+    if (!credentials || !sqlStatementsPreview) return;
+    setIsSaving(true);
     try {
-       await executeQueryReal(credentials, fullSql);
-       
-       // Update local data
+       await executeQueryReal(credentials, sqlStatementsPreview);
        const newData = [...localData];
        Object.entries(pendingEdits).forEach(([key, val]) => {
           const [rowIdx] = key.split('-').map(Number);
           const col = key.split('-').slice(1).join('-');
           newData[rowIdx] = { ...newData[rowIdx], [col]: val };
        });
-       
        setLocalData(newData);
        setPendingEdits({});
-       onShowToast("Alterações salvas com sucesso (Transação concluída).", "success");
+       onShowToast("Transação concluída e alterações salvas.", "success");
     } catch (e: any) {
-       onShowToast(`Falha ao salvar: ${e.message}`, "error");
+       onShowToast(`Erro ao salvar: ${e.message}`, "error");
     } finally {
        setIsSaving(false);
        setShowConfirmation(false);
     }
   };
 
-  const handleChartDrillDown = (col: string, val: any) => { if (mainTableName) setDrillDownTarget({ table: mainTableName, col, val }); };
-  const handleExportInsert = () => { if (filteredData.length === 0) return; const tableName = "exported_data"; const cols = columns.join(', '); const statements = filteredData.map(row => { const values = columns.map(col => { const val = row[col]; if (val === null) return 'NULL'; if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`; return val; }).join(', '); return `INSERT INTO ${tableName} (${cols}) VALUES (${values});`; }).join('\n'); navigator.clipboard.writeText(statements); setShowExportMenu(false); onShowToast("SQL INSERTs copiados!", "success"); };
-  const handleExplain = async () => { setActiveTab('explain'); setExplainError(null); if (!explainPlan && credentials) { setLoadingExplain(true); try { const plan = await explainQueryReal(credentials, sql); setExplainPlan(plan); } catch (e: any) { setExplainError(e.message || "Erro ao analisar performance."); } finally { setLoadingExplain(false); } } };
+  const handleChartDrillDown = (col: string, val: any) => { 
+    if (mainTableName) setDrillDownTarget({ table: mainTableName, col, val }); 
+  }; 
+  
+  // Fix: Added explicit typing (row: any) and string conversion for non-string values to prevent TypeScript 'unknown' errors during export
+  const handleExportInsert = () => { 
+    if (filteredData.length === 0) return; 
+    const tableName = "exported_data"; 
+    const cols = columns.join(', '); 
+    const statements = filteredData.map((row: any) => { 
+      const values = columns.map(col => { 
+        const val = row[col]; 
+        if (val === null) return 'NULL'; 
+        if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`; 
+        return String(val); 
+      }).join(', '); 
+      return `INSERT INTO ${tableName} (${cols}) VALUES (${values});`; 
+    }).join('\n'); 
+    navigator.clipboard.writeText(statements); 
+    setShowExportMenu(false); 
+    onShowToast("SQL INSERTs copiados!", "success"); 
+  }; 
+  
+  const handleExplain = async () => { 
+    setActiveTab('explain'); 
+    setExplainError(null); 
+    if (!explainPlan && credentials) { 
+      setLoadingExplain(true); 
+      try { 
+        const plan = await explainQueryReal(credentials, sql); 
+        setExplainPlan(plan); 
+      } catch (e: any) { 
+        setExplainError(e.message || "Erro ao analisar performance."); 
+      } finally { 
+        setLoadingExplain(false); 
+      } 
+    } 
+  }; 
+  
   const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
 
   const hasPendingEdits = Object.keys(pendingEdits).length > 0;
@@ -976,34 +980,28 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
       )}
       {showCodeModal && <CodeSnippetModal sql={sql} onClose={() => setShowCodeModal(false)} />}
       
-      {/* Confirmation Modal */}
       {showConfirmation && (
          <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md overflow-hidden animate-in zoom-in-95">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg overflow-hidden animate-in zoom-in-95">
                <div className="p-6 text-center">
-                  <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/30 text-orange-600 mx-auto rounded-full flex items-center justify-center mb-4">
-                     <AlertTriangle className="w-10 h-10" />
+                  <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 mx-auto rounded-full flex items-center justify-center mb-4">
+                     <ShieldAlert className="w-10 h-10" />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Confirmar Transação?</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                     Você possui <strong>{Object.keys(pendingEdits).length}</strong> alteração(ões) pendente(s). <br/>
-                     O comando <code>COMMIT</code> será executado após as atualizações. <br/>
-                     <strong>Tem certeza absoluta?</strong>
+                  <h3 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2 uppercase tracking-tight">Certeza Absoluta?</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 px-4">
+                     Você está prestes a gravar <strong>{Object.keys(pendingEdits).length}</strong> alteração(ões) diretamente no banco de dados. <br/>
+                     O script SQL abaixo será executado dentro de um bloco de transação.
                   </p>
-                  <div className="flex gap-3">
-                     <button 
-                        onClick={() => setShowConfirmation(false)} 
-                        className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold transition-all"
-                     >
-                        Cancelar
-                     </button>
-                     <button 
-                        onClick={handleSaveChanges} 
-                        disabled={isSaving}
-                        className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-2"
-                     >
-                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                        Sim, Gravar no Banco
+                  <div className="bg-slate-900 rounded-xl p-3 mb-6 text-left border border-slate-700 shadow-inner">
+                     <p className="text-[9px] text-slate-500 font-mono mb-2 uppercase tracking-widest border-b border-slate-800 pb-1">Script para Execução:</p>
+                     <pre className="text-[10px] text-emerald-500 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto custom-scrollbar leading-tight">
+                        {sqlStatementsPreview}
+                     </pre>
+                  </div>
+                  <div className="flex gap-3 px-2">
+                     <button onClick={() => setShowConfirmation(false)} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold transition-all">Cancelar</button>
+                     <button onClick={handleSaveChanges} disabled={isSaving} className="flex-[2] px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-lg shadow-red-200 dark:shadow-none transition-all flex items-center justify-center gap-2">
+                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Sim, Confirmar COMMIT
                      </button>
                   </div>
                </div>
@@ -1030,30 +1028,12 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
         <div className="flex items-center gap-2">
            {hasPendingEdits && (
               <div className="flex items-center gap-2 animate-in slide-in-from-right-2">
-                 <button 
-                    onClick={() => setPendingEdits({})} 
-                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-500 hover:bg-slate-200 transition-all"
-                 >
-                    <Undo2 className="w-4 h-4" /> Descartar
-                 </button>
-                 <button 
-                    onClick={() => setShowConfirmation(true)}
-                    className="flex items-center gap-2 px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-orange-200 dark:shadow-none transition-all"
-                 >
-                    <Save className="w-4 h-4" /> Salvar Alterações
-                 </button>
+                 <button onClick={() => setPendingEdits({})} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-500 hover:bg-slate-200 transition-all"><Undo2 className="w-4 h-4" /> Descartar</button>
+                 <button onClick={() => setShowConfirmation(true)} className="flex items-center gap-2 px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-orange-200 dark:shadow-none transition-all"><Save className="w-4 h-4" /> Gravar Alterações</button>
               </div>
            )}
 
            {activeTab === 'table' && !hasPendingEdits && (<div className="flex items-center gap-2"><SmartFilterBar columns={columns} filters={filters} onChange={setFilters} onClear={() => setFilters([])} />{filters.length === 0 && (<div className="relative group"><Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" /><input type="text" placeholder="Busca rápida..." value={localSearch} onChange={(e) => setLocalSearch(e.target.value)} className="pl-8 pr-4 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-48" /></div>)}</div>)}
-           {activeTab === 'terminal' && (
-              <button 
-                onClick={() => { navigator.clipboard.writeText(ansiTableString.replace(/\x1b\[\d+m/g, '')); onShowToast("Tabela (sem cores) copiada!", "success"); }}
-                className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors text-slate-700 dark:text-slate-300"
-              >
-                <Copy className="w-4 h-4" /> Copiar Texto
-              </button>
-           )}
            <div className="relative">
               <button onClick={() => setShowExportMenu(!showExportMenu)} className={`flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors text-slate-700 dark:text-slate-300 ${showExportMenu ? 'ring-2 ring-indigo-500' : ''}`}><Download className="w-4 h-4" /> Exportar</button>
               {showExportMenu && (<div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-[90] overflow-hidden animate-in fade-in zoom-in-95" onClick={() => setShowExportMenu(false)}><div className="p-2 border-b border-slate-100 dark:border-slate-700"><button onClick={() => { setShowCodeModal(true); setShowExportMenu(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-indigo-600 font-medium"><FileCode className="w-3.5 h-3.5" /> Exportar Código</button><button onClick={handleExportInsert} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><Database className="w-3.5 h-3.5" /> Copy as SQL INSERT</button></div><div className="p-2"><button onClick={() => { navigator.clipboard.writeText(JSON.stringify(filteredData)); onShowToast("JSON copiado!", "success"); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><FileJson className="w-3.5 h-3.5" /> Copy JSON Raw</button></div></div>)}

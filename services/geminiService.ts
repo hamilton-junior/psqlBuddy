@@ -8,13 +8,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 // Helper to clean Markdown code blocks from JSON response
 const cleanJsonString = (str: string): string => {
   if (!str) return "{}";
-  // Remove ```json ... ``` or just ``` ... ```
   return str.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
 };
 
 const formatSchemaForPrompt = (schema: DatabaseSchema): string => {
-  // Use a more structured JSON-like format for the prompt to reduce ambiguity
-  // Include schema explicitly!
   const simplifiedStructure = schema.tables.map(t => ({
     tableName: t.name,
     schema: t.schema || 'public',
@@ -29,9 +26,6 @@ const formatSchemaForPrompt = (schema: DatabaseSchema): string => {
   return JSON.stringify(simplifiedStructure, null, 2);
 };
 
-/**
- * Converts a natural language user request into a structured BuilderState object.
- */
 export const generateBuilderStateFromPrompt = async (
   schema: DatabaseSchema,
   userPrompt: string
@@ -50,12 +44,12 @@ export const generateBuilderStateFromPrompt = async (
 
     REGRAS:
     1. Use APENAS nomes de tabelas e colunas que existem no schema.
-    2. Para 'selectedTables', use o formato "schema.tabela" (ex: "public.users").
+    2. Para 'selectedTables', use o formato "schema.tabela".
     3. Para 'selectedColumns', use o formato "schema.tabela.coluna".
     4. Para 'aggregations', retorne uma lista com a coluna e a função: COUNT, SUM, AVG, MIN, MAX ou NONE.
-    5. Infira JOINS se múltiplas tabelas forem necessárias. Tente adivinhar as colunas de ligação (fk/pk) pelos nomes.
-    6. Infira FILTROS se o usuário pedir (ex: "vendas acima de 100" -> operator: ">", value: "100").
-    7. Se o usuário pedir agrupamento (ex: "por país"), adicione ao 'groupBy'.
+    5. Infira JOINS se múltiplas tabelas forem necessárias.
+    6. Infira FILTROS se o usuário pedir. IMPORTANTE: No PostgreSQL, operadores LIKE/ILIKE exigem valores entre aspas simples.
+    7. Se o usuário pedir agrupamento, adicione ao 'groupBy'.
 
     Retorne APENAS JSON.
   `;
@@ -63,7 +57,6 @@ export const generateBuilderStateFromPrompt = async (
   const prompt = `Solicitação do usuário: "${userPrompt}"`;
 
   try {
-    // Using gemini-3-pro-preview for complex reasoning task (NL to JSON transformation)
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
@@ -119,8 +112,6 @@ export const generateBuilderStateFromPrompt = async (
 
     if (response.text) {
       const rawData = JSON.parse(cleanJsonString(response.text));
-      
-      // Post-process to ensure IDs and types match Typescript interfaces
       const processedState: Partial<BuilderState> = {
         selectedTables: rawData.selectedTables || [],
         selectedColumns: rawData.selectedColumns || [],
@@ -148,7 +139,6 @@ export const generateBuilderStateFromPrompt = async (
         })),
         orderBy: []
       };
-
       return processedState;
     }
     throw new Error("No response from AI");
@@ -171,11 +161,10 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
     Atue como um DBA PostgreSQL.
     ${schemaContext}
     Consulta SQL: "${sql}"
-    Retorne JSON com validação de colunas e sintaxe.
+    Retorne JSON com validação de colunas e sintaxe. IMPORTANTE: Operadores LIKE/ILIKE em colunas BIGINT/INT exigem cast da coluna para ::text.
   `;
 
   try {
-    // Using gemini-3-flash-preview for standard validation task
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
@@ -206,81 +195,45 @@ export const analyzeQueryPerformance = async (schema: DatabaseSchema, sql: strin
      Schema: ${schemaContext}
      Retorne JSON com rating (0-100), explicação, sugestões de índices e SQL otimizado.
    `;
-
-   try {
-     // Using gemini-3-pro-preview for deep analysis task
-     const response = await ai.models.generateContent({
-       model: 'gemini-3-pro-preview',
-       contents: prompt,
-       config: { responseMimeType: "application/json" }
-     });
-     return JSON.parse(cleanJsonString(response.text || '{}')) as OptimizationAnalysis;
-   } catch (e) {
-      throw e;
-   }
+   const response = await ai.models.generateContent({
+     model: 'gemini-3-pro-preview',
+     contents: prompt,
+     config: { responseMimeType: "application/json" }
+   });
+   return JSON.parse(cleanJsonString(response.text || '{}')) as OptimizationAnalysis;
 };
 
 export const analyzeLog = async (schema: DatabaseSchema, logText: string): Promise<{ sql: string, explanation: string }> => {
    const schemaContext = formatSchemaForPrompt(schema);
    const prompt = `
      Você é um Especialista em Suporte Técnico N3.
-     
-     Analise este LOG DE ERRO ou STACK TRACE e gere uma QUERY SQL INVESTIGATIVA para ajudar a encontrar a causa raiz (ex: dados inconsistentes, duplicados, fk faltante).
-     
-     SCHEMA:
-     ${schemaContext}
-     
-     LOG DO ERRO:
-     "${logText}"
-     
-     TAREFA:
-     1. Entenda o erro (ex: "duplicate key", "violates foreign key", "null value in column").
-     2. Identifique as tabelas e valores envolvidos.
-     3. Gere um SQL SELECT que mostre os dados conflitantes ou problemáticos.
-     4. Explique brevemente o problema.
-     
-     Retorne JSON:
-     {
-       "sql": "SELECT ...",
-       "explanation": "Texto explicativo..."
-     }
+     Analise este LOG DE ERRO e gere uma QUERY SQL INVESTIGATIVA.
+     SCHEMA: ${schemaContext}
+     LOG: "${logText}"
+     Retorne JSON: { "sql": "SELECT ...", "explanation": "..." }
    `;
-
-   try {
-      // Using gemini-3-flash-preview for technical support analysis
-      const response = await ai.models.generateContent({
-         model: 'gemini-3-flash-preview',
-         contents: prompt,
-         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-               type: Type.OBJECT,
-               properties: {
-                  sql: { type: Type.STRING },
-                  explanation: { type: Type.STRING }
-               },
-               required: ["sql", "explanation"]
+   const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+         responseMimeType: "application/json",
+         responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+               sql: { type: Type.STRING },
+               explanation: { type: Type.STRING }
             }
          }
-      });
-      
-      if (response.text) {
-         return JSON.parse(cleanJsonString(response.text));
       }
-      throw new Error("Falha na análise");
-   } catch (e: any) {
-      throw new Error("Erro na análise do log: " + e.message);
-   }
+   });
+   return JSON.parse(cleanJsonString(response.text || '{}'));
 };
 
 export const fixSqlError = async (sql: string, errorMessage: string, schema: DatabaseSchema): Promise<string> => {
    const schemaContext = formatSchemaForPrompt(schema);
-   const prompt = `Corrija este SQL Postgres: "${sql}"\nErro: "${errorMessage}"\nSchema: ${schemaContext}`;
-   try {
-     // Using gemini-3-pro-preview for debugging and correction
-     const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt });
-     return response.text?.replace(/```sql|```/g, '').trim() || sql;
-   } catch { return sql; }
+   const prompt = `Corrija este SQL Postgres: "${sql}"\nErro: "${errorMessage}"\nSchema: ${schemaContext}. Lembre-se que LIKE/ILIKE em tipos numéricos exige cast para ::text.`;
+   const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt });
+   return response.text?.replace(/```sql|```/g, '').trim() || sql;
 };
 
 export const generateSqlFromBuilderState = async (
@@ -291,58 +244,43 @@ export const generateSqlFromBuilderState = async (
 ): Promise<QueryResult> => {
   if (onProgress) onProgress("Gerando SQL...");
   const schemaDesc = formatSchemaForPrompt(schema);
-  const prompt = `Gere SQL Postgres para: ${JSON.stringify(state)}. Schema: ${schemaDesc}. Retorne JSON {sql, explanation, tips}.`;
-  
-  try {
-    // Using gemini-3-pro-preview for precise code generation
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(cleanJsonString(response.text || '{}')) as QueryResult;
-  } catch (e: any) {
-    throw new Error(e.message);
-  }
+  const prompt = `Gere SQL Postgres para: ${JSON.stringify(state)}. Schema: ${schemaDesc}. Retorne JSON {sql, explanation, tips}. Regra: LIKE/ILIKE em campos BIGINT exige cast ::text e valores entre aspas.`;
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: prompt,
+    config: { responseMimeType: "application/json" }
+  });
+  return JSON.parse(cleanJsonString(response.text || '{}')) as QueryResult;
 };
 
 export const suggestRelationships = async (schema: DatabaseSchema): Promise<VirtualRelation[]> => {
    const schemaContext = formatSchemaForPrompt(schema);
    const prompt = `Sugira relacionamentos (FKs) implícitos para este schema: ${schemaContext}. Retorne JSON {suggestions: [{sourceTable, sourceColumn, targetTable, targetColumn, confidence}]}`;
-   try {
-      // Using gemini-3-pro-preview for structural analysis
-      const response = await ai.models.generateContent({
-         model: 'gemini-3-pro-preview',
-         contents: prompt,
-         config: { responseMimeType: "application/json" }
-      });
-      const data = JSON.parse(cleanJsonString(response.text || '{}'));
-      return (data.suggestions || []).map((s: any) => ({...s, id: crypto.randomUUID()}));
-   } catch { return []; }
+   const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+   });
+   const data = JSON.parse(cleanJsonString(response.text || '{}'));
+   return (data.suggestions || []).map((s: any) => ({...s, id: crypto.randomUUID()}));
 };
 
 export const generateSchemaFromTopic = async (topic: string, context: string): Promise<DatabaseSchema> => {
   const prompt = `Crie um schema Postgres JSON para "${topic}". Contexto: ${context}.`;
-  try {
-    // Using gemini-3-pro-preview for design and architecture tasks
-    const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt, config: { responseMimeType: "application/json" } });
-    const parsed = JSON.parse(cleanJsonString(response.text || '{}')) as DatabaseSchema;
-    parsed.connectionSource = 'simulated';
-    parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
-    return parsed;
-  } catch { throw new Error("Falha na geração."); }
+  const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt, config: { responseMimeType: "application/json" } });
+  const parsed = JSON.parse(cleanJsonString(response.text || '{}')) as DatabaseSchema;
+  parsed.connectionSource = 'simulated';
+  parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
+  return parsed;
 };
 
 export const parseSchemaFromDDL = async (ddl: string): Promise<DatabaseSchema> => {
   const prompt = `Parse DDL para JSON Schema: ${ddl}`;
-  try {
-    // Using gemini-3-pro-preview for precise parsing
-    const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt, config: { responseMimeType: "application/json" } });
-    const parsed = JSON.parse(cleanJsonString(response.text || '{}')) as DatabaseSchema;
-    parsed.connectionSource = 'ddl';
-    parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
-    return parsed;
-  } catch { throw new Error("Erro no DDL."); }
+  const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt, config: { responseMimeType: "application/json" } });
+  const parsed = JSON.parse(cleanJsonString(response.text || '{}')) as DatabaseSchema;
+  parsed.connectionSource = 'ddl';
+  parsed.tables = parsed.tables.map(t => ({...t, schema: 'public'}));
+  return parsed;
 };
 
 export const generateMockData = async (schema: DatabaseSchema, sql: string): Promise<any[]> => {
