@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight } from 'lucide-react';
 import { AppSettings, DashboardItem, ExplainNode, DatabaseSchema, Table } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
@@ -18,6 +17,16 @@ const resultsLogger = (context: string, message: string, data?: any) => {
   const timestamp = new Date().toLocaleTimeString();
   console.log(`%c[${timestamp}] [RESULTS:${context}] %c${message}`, "color: #6366f1; font-weight: bold", "color: inherit", data || '');
 };
+
+const getTableId = (t: any) => `${t.schema || 'public'}.${t.name}`;
+
+// Interface para um vínculo individual
+interface ManualLink {
+  id: string;
+  table: string;
+  keyCol: string;
+  previewCol: string;
+}
 
 // --- Sub-componente de Renderização ANSI ---
 const AnsiTerminal: React.FC<{ text: string }> = ({ text }) => {
@@ -53,201 +62,130 @@ const AnsiTerminal: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-// --- Sub-componente de Preview no Hover ---
+// --- Sub-componente de Preview no Hover (Multi-vínculo) ---
 const HoverPreviewTooltip: React.FC<{
-  targetTable: string;
-  pkColumn: string;
+  links: ManualLink[];
   value: any;
-  displayColumn: string;
   credentials: any;
   schema: DatabaseSchema;
   x: number;
   y: number;
-}> = ({ targetTable, pkColumn, value, displayColumn, credentials, schema, x, y }) => {
-  const [data, setData] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+}> = ({ links, value, credentials, schema, x, y }) => {
+  const [previews, setPreviews] = useState<Record<string, { data: string, loading: boolean, error: boolean }>>({});
 
   useEffect(() => {
     let isMounted = true;
-    const fetchPreview = async () => {
-      // Caso o valor seja undefined ou null, não tentamos buscar
-      if (value === undefined || value === null || value === '') {
-        resultsLogger('HoverPreview', 'Valor nulo ou indefinido ignorado');
-        setData("");
-        setLoading(false);
-        return;
-      }
+    
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
 
-      if (!credentials || !targetTable || !displayColumn || !schema) return;
-      
-      setLoading(true);
-      try {
-        const tableParts = targetTable.split('.');
-        const sName = tableParts.length > 1 ? tableParts[0] : 'public';
-        const tName = tableParts.length > 1 ? tableParts[1] : tableParts[0];
-        
-        const tableObj = schema.tables.find(t => 
-           t.name.toLowerCase() === tName.toLowerCase() && 
-           (t.schema || 'public').toLowerCase() === sName.toLowerCase()
-        );
+    const fetchAllPreviews = async () => {
+      // Inicializa estado de loading para todos os links
+      const initial: Record<string, any> = {};
+      links.forEach(l => initial[l.id] = { data: '', loading: true, error: false });
+      setPreviews(initial);
 
-        if (!tableObj) {
-           if (isMounted) setData("Tabela não mapeada");
-           setLoading(false);
-           return;
-        }
+      // Busca cada preview em paralelo
+      links.forEach(async (link) => {
+        try {
+          const tableParts = link.table.split('.');
+          const sName = tableParts.length > 1 ? tableParts[0] : 'public';
+          const tName = tableParts.length > 1 ? tableParts[1] : tableParts[0];
+          
+          const tableObj = schema.tables.find(t => 
+             t.name.toLowerCase() === tName.toLowerCase() && 
+             (t.schema || 'public').toLowerCase() === sName.toLowerCase()
+          );
 
-        // Determina as colunas de busca (chave)
-        let searchCols = [pkColumn];
-        
-        // Se pkColumn for 'grid' (padrão antigo/auto), tentamos heurística se falhar, mas priorizamos o PK real
-        if (!pkColumn || pkColumn === 'grid') {
-           const existingColNames = new Set(tableObj.columns.map(c => c.name.toLowerCase()));
-           searchCols = ['grid', 'id', 'codigo', 'cod', 'mlid'].filter(c => existingColNames.has(c.toLowerCase()));
-           if (searchCols.length === 0) searchCols = [tableObj.columns[0].name];
-        }
-
-        const formattedTable = `"${sName}"."${tName}"`;
-        const valStr = String(value).replace(/'/g, "''");
-        const conditions = searchCols.map(col => `"${col}"::text = '${valStr}'`).join(' OR ');
-        
-        const sql = `SELECT "${displayColumn.replace(/"/g, '')}" FROM ${formattedTable} WHERE ${conditions} LIMIT 1;`;
-        
-        resultsLogger('HoverPreview', `Buscando info de preview: ${sql}`);
-        
-        const results = await executeQueryReal(credentials, sql);
-        if (isMounted) {
-          if (results && results.length > 0) {
-            const val = results[0][displayColumn];
-            setData(val === null ? 'NULL' : String(val));
-          } else {
-            setData("Não encontrado");
+          if (!tableObj) {
+            if (isMounted) setPreviews(prev => ({ ...prev, [link.id]: { data: 'Tabela não mapeada', loading: false, error: true } }));
+            return;
           }
+
+          const valStr = String(value).replace(/'/g, "''");
+          const sql = `SELECT "${link.previewCol.replace(/"/g, '')}" FROM "${sName}"."${tName}" WHERE "${link.keyCol}"::text = '${valStr}' LIMIT 1;`;
+          
+          const results = await executeQueryReal(credentials, sql);
+          if (isMounted) {
+            if (results && results.length > 0) {
+              const val = results[0][link.previewCol];
+              setPreviews(prev => ({ ...prev, [link.id]: { data: val === null ? 'NULL' : String(val), loading: false, error: false } }));
+            } else {
+              setPreviews(prev => ({ ...prev, [link.id]: { data: 'Não encontrado', loading: false, error: false } }));
+            }
+          }
+        } catch (e) {
+          if (isMounted) setPreviews(prev => ({ ...prev, [link.id]: { data: 'Erro', loading: false, error: true } }));
         }
-      } catch (e) {
-        resultsLogger('HoverPreview', 'Erro na query de preview', e);
-        if (isMounted) setError(true);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+      });
     };
 
-    fetchPreview();
+    fetchAllPreviews();
     return () => { isMounted = false; };
-  }, [targetTable, pkColumn, value, displayColumn, credentials, schema]);
+  }, [links, value, credentials, schema]);
+
+  // Mostra apenas os 3 primeiros links no hover
+  const visibleLinks = links.slice(0, 3);
+  const hiddenCount = links.length - 3;
 
   return (
     <div 
-      className="fixed z-[110] pointer-events-none bg-slate-900 text-white p-2.5 rounded-lg shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-150"
-      style={{ left: Math.min(x + 15, window.innerWidth - 250), top: Math.max(10, y - 10) }}
+      className="fixed z-[110] pointer-events-none bg-slate-900 text-white p-3 rounded-xl shadow-2xl border border-slate-700 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-3 min-w-[200px] max-w-[300px]"
+      style={{ left: Math.min(x + 15, window.innerWidth - 320), top: Math.max(10, y - 10) }}
     >
-      <div className="flex flex-col gap-1 min-w-[120px]">
-        <div className="flex items-center gap-2 border-b border-slate-700 pb-1.5 mb-1">
-          <Database className="w-3 h-3 text-indigo-400" />
-          <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">{displayColumn}</span>
-        </div>
-        {loading ? (
-          <div className="flex items-center gap-2 text-xs opacity-70">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Buscando...</span>
+      {visibleLinks.map((link, idx) => {
+        const state = previews[link.id];
+        return (
+          <div key={link.id} className={`${idx > 0 ? 'pt-2 border-t border-slate-800' : ''}`}>
+            <div className="flex items-center justify-between mb-1">
+               <div className="flex items-center gap-1.5 overflow-hidden">
+                  <Database className="w-3 h-3 text-indigo-400 shrink-0" />
+                  <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-500 truncate">{link.table.split('.').pop()}</span>
+               </div>
+               <span className="text-[9px] font-bold text-slate-400 bg-slate-800 px-1 rounded">{link.previewCol}</span>
+            </div>
+            {state?.loading ? (
+              <div className="flex items-center gap-2 text-xs opacity-50"><Loader2 className="w-3 h-3 animate-spin" /> <span>Carregando...</span></div>
+            ) : state?.error ? (
+              <span className="text-xs text-red-400 italic">Erro na consulta</span>
+            ) : (
+              <span className="text-sm font-bold text-indigo-100 whitespace-pre-wrap block">{state?.data || '---'}</span>
+            )}
           </div>
-        ) : error ? (
-          <span className="text-xs text-red-400">Erro na consulta</span>
-        ) : (
-          <span className="text-sm font-bold text-indigo-100 whitespace-pre-wrap">{data}</span>
-        )}
-      </div>
+        );
+      })}
+      
+      {hiddenCount > 0 && (
+         <div className="pt-2 border-t border-slate-800 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500 uppercase italic">
+            <Plus className="w-3 h-3" /> {hiddenCount} outros vínculos ativos
+         </div>
+      )}
+
       <div className="absolute top-3 -left-1 w-2 h-2 bg-slate-900 border-l border-b border-slate-700 transform rotate-45"></div>
     </div>
   );
 };
 
-// --- Sub-componente para Configurar Vínculo Manual ---
+// --- Sub-componente para Configurar Vínculos Manuais (Múltiplos) ---
 const ManualMappingPopover: React.FC<{ 
   column: string, 
   schema: DatabaseSchema, 
-  onSave: (table: string, keyCol: string, previewCol: string) => void, 
+  onSave: (links: ManualLink[]) => void, 
   onClose: () => void,
-  currentValue?: string,
-  currentKeyCol?: string,
-  currentPreviewCol?: string
-}> = ({ column, schema, onSave, onClose, currentValue, currentKeyCol, currentPreviewCol }) => {
+  currentLinks: ManualLink[]
+}> = ({ column, schema, onSave, onClose, currentLinks }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTable, setSelectedTable] = useState(currentValue || '');
-  const [keyCol, setKeyCol] = useState(currentKeyCol || '');
-  const [previewCol, setPreviewCol] = useState(currentPreviewCol || '');
-  
-  const schemasPresent = useMemo(() => {
-    return Array.from(new Set(schema.tables.map(t => t.schema || 'public'))).sort();
-  }, [schema.tables]);
+  const [selectedTable, setSelectedTable] = useState('');
+  const [keyCol, setKeyCol] = useState('');
+  const [previewCol, setPreviewCol] = useState('');
+  const [isAdding, setIsAdding] = useState(currentLinks.length === 0);
 
-  const hasMultipleSchemas = schemasPresent.length > 1;
-
-  const filteredAndSortedTables = useMemo(() => {
+  const filteredTables = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
-    const list = schema.tables.filter(t => 
-      !term ||
-      t.name.toLowerCase().includes(term) || 
-      (t.schema || 'public').toLowerCase().includes(term)
-    );
-
-    if (term) {
-      list.sort((a, b) => {
-        const nameA = a.name.toLowerCase();
-        const nameB = b.name.toLowerCase();
-        if (nameA === term && nameB !== term) return -1;
-        if (nameB === term && nameA !== term) return 1;
-        const startsA = nameA.startsWith(term);
-        const startsB = nameB.startsWith(term);
-        if (startsA && !startsB) return -1;
-        if (!startsA && startsB) return 1;
-        const includesA = nameA.includes(term);
-        const includesB = nameB.includes(term);
-        if (includesA && !includesB) return -1;
-        if (!includesA && includesB) return 1;
-        const sA = (a.schema || 'public').toLowerCase();
-        const sB = (b.schema || 'public').toLowerCase();
-        if (sA !== sB) return sA.localeCompare(sB);
-        return nameA.localeCompare(nameB);
-      });
-    } else {
-      list.sort((a, b) => {
-        const sA = (a.schema || 'public').toLowerCase();
-        const sB = (b.schema || 'public').toLowerCase();
-        if (sA !== sB) return sA.localeCompare(sB);
-        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-      });
-    }
-    return list;
+    return schema.tables.filter(t => !term || t.name.toLowerCase().includes(term) || (t.schema || 'public').toLowerCase().includes(term))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [schema.tables, searchTerm]);
-
-  const groupedTables = useMemo(() => {
-    const grouped: Record<string, Table[]> = {};
-    filteredAndSortedTables.forEach(t => {
-      const s = t.schema || 'public';
-      if (!grouped[s]) grouped[s] = [];
-      grouped[s].push(t);
-    });
-    return grouped;
-  }, [filteredAndSortedTables]);
-
-  const sortedSchemaKeys = useMemo(() => {
-    const keys = Object.keys(groupedTables);
-    const term = searchTerm.toLowerCase().trim();
-
-    if (term) {
-      const schemaRank: Record<string, number> = {};
-      filteredAndSortedTables.forEach((t, idx) => {
-        const s = t.schema || 'public';
-        if (schemaRank[s] === undefined) {
-          schemaRank[s] = idx;
-        }
-      });
-      return keys.sort((a, b) => (schemaRank[a] ?? Infinity) - (schemaRank[b] ?? Infinity));
-    }
-    return keys.sort((a, b) => a.localeCompare(b));
-  }, [groupedTables, filteredAndSortedTables, searchTerm]);
 
   const targetColumns = useMemo(() => {
     if (!selectedTable) return [];
@@ -255,119 +193,109 @@ const ManualMappingPopover: React.FC<{
     const s = parts.length > 1 ? parts[0] : 'public';
     const t = parts.length > 1 ? parts[1] : parts[0];
     const tbl = schema.tables.find(table => table.name === t && (table.schema || 'public') === s);
-    if (!tbl) return [];
-    
-    // Auto-select keyCol if it was 'grid' or empty but we find a PK
-    if (!keyCol && !currentKeyCol) {
-       const pk = tbl.columns.find(c => c.isPrimaryKey || c.name.toLowerCase() === 'grid' || c.name.toLowerCase() === 'id');
-       if (pk) setKeyCol(pk.name);
-    }
+    return tbl ? tbl.columns.map(c => c.name).sort() : [];
+  }, [selectedTable, schema]);
 
-    return tbl.columns
-      .map(c => c.name)
-      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-  }, [selectedTable, schema, keyCol, currentKeyCol]);
+  const handleAddLink = () => {
+    const newLink: ManualLink = {
+      id: crypto.randomUUID(),
+      table: selectedTable,
+      keyCol,
+      previewCol
+    };
+    const updated = [...currentLinks, newLink];
+    onSave(updated);
+    setSelectedTable('');
+    setKeyCol('');
+    setPreviewCol('');
+    setIsAdding(false);
+  };
+
+  const handleRemoveLink = (id: string) => {
+    onSave(currentLinks.filter(l => l.id !== id));
+  };
 
   return (
-    <div className="absolute z-[70] top-full mt-2 right-0 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right" onClick={e => e.stopPropagation()}>
+    <div className="absolute z-[100] top-full mt-2 right-0 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right flex flex-col" onClick={e => e.stopPropagation()}>
        <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
-          <span className="text-[10px] font-bold uppercase text-slate-500 truncate mr-2">Vínculo: {column}</span>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-200 rounded shrink-0"><X className="w-3.5 h-3.5" /></button>
+          <span className="text-[10px] font-bold uppercase text-slate-500">Configurar Vínculos: {column}</span>
+          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded transition-colors"><X className="w-4 h-4" /></button>
        </div>
        
        <div className="p-3 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          <div className="space-y-1.5">
-             <label className="text-[10px] font-bold text-slate-400 uppercase">1. Tabela de Destino</label>
-             <div className="relative">
-                <Search className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
-                <input 
-                   autoFocus
-                   type="text" 
-                   value={searchTerm}
-                   onChange={e => setSearchTerm(e.target.value)}
-                   placeholder="Buscar tabela..."
-                   className="w-full pl-7 pr-2 py-2 text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-             </div>
-             <div className="max-h-48 overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-lg mt-1 custom-scrollbar bg-white dark:bg-slate-900">
-                {sortedSchemaKeys.length === 0 ? (
-                  <div className="p-4 text-center text-slate-400 text-[10px]">Nenhuma tabela encontrada.</div>
-                ) : (
-                  sortedSchemaKeys.map((schemaName) => (
-                    <div key={schemaName} className="mb-1">
-                      {hasMultipleSchemas && (
-                        <div className="px-2 py-1 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700 flex items-center gap-1.5">
-                           <Folder className="w-3 h-3 text-indigo-400 fill-indigo-400/20" />
-                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{schemaName}</span>
-                        </div>
-                      )}
-                      <div className="py-0.5">
-                        {groupedTables[schemaName].map(t => {
-                           const fullId = `${t.schema || 'public'}.${t.name}`;
-                           const isSelected = selectedTable === fullId;
-                           return (
-                              <button 
-                                key={fullId}
-                                onClick={() => { setSelectedTable(fullId); setPreviewCol(''); setKeyCol(''); }}
-                                className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700 font-bold dark:bg-indigo-900/40' : 'text-slate-600 dark:text-slate-300'}`}
-                              >
-                                 <span className="truncate">{t.name}</span>
-                                 {isSelected && <Check className="w-3 h-3" />}
-                              </button>
-                           );
-                        })}
+          {currentLinks.length > 0 && (
+             <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Vínculos Ativos ({currentLinks.length})</label>
+                {currentLinks.map(link => (
+                   <div key={link.id} className="flex items-center justify-between p-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg group">
+                      <div className="min-w-0">
+                         <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300 truncate">{link.table}</div>
+                         <div className="text-[9px] text-indigo-400 flex items-center gap-1">
+                            <Hash className="w-2.5 h-2.5" /> {link.keyCol} <ArrowRight className="w-2 h-2" /> <Eye className="w-2.5 h-2.5" /> {link.previewCol}
+                         </div>
                       </div>
-                    </div>
-                  ))
-                )}
+                      <button onClick={() => handleRemoveLink(link.id)} className="p-1 text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                         <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                   </div>
+                ))}
              </div>
-          </div>
-
-          {selectedTable && (
-            <>
-               <div className="space-y-1.5 animate-in slide-in-from-top-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">2. Coluna Chave no Destino</label>
-                  <select 
-                     value={keyCol}
-                     onChange={e => setKeyCol(e.target.value)}
-                     className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
-                  >
-                     <option value="">-- Selecione a PK/Identificador --</option>
-                     {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <p className="text-[9px] text-slate-400 italic">Onde o valor "{column}" será procurado em {selectedTable.split('.').pop()}.</p>
-               </div>
-
-               <div className="space-y-1.5 animate-in slide-in-from-top-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">3. Mostrar no Hover (Preview)</label>
-                  <select 
-                     value={previewCol}
-                     onChange={e => setPreviewCol(e.target.value)}
-                     className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
-                  >
-                     <option value="">-- Selecione uma coluna --</option>
-                     {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <p className="text-[9px] text-slate-400 italic">Valor textual mostrado ao passar o mouse.</p>
-               </div>
-            </>
           )}
-       </div>
 
-       <div className="p-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/20 flex gap-2">
-          <button 
-             onClick={() => onSave(selectedTable, keyCol, previewCol)}
-             disabled={!selectedTable || !keyCol || !previewCol}
-             className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-sm"
-          >
-             Salvar Vínculo
-          </button>
-          {currentValue && (
-             <button 
-                onClick={() => onSave('', '', '')}
-                className="px-2 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-             >
-                Remover
+          {isAdding ? (
+             <div className="space-y-4 pt-2 animate-in slide-in-from-top-2">
+                <div className="space-y-1.5">
+                   <label className="text-[10px] font-bold text-slate-400 uppercase">Novo Alvo</label>
+                   <div className="relative">
+                      <Search className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                      <input 
+                         type="text" 
+                         value={searchTerm}
+                         onChange={e => setSearchTerm(e.target.value)}
+                         placeholder="Filtrar tabelas..."
+                         className="w-full pl-7 pr-2 py-2 text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                   </div>
+                   <select 
+                      size={5}
+                      value={selectedTable}
+                      onChange={e => setSelectedTable(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none custom-scrollbar"
+                   >
+                      {filteredTables.map(t => <option key={getTableId(t)} value={getTableId(t)}>{t.schema}.{t.name}</option>)}
+                   </select>
+                </div>
+
+                {selectedTable && (
+                   <>
+                      <div className="space-y-1.5">
+                         <label className="text-[10px] font-bold text-slate-400 uppercase">Chave no Destino</label>
+                         <select value={keyCol} onChange={e => setKeyCol(e.target.value)} className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none">
+                            <option value="">-- Selecione a Chave --</option>
+                            {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                         </select>
+                      </div>
+                      <div className="space-y-1.5">
+                         <label className="text-[10px] font-bold text-slate-400 uppercase">Preview no Hover</label>
+                         <select value={previewCol} onChange={e => setPreviewCol(e.target.value)} className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none">
+                            <option value="">-- Selecione a Coluna --</option>
+                            {targetColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                         </select>
+                      </div>
+                      <button 
+                         onClick={handleAddLink}
+                         disabled={!selectedTable || !keyCol || !previewCol}
+                         className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                      >
+                         Confirmar Novo Alvo
+                      </button>
+                   </>
+                )}
+                <button onClick={() => setIsAdding(false)} className="w-full py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">Cancelar</button>
+             </div>
+          ) : (
+             <button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-500 hover:text-indigo-600 hover:border-indigo-400 transition-all flex items-center justify-center gap-2 text-xs font-bold">
+                <Plus className="w-4 h-4" /> Adicionar Outro Vínculo
              </button>
           )}
        </div>
@@ -375,12 +303,7 @@ const ManualMappingPopover: React.FC<{
   );
 };
 
-interface RowInspectorProps {
-   row: any;
-   onClose: () => void;
-}
-
-const RowInspector: React.FC<RowInspectorProps> = ({ row, onClose }) => {
+const RowInspector: React.FC<{ row: any, onClose: () => void }> = ({ row, onClose }) => {
    const [searchTerm, setSearchTerm] = useState('');
    const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
    
@@ -468,29 +391,26 @@ const VirtualTable = ({
    const [activeProfileCol, setActiveProfileCol] = useState<string | null>(null);
    const [activeMappingCol, setActiveMappingCol] = useState<string | null>(null);
    
-   const [hoverPreview, setHoverPreview] = useState<{table: string, pk: string, val: any, displayCol: string, x: number, y: number} | null>(null);
+   const [hoverPreview, setHoverPreview] = useState<{links: ManualLink[], val: any, x: number, y: number} | null>(null);
+   const [multiLinkMenu, setMultiLinkMenu] = useState<{links: ManualLink[], val: any, x: number, y: number} | null>(null);
    const hoverTimeoutRef = useRef<any>(null);
 
-   const [manualMappings, setManualMappings] = useState<Record<string, { table: string, keyCol?: string, previewCol?: string }>>(() => {
+   const [manualMappings, setManualMappings] = useState<Record<string, ManualLink[]>>(() => {
       try {
-         const stored = localStorage.getItem('psql-buddy-manual-drilldown-links');
+         const stored = localStorage.getItem('psql-buddy-manual-drilldown-links-v2');
          return stored ? JSON.parse(stored) : {};
       } catch { return {}; }
    });
 
-   const handleSaveManualMapping = (colName: string, targetTable: string, keyCol: string, previewCol: string) => {
+   const handleSaveManualLinks = (colName: string, links: ManualLink[]) => {
       const newMappings = { ...manualMappings };
-      if (!targetTable) {
+      if (links.length === 0) {
         delete newMappings[colName];
-        resultsLogger('ManualLink', `Removendo vínculo de ${colName}`);
       } else {
-        newMappings[colName] = { table: targetTable, keyCol, previewCol };
-        resultsLogger('ManualLink', `Novo vínculo para ${colName} -> ${targetTable} (${keyCol})`);
+        newMappings[colName] = links;
       }
-      
       setManualMappings(newMappings);
-      localStorage.setItem('psql-buddy-manual-drilldown-links', JSON.stringify(newMappings));
-      setActiveMappingCol(null);
+      localStorage.setItem('psql-buddy-manual-drilldown-links-v2', JSON.stringify(newMappings));
    };
 
    const totalRows = data.length;
@@ -498,55 +418,30 @@ const VirtualTable = ({
    const startIndex = (currentPage - 1) * rowsPerPage;
    const currentData = data.slice(startIndex, startIndex + rowsPerPage);
 
-   const getLinkTarget = (colName: string): { table: string, pk: string, previewCol?: string } | null => {
-      if (manualMappings[colName]) {
-         return { 
-           table: manualMappings[colName].table, 
-           pk: manualMappings[colName].keyCol || 'grid', 
-           previewCol: manualMappings[colName].previewCol 
-         };
-      }
+   const getLinksForColumn = (colName: string): ManualLink[] => {
+      let links: ManualLink[] = [...(manualMappings[colName] || [])];
 
-      if (!schema || !colName) return null;
-      const lowerCol = colName.toLowerCase();
-      const leafName = lowerCol.split('.').pop() || '';
+      if (links.length === 0 && schema && colName) {
+         const lowerCol = colName.toLowerCase();
+         const leafName = lowerCol.split('.').pop() || '';
 
-      if (leafName === 'grid' || leafName === 'mlid') {
-         const parts = lowerCol.split('.');
-         let targetTableObj = null;
-         if (parts.length >= 2) {
-            const potentialTableName = parts[parts.length - 2];
-            targetTableObj = schema.tables.find(t => t.name.toLowerCase() === potentialTableName.toLowerCase());
-         }
-         if (!targetTableObj && defaultTableName) {
-             const tName = defaultTableName.includes('.') ? defaultTableName.split('.')[1] : defaultTableName;
-             targetTableObj = schema.tables.find(t => t.name.toLowerCase() === tName.toLowerCase());
-         }
-         if (targetTableObj) return { table: `${targetTableObj.schema || 'public'}.${targetTableObj.name}`, pk: leafName };
-      }
-
-      for (const t of schema.tables) {
-         const col = t.columns.find(c => c.name === colName);
-         if (col && col.isForeignKey && col.references) {
-            const parts = col.references.split('.');
-            if (parts.length === 3) return { table: `${parts[0]}.${parts[1]}`, pk: parts[2] };
-            if (parts.length === 2) return { table: `public.${parts[0]}`, pk: parts[1] };
+         if (leafName === 'grid' || leafName === 'mlid') {
+            const parts = lowerCol.split('.');
+            let targetTableObj = null;
+            if (parts.length >= 2) {
+               const potentialTableName = parts[parts.length - 2];
+               targetTableObj = schema.tables.find(t => t.name.toLowerCase() === potentialTableName.toLowerCase());
+            }
+            if (targetTableObj) {
+               links.push({ id: 'auto', table: `${targetTableObj.schema || 'public'}.${targetTableObj.name}`, keyCol: leafName, previewCol: '' });
+            }
          }
       }
 
-      const suffixes = ['_id', '_grid', '_mlid'];
-      for (const suffix of suffixes) {
-         if (lowerCol.endsWith(suffix) && lowerCol !== suffix) {
-            const baseName = lowerCol.substring(0, lowerCol.length - suffix.length);
-            const target = schema.tables.find(t => t.name.toLowerCase() === baseName || t.name.toLowerCase() === baseName + 's');
-            if (target) return { table: `${target.schema || 'public'}.${target.name}`, pk: 'grid' };
-         }
-      }
-
-      return null;
+      return links;
    };
 
-   const formatValue = (col: string, val: any) => {
+   const formatValue = (col: string, val: any, rowIdx: number) => {
       if (val === null || val === undefined) {
          return <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono font-bold tracking-tight border border-slate-200 dark:border-slate-700">NULL</span>;
       }
@@ -566,17 +461,24 @@ const VirtualTable = ({
          return <button onClick={(e) => { e.stopPropagation(); onOpenJson(val); }} className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded flex items-center gap-1 hover:bg-indigo-100 transition-colors"><Braces className="w-3 h-3" /> JSON</button>;
       }
       
-      const target = getLinkTarget(col);
-      if (target && val !== '') {
+      const links = getLinksForColumn(col);
+      if (links.length > 0 && val !== '') {
          return (
             <button 
-               onClick={(e) => { e.stopPropagation(); onDrillDown(target.table, target.pk, val); }} 
+               onClick={(e) => { 
+                  e.stopPropagation(); 
+                  if (links.length === 1) {
+                     onDrillDown(links[0].table, links[0].keyCol, val);
+                  } else {
+                     setMultiLinkMenu({ links, val, x: e.clientX, y: e.clientY });
+                  }
+               }} 
                onMouseEnter={(e) => {
                   const x = e.clientX;
                   const y = e.clientY;
-                  if (target.previewCol) {
+                  if (links.some(l => l.previewCol)) {
                      hoverTimeoutRef.current = setTimeout(() => {
-                        setHoverPreview({ table: target.table, pk: target.pk, val: val, displayCol: target.previewCol!, x, y });
+                        setHoverPreview({ links, val, x, y });
                      }, 350); 
                   }
                }}
@@ -584,49 +486,69 @@ const VirtualTable = ({
                   if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                   setHoverPreview(null);
                }}
-               className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 group/link"
+               className={`hover:underline flex items-center gap-1 group/link text-left min-w-0 ${links.length > 1 ? 'text-purple-600 dark:text-purple-400' : 'text-indigo-600 dark:text-indigo-400'}`}
             >
-               {highlightMatch(String(val))}
-               <ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100" />
+               <span className="truncate">{highlightMatch(String(val))}</span>
+               {links.length > 1 ? <Layers className="w-3 h-3 shrink-0" /> : <ExternalLink className="w-3 h-3 opacity-0 group-hover/link:opacity-100 shrink-0" />}
             </button>
          );
       }
-      return highlightMatch(String(val));
+      return <span className="truncate block">{highlightMatch(String(val))}</span>;
    };
 
    return (
-      <div className="flex flex-col h-full relative">
+      <div className="flex flex-col h-full relative" onClick={() => setMultiLinkMenu(null)}>
          {hoverPreview && credentials && schema && (
             <HoverPreviewTooltip 
-               {...hoverPreview}
-               targetTable={hoverPreview.table}
-               pkColumn={hoverPreview.pk}
+               links={hoverPreview.links.filter(l => !!l.previewCol)}
                value={hoverPreview.val}
-               displayColumn={hoverPreview.displayCol}
                credentials={credentials}
                schema={schema}
+               x={hoverPreview.x}
+               y={hoverPreview.y}
             />
          )}
 
-         <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+         {multiLinkMenu && (
+            <div 
+               className="fixed z-[120] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-2 w-56 animate-in fade-in zoom-in-95 duration-100"
+               style={{ left: Math.min(multiLinkMenu.x, window.innerWidth - 240), top: Math.min(multiLinkMenu.y, window.innerHeight - 200) }}
+               onClick={e => e.stopPropagation()}
+            >
+               <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-700 mb-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selecionar Destino</span>
+               </div>
+               {multiLinkMenu.links.map(link => (
+                  <button 
+                     key={link.id}
+                     onClick={() => { onDrillDown(link.table, link.keyCol, multiLinkMenu.val); setMultiLinkMenu(null); }}
+                     className="w-full text-left px-4 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex flex-col transition-colors"
+                  >
+                     <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{link.table}</span>
+                     <span className="text-[9px] text-slate-400">Via {link.keyCol}</span>
+                  </button>
+               ))}
+            </div>
+         )}
+
+         <div className="flex-1 overflow-auto custom-scrollbar">
             <table className="w-full text-left border-collapse table-fixed">
                <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
                   <tr>
                      {columns.map((col, idx) => {
-                        const mapping = manualMappings[col];
-                        const hasManualMapping = !!mapping;
-                        const autoTarget = getLinkTarget(col);
+                        const links = manualMappings[col] || [];
+                        const hasManualMapping = links.length > 0;
 
                         return (
-                           <th key={col} className={`px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase border-b border-slate-200 dark:border-slate-700 w-[160px] group relative ${idx === 0 ? 'pl-6' : ''}`}>
-                              <div className="flex items-center justify-between">
+                           <th key={col} className={`px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase border-b border-slate-200 dark:border-slate-700 w-[180px] group relative ${idx === 0 ? 'pl-6' : ''}`}>
+                              <div className="flex items-center justify-between min-w-0">
                                  <span className="truncate" title={col}>{col.replace(/_/g, ' ')}</span>
-                                 <div className="flex items-center gap-1 shrink-0">
+                                 <div className="flex items-center gap-1 shrink-0 ml-1">
                                     {schema && (
                                        <button 
                                           onClick={(e) => { e.stopPropagation(); setActiveMappingCol(activeMappingCol === col ? null : col); setActiveProfileCol(null); }} 
-                                          className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-all ${hasManualMapping ? 'text-indigo-500 opacity-100' : 'opacity-0 group-hover:opacity-100 text-slate-300'}`}
-                                          title={hasManualMapping ? `Vínculo ativo para ${mapping.table}` : "Vincular coluna manualmente"}
+                                          className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-all ${hasManualMapping ? 'text-purple-500 opacity-100' : 'opacity-0 group-hover:opacity-100 text-slate-300'}`}
+                                          title={hasManualMapping ? `${links.length} vínculos ativos` : "Vincular colunas manualmente"}
                                        >
                                           {hasManualMapping ? <LinkIcon className="w-3.5 h-3.5" /> : <Anchor className="w-3.5 h-3.5" />}
                                        </button>
@@ -639,10 +561,8 @@ const VirtualTable = ({
                                  <ManualMappingPopover 
                                     column={col} 
                                     schema={schema} 
-                                    currentValue={mapping?.table || autoTarget?.table}
-                                    currentKeyCol={mapping?.keyCol || autoTarget?.pk}
-                                    currentPreviewCol={mapping?.previewCol}
-                                    onSave={(tbl, keyCol, previewCol) => handleSaveManualMapping(col, tbl, keyCol, previewCol)} 
+                                    currentLinks={links}
+                                    onSave={(newLinks) => handleSaveManualLinks(col, newLinks)} 
                                     onClose={() => setActiveMappingCol(null)} 
                                  />
                               )}
@@ -654,11 +574,11 @@ const VirtualTable = ({
                   </tr>
                </thead>
                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                  {currentData.map((row, idx) => (
-                     <tr key={idx} onClick={() => onRowClick(row)} className="group hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors h-[40px] cursor-pointer">
+                  {currentData.map((row, rowIdx) => (
+                     <tr key={rowIdx} onClick={() => onRowClick(row)} className="group hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors h-[40px] cursor-pointer">
                         {columns.map((col, cIdx) => (
                            <td key={col} className={`px-4 py-2 text-sm text-slate-600 dark:text-slate-300 truncate ${cIdx === 0 ? 'pl-6 font-medium' : ''}`}>
-                              {formatValue(col, row[col])}
+                              {formatValue(col, row[col], rowIdx)}
                            </td>
                         ))}
                      </tr>
