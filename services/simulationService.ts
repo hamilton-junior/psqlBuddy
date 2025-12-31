@@ -416,7 +416,7 @@ export const executeOfflineQuery = (
   } else {
      // No Aggregation: Map to Output Format
      let targetCols = selectedColumns;
-     if (targetaaaaaaCols.length === 0) {
+     if (targetCols.length === 0) {
         if (resultRows.length > 0) {
            // Exclude system keys, only take full schema keys + calculated
            targetCols = Object.keys(resultRows[0]).filter(k => k.includes('.') || calculatedColumns?.some(c => c.alias === k));
