@@ -5,7 +5,9 @@ import {
   ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, 
   AlertCircle, GraduationCap, PenTool, DatabaseZap, HeartPulse, 
   Activity, CheckCircle2, XCircle, RefreshCw, Play, 
-  Bug, Loader2, Database, User, Server, Hash, Shield, Terminal, ZapOff, ActivitySquare
+  Bug, Loader2, Database, User, Server, Hash, Shield, Terminal, ZapOff, ActivitySquare,
+  // Fix: Added missing LayoutGrid import
+  LayoutGrid
 } from 'lucide-react';
 import { AppSettings, DatabaseSchema, DbCredentials } from '../types';
 import { runFullHealthCheck, HealthStatus, runRandomizedStressTest, StressTestLog } from '../services/healthService';
@@ -32,13 +34,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   // Stress Test State
   const [isStressing, setIsStressing] = useState(false);
   const [stressLogs, setStressLogs] = useState<StressTestLog[]>([]);
-  const logEndRef = useRef<HTMLDivElement>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   const isConnected = !!schema;
 
+  // Corrigido: Scroll automático do log focado apenas no container do log
   useEffect(() => {
-    if (logEndRef.current) {
-      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (logContainerRef.current) {
+      const container = logContainerRef.current;
+      container.scrollTop = container.scrollHeight;
     }
   }, [stressLogs]);
 
@@ -84,6 +88,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const isAiDisabled = !formData.enableAiGeneration;
 
+  // Toggle Reutilizável
+  const Toggle = ({ checked, onChange, colorClass = "peer-checked:bg-indigo-600" }: { checked: boolean, onChange: (val: boolean) => void, colorClass?: string }) => (
+    <label className="relative inline-flex items-center cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="sr-only peer" />
+      <div className={`w-10 h-5 bg-slate-200 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all ${colorClass}`}></div>
+    </label>
+  );
+
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-sans">
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-700 max-h-[90vh]">
@@ -102,7 +114,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Form Content */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-8 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 custom-scrollbar">
           
-          {/* Section: Diagnóstico e Saúde - NEW VISUALS */}
+          {/* Section: Diagnóstico e Saúde */}
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex flex-col">
@@ -135,12 +147,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   {healthResults ? (
                     <div className="flex-1 flex flex-col justify-center items-center py-4">
                        <div className="relative w-24 h-24 mb-4">
-                          <svg className="w-full h-full transform -rotate-90">
-                             <circle cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-200 dark:text-slate-800" />
+                          {/* Corrigido: SVG com viewBox e overflow-visible para evitar cortes */}
+                          <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90 overflow-visible">
+                             <circle cx="50" cy="50" r="42" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-200 dark:text-slate-800" />
                              <circle 
-                                cx="48" cy="48" r="44" stroke="currentColor" strokeWidth="6" fill="transparent" 
-                                strokeDasharray={276.5} 
-                                strokeDashoffset={276.5 - (276.5 * (healthScore || 0)) / 100} 
+                                cx="50" cy="50" r="42" stroke="currentColor" strokeWidth="8" fill="transparent" 
+                                strokeDasharray={263.9} 
+                                strokeDashoffset={263.9 - (263.9 * (healthScore || 0)) / 100} 
+                                strokeLinecap="round"
                                 className={`${(healthScore || 0) > 80 ? 'text-emerald-500' : (healthScore || 0) > 50 ? 'text-amber-500' : 'text-rose-500'} transition-all duration-1000 ease-out`} 
                              />
                           </svg>
@@ -188,7 +202,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                      </button>
                   </div>
                   
-                  <div className="flex-1 p-3 font-mono text-[9px] custom-scrollbar overflow-y-auto min-h-[160px] bg-black/40">
+                  {/* Corrigido: Adicionado ref para scroll interno independente */}
+                  <div ref={logContainerRef} className="flex-1 p-3 font-mono text-[9px] custom-scrollbar overflow-y-auto min-h-[160px] max-h-[220px] bg-black/40">
                      {stressLogs.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
                            <ZapOff className="w-6 h-6 opacity-30" />
@@ -203,7 +218,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                            </div>
                         ))
                      )}
-                     <div ref={logEndRef} />
                   </div>
 
                   {isStressing && (
@@ -221,7 +235,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Section: Interface e Comportamento */}
           <div>
              <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <LayoutList className="w-4 h-4" /> Interface & Construtor
+                <LayoutGrid className="w-4 h-4" /> Interface & Construtor
              </h4>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100 dark:border-emerald-800/30 flex items-center justify-between transition-all hover:shadow-sm">
@@ -232,10 +246,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="text-[10px] text-slate-500">Exibe dicas pedagógicas de SQL</span>
                       </div>
                    </div>
-                   <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" checked={formData.beginnerMode} onChange={e => setFormData({...formData, beginnerMode: e.target.checked})} className="sr-only peer" />
-                      <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
-                   </label>
+                   <Toggle checked={formData.beginnerMode} onChange={val => setFormData({...formData, beginnerMode: val})} colorClass="peer-checked:bg-emerald-600" />
                 </div>
 
                 <div className="bg-orange-50/50 dark:bg-orange-900/10 p-3 rounded-xl border border-orange-100 dark:border-orange-800/30 flex items-center justify-between transition-all hover:shadow-sm">
@@ -246,10 +257,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="text-[10px] text-slate-500">Habilita edição de registros no grid</span>
                       </div>
                    </div>
-                   <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" checked={formData.advancedMode} onChange={e => setFormData({...formData, advancedMode: e.target.checked})} className="sr-only peer" />
-                      <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
-                   </label>
+                   <Toggle checked={formData.advancedMode} onChange={val => setFormData({...formData, advancedMode: val})} colorClass="peer-checked:bg-orange-600" />
                 </div>
 
                 <div className="bg-indigo-50/50 dark:bg-indigo-900/10 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/30 flex items-center justify-between md:col-span-2 transition-all hover:shadow-sm">
@@ -257,13 +265,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       <DatabaseZap className="w-5 h-5 text-indigo-600" />
                       <div className="flex flex-col">
                         <span className="text-sm font-bold">Background Loading (Otimização de Vínculos)</span>
-                        <span className="text-[10px] text-slate-500 leading-tight mt-1 max-w-sm">Carrega automaticamente o preview de relacionamentos em segundo plano para drill-down instantâneo. Requer mais recursos de rede.</span>
+                        <span className="text-[10px] text-slate-500 leading-tight mt-1 max-w-sm">Carrega automaticamente o preview de relacionamentos em segundo plano.</span>
                       </div>
                    </div>
-                   <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" checked={formData.backgroundLoadLinks} onChange={e => setFormData({...formData, backgroundLoadLinks: e.target.checked})} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                   </label>
+                   <Toggle checked={formData.backgroundLoadLinks} onChange={val => setFormData({...formData, backgroundLoadLinks: val})} colorClass="peer-checked:bg-indigo-600" />
                 </div>
              </div>
           </div>
@@ -282,13 +287,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                      <Zap className={`w-5 h-5 ${formData.enableAiGeneration ? 'text-amber-500' : 'text-slate-300'}`} />
                      <div>
                        <span className="text-sm font-bold block">Geração Automática de SQL</span>
-                       <p className="text-[10px] text-slate-500 leading-tight mt-1">Habilita tradução de linguagem natural e sugestões de joins inteligentes.</p>
+                       <p className="text-[10px] text-slate-500 leading-tight mt-1">Habilita tradução de linguagem natural e sugestões de joins.</p>
                      </div>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" checked={formData.enableAiGeneration} onChange={e => setFormData({...formData, enableAiGeneration: e.target.checked})} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                   </label>
+                  <Toggle checked={formData.enableAiGeneration} onChange={val => setFormData({...formData, enableAiGeneration: val})} />
                </div>
 
                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-all duration-300 ${isAiDisabled ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
@@ -297,14 +299,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         <ShieldCheck className="w-4 h-4 text-emerald-500" />
                         <span className="text-xs font-medium">Validação de Sintaxe</span>
                      </div>
-                     <input type="checkbox" checked={formData.enableAiValidation} onChange={e => setFormData({...formData, enableAiValidation: e.target.checked})} className="rounded text-indigo-600" />
+                     <Toggle checked={formData.enableAiValidation} onChange={val => setFormData({...formData, enableAiValidation: val})} />
                   </div>
                   <div className="flex items-center justify-between p-3 border border-slate-100 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
                      <div className="flex items-center gap-2">
                         <Lightbulb className="w-4 h-4 text-amber-500" />
                         <span className="text-xs font-medium">Sugestões de Performance</span>
                      </div>
-                     <input type="checkbox" checked={formData.enableAiTips} onChange={e => setFormData({...formData, enableAiTips: e.target.checked})} className="rounded text-indigo-600" />
+                     <Toggle checked={formData.enableAiTips} onChange={val => setFormData({...formData, enableAiTips: val})} />
                   </div>
                   <div className="sm:col-span-2 p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-700">
                      <div className="flex items-center justify-between mb-3">
