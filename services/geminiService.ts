@@ -7,7 +7,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper to clean Markdown code blocks from JSON response
 const cleanJsonString = (str: string): string => {
-  if (!str) return "{}";
+  if (!str) return "[]";
   return str.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
 };
 
@@ -24,6 +24,36 @@ const formatSchemaForPrompt = (schema: DatabaseSchema): string => {
     })) 
   }));
   return JSON.stringify(simplifiedStructure, null, 2);
+};
+
+export const extractSqlFromLogs = async (logText: string): Promise<string[]> => {
+  const prompt = `
+    Analise o seguinte texto de log e extraia APENAS as consultas SQL (SELECT, INSERT, UPDATE, DELETE).
+    Remova timestamps, nomes de funções de log (como .execute:), aspas externas que envolvem a query e escapes de caracteres.
+    
+    TEXTO DE LOG:
+    "${logText}"
+    
+    Retorne o resultado estritamente como um JSON array de strings.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
+      }
+    });
+    return JSON.parse(cleanJsonString(response.text || "[]"));
+  } catch (error) {
+    console.error("Extraction Error:", error);
+    return [];
+  }
 };
 
 export const generateBuilderStateFromPrompt = async (

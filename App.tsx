@@ -22,6 +22,7 @@ import AiPreferenceModal from './components/AiPreferenceModal';
 import LogAnalyzerModal from './components/LogAnalyzerModal'; 
 import TemplateModal from './components/TemplateModal'; 
 import HistoryModal from './components/HistoryModal'; 
+import SqlExtractorModal from './components/SqlExtractorModal';
 import TourGuide, { TourStep } from './components/TourGuide';
 import { generateSqlFromBuilderState } from './services/geminiService';
 import { generateLocalSql } from './services/localSqlService';
@@ -86,6 +87,7 @@ const App: React.FC = () => {
   const [showAiPreference, setShowAiPreference] = useState(false);
   const [showLogAnalyzer, setShowLogAnalyzer] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showSqlExtractor, setShowSqlExtractor] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tablePreview, setTablePreview] = useState<{name: string, data: any[], loading: boolean, error: string | null} | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false); 
@@ -314,6 +316,7 @@ const App: React.FC = () => {
         onOpenVirtualRelations={() => setShowVirtualRelations(true)}
         onOpenLogAnalyzer={() => setShowLogAnalyzer(true)}
         onOpenTemplates={() => setShowTemplates(true)}
+        onOpenSqlExtractor={() => setShowSqlExtractor(true)}
       />
 
       <main className="flex-1 overflow-hidden relative flex flex-col">
@@ -433,6 +436,13 @@ const App: React.FC = () => {
          <TemplateModal 
             onClose={() => setShowTemplates(false)}
             onRunTemplate={handleRunExternalSql}
+         />
+      )}
+
+      {showSqlExtractor && (
+         <SqlExtractorModal 
+            onClose={() => setShowSqlExtractor(false)}
+            onRunSql={handleRunExternalSql}
          />
       )}
 

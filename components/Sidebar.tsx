@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid, HelpCircle, BookOpen, GitCompare, Link, FileSearch, FileText } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid, HelpCircle, BookOpen, GitCompare, Link, FileSearch, FileText, Scissors } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
@@ -17,10 +17,11 @@ interface SidebarProps {
   onOpenVirtualRelations?: () => void;
   onOpenLogAnalyzer?: () => void;
   onOpenTemplates?: () => void;
+  onOpenSqlExtractor?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations, onOpenLogAnalyzer, onOpenTemplates
+  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations, onOpenLogAnalyzer, onOpenTemplates, onOpenSqlExtractor
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -112,6 +113,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                <button onClick={onOpenTemplates} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 hover:text-cyan-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Templates SQL">
                   <FileText className="w-4 h-4 shrink-0" />
                   {!isCollapsed && <span>Templates SQL</span>}
+               </button>
+               <button onClick={onOpenSqlExtractor} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Extrator de SQL">
+                  <Scissors className="w-4 h-4 shrink-0" />
+                  {!isCollapsed && <span>Extrator de SQL</span>}
                </button>
                <button onClick={onOpenLogAnalyzer} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Analisador de Logs">
                   <FileSearch className="w-4 h-4 shrink-0" />
