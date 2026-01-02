@@ -304,6 +304,8 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
           if (c.isForeignKey && c.references) {
              const parts = c.references.split('.'); 
              let targetTableId = '';
+             let targetColName = '';
+             
              if (parts.length === 3) targetTableId = `${parts[0]}.${parts[1]}`;
              else if (parts.length === 2) targetTableId = `public.${parts[0]}`;
              
@@ -789,12 +791,24 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
         </div>
         {contextMenu && (
            <div style={{ top: contextMenu.y, left: contextMenu.x }} className="fixed z-[80] bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-2 min-w-[150px] animate-in zoom-in-95 duration-100" onClick={e => e.stopPropagation()}>
-              <button onClick={() => { const p = positions[contextMenu.tableId]; setPan({ x: (containerSize.w/2) - (p.x * 1.5) - 100, y: (containerSize.h/2) - (p.y * 1.5) }); setScale(1.5); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-200">Focar Tabela</button>
+              <button 
+                 onClick={() => { 
+                    const table = schema.tables.find(t => getTableId(t) === contextMenu.tableId);
+                    if (table) setViewingDDL(table);
+                    setContextMenu(null); 
+                 }} 
+                 className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-200 flex items-center gap-2"
+              >
+                 <FileCode className="w-3.5 h-3.5 text-slate-400" /> Ver DDL (SQL)
+              </button>
+              <button onClick={() => { const p = positions[contextMenu.tableId]; setPan({ x: (containerSize.w/2) - (p.x * 1.5) - 100, y: (containerSize.h/2) - (p.y * 1.5) }); setScale(1.5); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-200 flex items-center gap-2">
+                 <Maximize className="w-3.5 h-3.5 text-slate-400" /> Focar Tabela
+              </button>
               <div className="border-t border-slate-100 dark:border-slate-700 my-1"></div>
-              <div className="px-3 py-1 text-[9px] text-slate-400">Colorir</div>
-              <div className="px-3 flex gap-1 flex-wrap">
+              <div className="px-3 py-1 text-[9px] text-slate-400 uppercase tracking-wider font-bold flex items-center gap-1"><Palette className="w-3 h-3" /> Colorir</div>
+              <div className="px-3 pb-1 flex gap-1 flex-wrap">
                  {TABLE_COLORS.map(c => (
-                    <button key={c.id} onClick={() => { setTableColors(prev => ({ ...prev, [contextMenu.tableId]: c.id })); setContextMenu(null); }} className={`w-4 h-4 rounded-full ${c.bg.replace('50', '400')}`} />
+                    <button key={c.id} onClick={() => { setTableColors(prev => ({ ...prev, [contextMenu.tableId]: c.id })); setContextMenu(null); }} className={`w-5 h-5 rounded-full border border-black/5 dark:border-white/10 ${c.bg.replace('50', '400')}`} title={c.id} />
                  ))}
               </div>
            </div>
@@ -803,7 +817,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
            <div className="absolute inset-0 z-[90] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setViewingDDL(null)}>
               <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
                  <div className="flex-1 overflow-auto bg-slate-900 p-4"><pre className="font-mono text-xs text-emerald-400 whitespace-pre-wrap">{generateDDL(viewingDDL)}</pre></div>
-                 <button onClick={() => setViewingDDL(null)} className="p-3 bg-slate-800 text-white text-xs w-full text-center hover:bg-slate-700">Fechar</button>
+                 <button onClick={() => setViewingDDL(null)} className="p-3 bg-slate-800 text-white text-xs w-full text-center hover:bg-slate-700 font-bold uppercase tracking-widest">Fechar</button>
               </div>
            </div>
         )}

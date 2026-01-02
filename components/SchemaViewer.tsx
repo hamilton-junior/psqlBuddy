@@ -754,7 +754,8 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   const totalVisibleCount = useMemo(() => {
     let count = 0;
-    Object.values(groupedTables).forEach(list => count += list.length);
+    // Fix: Explicitly cast to Table[][] to avoid property 'length' error on 'unknown'
+    (Object.values(groupedTables) as Table[][]).forEach(list => count += list.length);
     return count;
   }, [groupedTables]);
 
