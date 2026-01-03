@@ -104,6 +104,9 @@ const App: React.FC = () => {
        setSimulationData(simData);
     }
     
+    // Clear previous results when connection changes
+    setExecutionResult([]);
+    setQueryResult(null);
     setCurrentStep('builder');
     
     const hasSeenTour = localStorage.getItem('psql-buddy-tour-seen');
@@ -280,10 +283,16 @@ const App: React.FC = () => {
         currentStep={currentStep}
         onNavigate={setCurrentStep}
         schema={schema}
+        hasResults={executionResult.length > 0}
         onOpenSettings={() => setShowSettings(true)}
         onOpenDiagram={() => setShowDiagram(true)}
         onOpenHistory={() => setHistoryOpen(true)}
-        onRegenerateClick={() => { setSchema(null); setCurrentStep('connection'); }}
+        onRegenerateClick={() => { 
+           setSchema(null); 
+           setExecutionResult([]);
+           setQueryResult(null);
+           setCurrentStep('connection'); 
+        }}
         onDescriptionChange={(tableName, newDesc) => {
            if (schema) {
               const updatedTables = schema.tables.map(t => t.name === tableName ? { ...t, description: newDesc } : t);
@@ -339,7 +348,12 @@ const App: React.FC = () => {
                  data={executionResult}
                  sql={queryResult?.sql || ''}
                  onBackToBuilder={() => setCurrentStep('builder')}
-                 onNewConnection={() => { setSchema(null); setCurrentStep('connection'); }}
+                 onNewConnection={() => { 
+                    setSchema(null); 
+                    setExecutionResult([]);
+                    setQueryResult(null);
+                    setCurrentStep('connection'); 
+                 }}
                  settings={settings}
                  onShowToast={handleShowToast}
                  credentials={credentials}

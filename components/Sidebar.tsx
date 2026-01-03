@@ -1,12 +1,13 @@
 
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, LayoutGrid, HelpCircle, BookOpen, GitCompare, Link, FileSearch, FileText, Scissors } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, GitCompare, Link, FileSearch, FileText, Scissors, BookOpen } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
   onNavigate: (step: AppStep) => void;
   schema: DatabaseSchema | null;
+  hasResults?: boolean;
   onOpenSettings: () => void;
   onOpenDiagram?: () => void; 
   onOpenHistory?: () => void; 
@@ -21,7 +22,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  currentStep, onNavigate, schema, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations, onOpenLogAnalyzer, onOpenTemplates, onOpenSqlExtractor
+  currentStep, onNavigate, schema, hasResults = false, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations, onOpenLogAnalyzer, onOpenTemplates, onOpenSqlExtractor
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -93,8 +94,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="space-y-1">
           {navItem('connection', 'Conexão', <Server className="w-4.5 h-4.5" />, false, "Configurar conexão")}
           {navItem('builder', 'Construtor', <Layers className="w-4.5 h-4.5" />, !schema, "Construir queries")}
-          {navItem('preview', 'Visualização', <Terminal className="w-4.5 h-4.5" />, currentStep === 'connection' || currentStep === 'builder', "Visualizar SQL")}
-          {navItem('results', 'Resultados', <Table className="w-4.5 h-4.5" />, currentStep !== 'results', "Ver resultados")}
+          {navItem('preview', 'Visualização', <Terminal className="w-4.5 h-4.5" />, !schema, "Visualizar SQL")}
+          {navItem('results', 'Resultados', <Table className="w-4.5 h-4.5" />, !hasResults, "Ver resultados da última query")}
           
           <div className="my-4 border-t border-slate-100 dark:border-slate-800/50"></div>
           

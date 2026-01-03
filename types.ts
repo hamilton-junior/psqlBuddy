@@ -1,4 +1,5 @@
 
+
 export interface Column {
   name: string;
   type: string;
@@ -63,9 +64,7 @@ export interface QueryResult {
   optimization?: OptimizationAnalysis;
 }
 
-/**
- * Fixed: Added 'dashboard' to AppStep to match the existence of DashboardStep.tsx component
- */
+// Added 'dashboard' to AppStep
 export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard';
 
 export type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'ILIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL';
@@ -143,7 +142,6 @@ export interface AppSettings {
   defaultDbName: string;
   defaultLimit: number;
   defaultRowsPerPage: number;
-  // Fix: Added theme property used in App.tsx
   theme: 'light' | 'dark';
 }
 
@@ -161,7 +159,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultDbName: '',
   defaultLimit: 100,
   defaultRowsPerPage: 10,
-  // Fix: Added default theme
   theme: 'dark'
 };
 
@@ -220,9 +217,7 @@ export interface VirtualRelation {
   confidence?: number; 
 }
 
-/**
- * Fixed: Added DashboardItem interface missing in types.ts but used in DashboardStep.tsx
- */
+// Added missing DashboardItem interface to resolve import error in DashboardStep.tsx
 export interface DashboardItem {
   id: string;
   title: string;
