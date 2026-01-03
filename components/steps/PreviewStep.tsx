@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { DatabaseSchema, QueryResult, OptimizationAnalysis } from '../../types';
 import { Terminal, Play, ArrowLeft, CheckCircle2, ShieldAlert, Info, Copy, Check, Loader2, Lightbulb, ShieldOff, AlertCircle, AlignLeft, Minimize2, Split, Code2, Zap, TrendingUp, Gauge, X, Shield } from 'lucide-react';
 import Editor, { useMonaco, DiffEditor } from '@monaco-editor/react';
@@ -17,6 +17,7 @@ interface PreviewStepProps {
 
 const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBack, isExecuting, isValidating, validationDisabled, schema }) => {
   const [copied, setCopied] = useState(false);
+  // Inicializa o estado com o valor da query atual
   const [editedSql, setEditedSql] = useState(queryResult.sql || '');
   const [viewMode, setViewMode] = useState<'edit' | 'diff'>('edit');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -24,6 +25,8 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
   const [showAnalysis, setShowAnalysis] = useState(false);
   
   const monaco = useMonaco();
+  // Referência para controlar qual foi a última query "oficial" enviada pelo pai
+  const lastSourceSqlRef = useRef(queryResult.sql);
 
   useEffect(() => {
      const handleKeyDown = (e: KeyboardEvent) => {
@@ -55,9 +58,17 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
     return () => disposable.dispose();
   }, [monaco, schema]);
 
+  /**
+   * Sincroniza o editor APENAS se a query vinda do pai for diferente da última processada.
+   * Isso evita que re-renderizações do componente pai (causadas por outros estados) 
+   * resetem o texto que o usuário está editando ou limpando no Monaco.
+   */
   useEffect(() => {
-    if (queryResult.sql && editedSql === '') setEditedSql(queryResult.sql);
-  }, [queryResult.sql, editedSql]);
+    if (queryResult.sql !== lastSourceSqlRef.current) {
+      setEditedSql(queryResult.sql || '');
+      lastSourceSqlRef.current = queryResult.sql;
+    }
+  }, [queryResult.sql]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(editedSql);
@@ -121,7 +132,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
                         <div className="flex items-center gap-4">
                            <div className="relative w-16 h-16 flex items-center justify-center">
                               <svg className="w-full h-full transform -rotate-90">
-                                 <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-200 dark:text-slate-800" />
+                                 <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-100 dark:text-slate-900" />
                                  <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray={175.9} strokeDashoffset={175.9 - (175.9 * analysisResult.rating) / 100} className={`${analysisResult.rating > 80 ? 'text-emerald-500' : 'text-amber-500'} transition-all duration-1000 ease-out`} />
                               </svg>
                               <span className="absolute text-sm font-bold text-slate-700 dark:text-slate-200">{analysisResult.rating}</span>
@@ -190,7 +201,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
 
         <div className="flex items-center justify-between pt-4 pb-10 shrink-0">
            <button onClick={onBack} className="px-6 py-3 text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-2"><ArrowLeft className="w-4 h-4" /> Voltar</button>
-           <button onClick={() => onExecute(editedSql)} disabled={isExecuting || isValidating || !editedSql.trim()} className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-900/20 dark:shadow-none transition-all disabled:opacity-50 flex items-center gap-2">
+           <button onClick={() => onExecute(editedSql)} disabled={isExecuting || isValidating || !editedSql.trim()} className="bg-indigo-600 hover:bg-indigo-50 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-900/20 dark:shadow-none transition-all disabled:opacity-50 flex items-center gap-2">
               {isExecuting ? 'Executando...' : 'Executar Query'} <Play className="w-4 h-4 fill-current" />
            </button>
         </div>

@@ -443,6 +443,7 @@ const App: React.FC = () => {
          <SqlExtractorModal 
             onClose={() => setShowSqlExtractor(false)}
             onRunSql={handleRunExternalSql}
+            settings={settings}
          />
       )}
 
