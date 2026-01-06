@@ -11,6 +11,7 @@ import BuilderStep from './components/steps/BuilderStep';
 import PreviewStep from './components/steps/PreviewStep';
 import ResultsStep from './components/steps/ResultsStep';
 import DataDiffStep from './components/steps/DataDiffStep';
+import RoadmapStep from './components/steps/RoadmapStep';
 import SettingsModal from './components/SettingsModal';
 import SchemaDiagramModal from './components/SchemaDiagramModal';
 import ShortcutsModal from './components/ShortcutsModal';
@@ -363,13 +364,16 @@ const App: React.FC = () => {
            )}
 
            {currentStep === 'datadiff' && schema && (
-              /* Fix: Added missing 'settings' prop to DataDiffStep component */
               <DataDiffStep 
                  schema={schema} 
                  credentials={credentials}
                  simulationData={simulationData}
                  settings={settings}
               />
+           )}
+
+           {currentStep === 'roadmap' && (
+              <RoadmapStep />
            )}
         </div>
       </main>
@@ -412,7 +416,7 @@ const App: React.FC = () => {
 
       {showLogAnalyzer && schema && (
          <LogAnalyzerModal 
-            schema={schema}
+            schema={schema} 
             onClose={() => setShowLogAnalyzer(false)}
             onRunSql={handleRunExternalSql}
          />

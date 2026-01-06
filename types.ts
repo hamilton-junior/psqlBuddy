@@ -63,8 +63,8 @@ export interface QueryResult {
   optimization?: OptimizationAnalysis;
 }
 
-// Added 'dashboard' to AppStep
-export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard';
+// Added 'dashboard' and 'roadmap' to AppStep
+export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'roadmap';
 
 export type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'ILIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL';
 export type JoinType = 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';

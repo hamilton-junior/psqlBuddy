@@ -136,7 +136,7 @@ const HoverPreviewTooltip: React.FC<{
       {isPersistent && (
          <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Escolher Destino</span>
-            <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-50" /></button>
+            <button onClose={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-50" /></button>
          </div>
       )}
 
@@ -317,7 +317,7 @@ const ManualMappingPopover: React.FC<{
                 <div className="space-y-1.5">
                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Tabela de Destino</label>
                    <div className="relative">
-                      <Search className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                      <Search className="absolute left-2 top-2.5 w-3.5 h-3.5 text-slate-400" />
                       <input 
                          autoFocus
                          type="text" 
@@ -939,7 +939,8 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
     const tableName = mainTableName || "table_name";
     let lines = ["BEGIN;"];
     const editsByRow: Record<number, Record<string, string>> = {};
-    Object.entries(pendingEdits).forEach(([key, val]) => {
+    // Fix: cast entries to [string, string][] to ensure key and val are treated as strings
+    (Object.entries(pendingEdits) as Array<[string, string]>).forEach(([key, val]) => {
        const [rowIdx] = key.split('-').map(Number);
        const col = key.split('-').slice(1).join('-');
        if (!editsByRow[rowIdx]) editsByRow[rowIdx] = {};
@@ -953,7 +954,8 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
        
        if (pkVal === undefined || pkVal === null) continue;
        
-       const setClause = Object.entries(cols).map(([col, val]) => `"${col}" = '${val.replace(/'/g, "''")}'`).join(', ');
+       // Fix: cast entries to [string, string][] to ensure val is treated as a string for .replace()
+       const setClause = (Object.entries(cols) as Array<[string, string]>).map(([col, val]) => `"${col}" = '${val.replace(/'/g, "''")}'`).join(', ');
        const formattedPkVal = typeof pkVal === 'string' ? `'${pkVal.replace(/'/g, "''")}'` : pkVal;
        
        lines.push(`UPDATE ${tableName} SET ${setClause} WHERE "${finalPkColumn}" = ${formattedPkVal};`);
