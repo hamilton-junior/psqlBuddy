@@ -136,7 +136,11 @@ const HoverPreviewTooltip: React.FC<{
       {isPersistent && (
          <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Escolher Destino</span>
-            <button onClose={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-50" /></button>
+            {/* 
+                Fix: Changed onClose prop to onClick for button element.
+                The previous 'onClose={onClose}' was incorrect for a native HTML button element.
+            */}
+            <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-50" /></button>
          </div>
       )}
 
@@ -393,7 +397,7 @@ const RowInspector: React.FC<{ row: any, onClose: () => void }> = ({ row, onClos
       <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={onClose}>
          <div className="bg-white dark:bg-slate-800 w-full max-w-2xl max-h-[85vh] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
-               <div className="flex items-center gap-2">
+               <div className="flex items-center gap-3">
                   <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/30 rounded text-indigo-600 dark:text-indigo-400"><FileText className="w-4 h-4" /></div>
                   <h3 className="font-bold text-slate-800 dark:text-white">Detalhes do Registro</h3>
                </div>
