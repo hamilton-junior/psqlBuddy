@@ -12,8 +12,15 @@ let serverProcess;
 
 function startBackend() {
   const isDev = !app.isPackaged;
-  const serverPath = path.join(__dirname, 'server.js');
   
+  // Se estivermos em dev e o usuário estiver rodando o server manualmente, 
+  // podemos pular o spawn automático para evitar EADDRINUSE.
+  if (isDev && process.env.SKIP_BACKEND === '1') {
+    console.log(`[MAIN] SKIP_BACKEND ativo. Assumindo que o servidor já está rodando na porta 3000.`);
+    return;
+  }
+
+  const serverPath = path.join(__dirname, 'server.js');
   console.log(`[MAIN] Iniciando backend em:`, serverPath);
   
   serverProcess = spawn(process.execPath, [serverPath], {
@@ -23,6 +30,10 @@ function startBackend() {
       NODE_ENV: isDev ? 'development' : 'production'
     },
     stdio: 'inherit'
+  });
+
+  serverProcess.on('error', (err) => {
+    console.error('[MAIN] Falha ao iniciar processo do servidor:', err);
   });
 }
 
@@ -58,24 +69,14 @@ function createWindow() {
 // IPC para Atualizações
 ipcMain.on('check-update', (event, branch = 'stable') => {
   console.log(`[UPDATE] Verificando atualizações na branch: ${branch}...`);
-  
-  // Simulação de fluxo de atualização baseada na branch (main = WIP, stable = Estável)
   const updateData = branch === 'main' 
-    ? { version: '0.3.0-nightly', notes: 'Atualização WIP (branch main): Novas funcionalidades experimentais e correções rápidas.', branch: 'Main' }
-    : { version: '0.2.0', notes: 'Atualização Estável (branch stable): Versão consolidada com foco em segurança e performance.', branch: 'Stable' };
+    ? { version: '0.3.0-nightly', notes: 'Atualização WIP (branch main): Novas funcionalidades experimentais.', branch: 'Main' }
+    : { version: '0.2.0', notes: 'Atualização Estável: Versão consolidada.', branch: 'Stable' };
 
-  // Simular pequeno delay de rede
   setTimeout(() => {
     mainWindow.webContents.send('update-available', updateData);
-    
-    setTimeout(() => {
-      mainWindow.webContents.send('update-downloading', { percent: 45 });
-    }, 2000);
-
-    setTimeout(() => {
-      mainWindow.webContents.send('update-downloading', { percent: 100 });
-      mainWindow.webContents.send('update-ready');
-    }, 5000);
+    setTimeout(() => mainWindow.webContents.send('update-downloading', { percent: 100 }), 2000);
+    setTimeout(() => mainWindow.webContents.send('update-ready'), 3000);
   }, 1000);
 });
 
