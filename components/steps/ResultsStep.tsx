@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight, AlertTriangle, Undo2, ShieldAlert, Pencil } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight, AlertTriangle, Undo2, ShieldAlert, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { AppSettings, ExplainNode, DatabaseSchema, Table } from '../../types';
 import DataVisualizer from '../DataVisualizer';
 import DataAnalysisChat from '../DataAnalysisChat';
@@ -136,10 +136,6 @@ const HoverPreviewTooltip: React.FC<{
       {isPersistent && (
          <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Escolher Destino</span>
-            {/* 
-                Fix: Changed onClose prop to onClick for button element.
-                The previous 'onClose={onClose}' was incorrect for a native HTML button element.
-            */}
             <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-50" /></button>
          </div>
       )}
@@ -439,6 +435,7 @@ const RowInspector: React.FC<{ row: any, onClose: () => void }> = ({ row, onClos
    );
 };
 
+// --- Sub-component: VirtualTable ---
 interface VirtualTableProps {
    data: any[];
    columns: string[];
@@ -475,6 +472,9 @@ const VirtualTable = ({
    const [editingCell, setEditingCell] = useState<{rowIdx: number, col: string} | null>(null);
    const editInputRef = useRef<HTMLInputElement>(null);
    
+   // Client-side sorting state
+   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' | null }>({ key: '', direction: null });
+   
    const [hoverPreview, setHoverPreview] = useState<{links: ManualLink[], val: any, x: number, y: number, persistent: boolean} | null>(null);
    const hoverTimeoutRef = useRef<any>(null);
 
@@ -503,10 +503,47 @@ const VirtualTable = ({
       localStorage.setItem('psql-buddy-manual-drilldown-links-v2', JSON.stringify(newMappings));
    };
 
-   const totalRows = data.length;
+   // Logic for local sorting
+   const handleSort = (col: string) => {
+      setSortConfig(prev => {
+         if (prev.key === col) {
+            if (prev.direction === 'asc') return { key: col, direction: 'desc' };
+            return { key: '', direction: null };
+         }
+         return { key: col, direction: 'asc' };
+      });
+      setCurrentPage(1); // Reset page on sort change
+   };
+
+   const sortedData = useMemo(() => {
+      if (!sortConfig.key || !sortConfig.direction) return data;
+
+      return [...data].sort((a, b) => {
+         const aVal = a[sortConfig.key];
+         const bVal = b[sortConfig.key];
+
+         if (aVal === bVal) return 0;
+         if (aVal === null || aVal === undefined) return 1;
+         if (bVal === null || bVal === undefined) return -1;
+
+         let comparison = 0;
+         if (typeof aVal === 'number' && typeof bVal === 'number') {
+            comparison = aVal - bVal;
+         } else if (typeof aVal === 'boolean' && typeof bVal === 'boolean') {
+            comparison = aVal === bVal ? 0 : aVal ? 1 : -1;
+         } else {
+            // Numeric comparison fallback for strings that represent numbers
+            comparison = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+         }
+
+         return sortConfig.direction === 'asc' ? comparison : -comparison;
+      });
+   }, [data, sortConfig]);
+
+   const totalRows = sortedData.length;
    const totalPages = Math.ceil(totalRows / Math.max(rowsPerPage, 1));
    const startIndex = (currentPage - 1) * rowsPerPage;
-   const currentData = data.slice(startIndex, startIndex + rowsPerPage);
+   const currentData = sortedData.slice(startIndex, startIndex + rowsPerPage);
 
    const getLinksForColumn = (colName: string): ManualLink[] => {
       let links: ManualLink[] = [...(manualMappings[colName] || [])];
@@ -643,11 +680,25 @@ const VirtualTable = ({
                      {columns.map((col, idx) => {
                         const links = manualMappings[col] || [];
                         const hasManualMapping = links.length > 0;
+                        const isSorted = sortConfig.key === col;
 
                         return (
-                           <th key={col} className={`px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase border-b border-slate-200 dark:border-slate-700 w-[180px] group relative ${idx === 0 ? 'pl-6' : ''}`}>
+                           <th 
+                              key={col} 
+                              onClick={() => handleSort(col)}
+                              className={`px-4 py-3 text-xs font-bold uppercase border-b border-slate-200 dark:border-slate-700 w-[180px] group relative cursor-pointer select-none transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/80 ${isSorted ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'} ${idx === 0 ? 'pl-6' : ''}`}
+                           >
                               <div className="flex items-center justify-between min-w-0">
-                                 <span className="truncate" title={col}>{col.replace(/_/g, ' ')}</span>
+                                 <div className="flex items-center gap-1.5 truncate">
+                                    <span className="truncate" title={col}>{col.replace(/_/g, ' ')}</span>
+                                    <div className="shrink-0">
+                                       {isSorted ? (
+                                          sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                       ) : (
+                                          <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                                       )}
+                                    </div>
+                                 </div>
                                  <div className="flex items-center gap-1 shrink-0 ml-1">
                                     {schema && (
                                        <button 
@@ -722,6 +773,7 @@ const VirtualTable = ({
    );
 };
 
+// --- Sub-component: ColumnProfiler ---
 const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => void }> = ({ data, column, onClose }) => {
    const stats = useMemo(() => {
       const values = data.map(r => r[column]);
@@ -750,6 +802,7 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
    );
 };
 
+// --- Sub-component: ExplainVisualizer ---
 const ExplainVisualizer = ({ plan, loading, error }: { plan: ExplainNode | null, loading: boolean, error: string | null }) => {
    if (loading) return <div className="p-10 text-center"><div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div><p className="text-slate-500">Analisando performance...</p></div>;
    if (error) return <div className="p-10 text-center flex flex-col items-center justify-center text-slate-400"><div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4"><AlertCircle className="w-8 h-8 text-red-500" /></div><h3 className="text-slate-700 dark:text-slate-200 font-bold mb-1">Falha na Análise</h3><p className="text-sm max-w-md">{error}</p></div>;
@@ -768,6 +821,7 @@ const ExplainVisualizer = ({ plan, loading, error }: { plan: ExplainNode | null,
    return <div className="p-6 overflow-auto bg-slate-50 dark:bg-slate-900 h-full">{renderNode(plan)}</div>;
 };
 
+// --- Filter Rules Interface ---
 interface FilterRule {
    id: string;
    column: string;
@@ -775,6 +829,7 @@ interface FilterRule {
    value: string;
 }
 
+// --- Sub-component: SmartFilterBar ---
 const SmartFilterBar: React.FC<{ columns: string[], filters: FilterRule[], onChange: (filters: FilterRule[]) => void, onClear: () => void }> = ({ columns, filters, onChange, onClear }) => {
    const [isOpen, setIsOpen] = useState(filters.length > 0);
    const addFilter = () => { onChange([...filters, { id: crypto.randomUUID(), column: columns[0] || '', operator: 'contains', value: '' }]); setIsOpen(true); };
@@ -943,7 +998,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
     const tableName = mainTableName || "table_name";
     let lines = ["BEGIN;"];
     const editsByRow: Record<number, Record<string, string>> = {};
-    // Fix: cast entries to [string, string][] to ensure key and val are treated as strings
     (Object.entries(pendingEdits) as Array<[string, string]>).forEach(([key, val]) => {
        const [rowIdx] = key.split('-').map(Number);
        const col = key.split('-').slice(1).join('-');
@@ -958,7 +1012,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
        
        if (pkVal === undefined || pkVal === null) continue;
        
-       // Fix: cast entries to [string, string][] to ensure val is treated as a string for .replace()
        const setClause = (Object.entries(cols) as Array<[string, string]>).map(([col, val]) => `"${col}" = '${val.replace(/'/g, "''")}'`).join(', ');
        const formattedPkVal = typeof pkVal === 'string' ? `'${pkVal.replace(/'/g, "''")}'` : pkVal;
        
