@@ -1,8 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { X, Scissors, Sparkles, Loader2, Play, Copy, Check, Terminal, FileCode, AlertCircle, Trash2, History as HistoryIcon, Zap, Info } from 'lucide-react';
 import { extractSqlFromLogs } from '../services/geminiService';
 import { AppSettings } from '../types';
+import Dialog from './common/Dialog';
+import { toast } from 'react-hot-toast';
 
 interface SqlExtractorModalProps {
   onClose: () => void;
@@ -21,6 +22,15 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
   });
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
+  // Dialog System
+  const [dialogConfig, setDialogConfig] = useState<{ 
+    isOpen: boolean, 
+    type: 'confirm' | 'danger' | 'info', 
+    title: string, 
+    message: string, 
+    onConfirm: () => void 
+  } | null>(null);
+
   // Persistir alterações no localStorage
   useEffect(() => {
     if (logInput) {
@@ -38,11 +48,6 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
     }
   }, [queries]);
 
-  /**
-   * Extração Local Refinada
-   * Processa o texto linha a linha para identificar o início de comandos SQL
-   * e determinar os limites baseados em aspas de log ou quebras de linha.
-   */
   const extractSqlLocally = () => {
     if (!logInput.trim()) return;
     
@@ -51,15 +56,11 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
     const extracted: string[] = [];
 
     lines.forEach(line => {
-      // 1. Identifica a primeira ocorrência de uma palavra-chave SQL na linha
       const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'i');
       const match = line.match(keywordRegex);
       
       if (match && match.index !== undefined) {
         const startPos = match.index;
-        
-        // 2. Tenta detectar se a query está envolta em aspas (padrão comum de logs)
-        // Olha 1 ou 2 caracteres antes do início do comando SQL
         let quoteChar = '';
         const prefix = line.substring(Math.max(0, startPos - 2), startPos);
         if (prefix.includes('"')) quoteChar = '"';
@@ -67,7 +68,6 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
         
         let query = '';
         if (quoteChar) {
-           // Se achou uma aspa de abertura, procura a última ocorrência da mesma aspa na linha
            const endQuotePos = line.lastIndexOf(quoteChar);
            if (endQuotePos > startPos) {
               query = line.substring(startPos, endQuotePos);
@@ -75,12 +75,10 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
               query = line.substring(startPos);
            }
         } else {
-           // Se não há aspas óbvias, pega do comando até o fim da linha ou ponto e vírgula
            const semiPos = line.indexOf(';', startPos);
            query = semiPos !== -1 ? line.substring(startPos, semiPos + 1) : line.substring(startPos);
         }
         
-        // Limpeza básica de caracteres de escape comuns em logs JSON/String
         const cleaned = query.trim()
            .replace(/\\n/g, '\n')
            .replace(/\\"/g, '"')
@@ -106,7 +104,15 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
   const handleLocalExtract = () => {
     const success = extractSqlLocally();
     if (!success) {
-      alert("Nenhuma query SQL reconhecida. Verifique se o texto contém comandos SELECT, INSERT, etc.");
+      setDialogConfig({
+        isOpen: true,
+        type: 'info',
+        title: 'Nenhum SQL encontrado',
+        message: 'Nenhuma query SQL reconhecida localmente. Verifique se o texto contém comandos SELECT, INSERT, etc., ou tente a extração via IA.',
+        onConfirm: () => {}
+      });
+    } else {
+      toast.success("SQL extraído com sucesso!");
     }
   };
 
@@ -122,12 +128,18 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
           const unique = combined.filter((item, index) => combined.indexOf(item) === index);
           return unique.slice(0, 50);
         });
+        toast.success("IA processou os logs com sucesso!");
       } else {
-        alert("A IA não conseguiu identificar queries SQL válidas neste texto.");
+        setDialogConfig({
+          isOpen: true,
+          type: 'info',
+          title: 'Extração via IA',
+          message: 'A IA não conseguiu identificar queries SQL válidas neste texto. Certifique-se de que o log contém fragmentos de consultas.',
+          onConfirm: () => {}
+        });
       }
     } catch (error) {
-      console.error(error);
-      alert("Falha na comunicação com a IA.");
+      toast.error("Falha na comunicação com a IA.");
     } finally {
       setIsExtractingAi(false);
     }
@@ -137,15 +149,23 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
     navigator.clipboard.writeText(sql);
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 2000);
+    toast.success("Copiado!");
   };
 
-  const handleClearHistory = (e: React.MouseEvent) => {
+  const handleClearAll = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (window.confirm("Deseja realmente limpar todo o histórico de consultas extraídas?")) {
-      setQueries([]);
-      localStorage.removeItem('psql-buddy-extractor-results');
-    }
+    setDialogConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Limpar Resultados',
+      message: 'Deseja realmente limpar todo o histórico de consultas extraídas? Esta ação não pode ser desfeita.',
+      onConfirm: () => {
+        setQueries([]);
+        localStorage.removeItem('psql-buddy-extractor-results');
+        toast.success("Histórico limpo.");
+      }
+    });
   };
 
   const handleRemoveItem = (index: number) => {
@@ -154,6 +174,18 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+      {dialogConfig && (
+        <Dialog 
+          isOpen={dialogConfig.isOpen}
+          type={dialogConfig.type}
+          title={dialogConfig.title}
+          message={dialogConfig.message}
+          onConfirm={dialogConfig.onConfirm}
+          onClose={() => setDialogConfig(null)}
+          confirmLabel={dialogConfig.type === 'danger' ? 'Limpar Tudo' : 'OK'}
+        />
+      )}
+      
       <div className="bg-white dark:bg-slate-800 w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden max-h-[85vh]" onClick={e => e.stopPropagation()}>
         
         <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-indigo-50 dark:bg-indigo-900/20">
@@ -215,7 +247,7 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
                 </h4>
                 {queries.length > 0 && (
                   <button 
-                    onClick={handleClearHistory}
+                    onClick={handleClearAll}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all uppercase tracking-tight border border-red-100 dark:border-red-900/50"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> Limpar Tudo
