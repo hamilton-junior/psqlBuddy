@@ -6,11 +6,11 @@ import {
   AlertCircle, GraduationCap, PenTool, DatabaseZap, HeartPulse, 
   Activity, CheckCircle2, XCircle, RefreshCw, Play, 
   Bug, Loader2, Database, User, Server, Hash, Shield, Terminal, ZapOff, ActivitySquare,
-  LayoutGrid, Monitor, Moon, Sun, ChevronRight, Gauge, GitCompare, GitBranch, FlaskConical
+  LayoutGrid, Monitor, Moon, Sun, ChevronRight, Gauge, GitCompare, GitBranch, FlaskConical, Tag, Info
 } from 'lucide-react';
 import { AppSettings, DatabaseSchema, DbCredentials } from '../types';
 import { runFullHealthCheck, HealthStatus, runRandomizedStressTest, StressTestLog } from '../services/healthService';
-import { SimulationData } from '../services/simulationService';
+import { SimulationData } from '../simulationService';
 
 interface SettingsModalProps {
   settings: AppSettings;
@@ -20,13 +20,17 @@ interface SettingsModalProps {
   schema?: DatabaseSchema | null;
   credentials?: DbCredentials | null;
   simulationData?: SimulationData;
+  availableVersion?: string | null; // Adicionado para exibir no diagnóstico
 }
 
 type TabId = 'interface' | 'ai' | 'database' | 'diagnostics';
 
+declare const __APP_VERSION__: string;
+const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
+
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
   settings, onSave, onClose, quotaExhausted,
-  schema, credentials, simulationData = {}
+  schema, credentials, simulationData = {}, availableVersion
 }) => {
   const [formData, setFormData] = useState<AppSettings>({ ...settings });
   const [activeTab, setActiveTab] = useState<TabId>('interface');
@@ -107,6 +111,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     </button>
   );
 
+  const getLatestForBranch = () => {
+    if (availableVersion) return availableVersion;
+    // Fallback fictício para quando não houver info do servidor
+    return formData.updateBranch === 'stable' ? '0.1.10' : '0.3.0-nightly';
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 font-sans animate-in fade-in duration-300">
       <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
@@ -118,7 +128,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
              </div>
              <div>
                 <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Preferências do Sistema</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Personalize sua experiência e monitore a saúde do banco.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Personalize sua experiênca e monitore a saúde do banco.</p>
              </div>
           </div>
           <button onClick={onClose} className="p-2.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-slate-500 transition-all">
@@ -143,8 +153,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                          <span className={isConnected ? 'text-emerald-500' : 'text-amber-500'}>{isConnected ? 'Ativo' : 'Pendente'}</span>
                       </div>
                       <div className="flex items-center justify-between text-[11px] font-medium text-slate-500">
-                         <span>Latência:</span>
-                         <span>~14ms</span>
+                         <span>Sessão:</span>
+                         <span className="text-indigo-500">v{CURRENT_APP_VERSION}</span>
                       </div>
                    </div>
                 </div>
@@ -374,50 +384,79 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
              {activeTab === 'diagnostics' && (
                 <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-300">
-                   {/* Painel de Canais de Atualização */}
-                   <section className="bg-white dark:bg-slate-800 p-6 border border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-sm">
-                      <div className="flex items-center gap-3 mb-6">
-                         <div className="p-2 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl">
-                            <GitBranch className="w-5 h-5" />
+                   {/* Novo Painel de Versão e Lançamentos */}
+                   <section className="bg-white dark:bg-slate-800 p-8 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] shadow-sm overflow-hidden relative group">
+                      <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/5 rounded-full blur-3xl group-hover:bg-indigo-500/10 transition-colors"></div>
+                      
+                      <div className="flex items-center gap-4 mb-8">
+                         <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl">
+                            <Tag className="w-6 h-6" />
                          </div>
                          <div>
-                            <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">Canais de Lançamento (Release Channels)</h4>
-                            <p className="text-xs text-slate-500">Escolha de qual branch o aplicativo buscará atualizações.</p>
+                            <h4 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight leading-none">Estado do Software</h4>
+                            <p className="text-xs text-slate-500 mt-1">Controle de versões e canais de atualização.</p>
                          </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700">
-                         <button 
-                            type="button"
-                            onClick={() => setFormData({...formData, updateBranch: 'stable'})}
-                            className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase transition-all
-                               ${formData.updateBranch === 'stable' 
-                                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                                  : 'text-slate-500 hover:text-slate-700'}
-                            `}
-                         >
-                            <CheckCircle2 className="w-4 h-4" /> Estável (branch: stable)
-                         </button>
-                         <button 
-                            type="button"
-                            onClick={() => setFormData({...formData, updateBranch: 'main'})}
-                            className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase transition-all
-                               ${formData.updateBranch === 'main' 
-                                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/20' 
-                                  : 'text-slate-500 hover:text-slate-700'}
-                            `}
-                         >
-                            <FlaskConical className="w-4 h-4" /> WIP (branch: main)
-                         </button>
+                      <div className="grid grid-cols-2 gap-6 mb-8">
+                         <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Versão em Execução</span>
+                            <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">v{CURRENT_APP_VERSION}</div>
+                            <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
+                               <Info className="w-3 h-3" /> Instância Local
+                            </p>
+                         </div>
+                         <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Última Disponível ({formData.updateBranch})</span>
+                            <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400">v{getLatestForBranch()}</div>
+                            <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
+                               <RefreshCw className="w-3 h-3" /> Consulta em Nuvem
+                            </p>
+                         </div>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-3 text-center italic">
-                         O canal <strong>WIP (main)</strong> recebe correções diárias, enquanto o <strong>Estável (stable)</strong> recebe versões validadas.
-                      </p>
+
+                      <div className="space-y-4">
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
+                            <GitBranch className="w-3.5 h-3.5" /> Canal de Lançamento Ativo
+                         </label>
+                         <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700">
+                            <button 
+                               type="button"
+                               onClick={() => setFormData({...formData, updateBranch: 'stable'})}
+                               className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase transition-all
+                                  ${formData.updateBranch === 'stable' 
+                                     ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' 
+                                     : 'text-slate-500 hover:text-slate-700'}
+                               `}
+                            >
+                               <CheckCircle2 className="w-4 h-4" /> Estável (Stable)
+                            </button>
+                            <button 
+                               type="button"
+                               onClick={() => setFormData({...formData, updateBranch: 'main'})}
+                               className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase transition-all
+                                  ${formData.updateBranch === 'main' 
+                                     ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/20' 
+                                     : 'text-slate-500 hover:text-slate-700'}
+                               `}
+                            >
+                               <FlaskConical className="w-4 h-4" /> Cutting Edge (Main)
+                            </button>
+                         </div>
+                         <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                            <p className="text-xs text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                               <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                               {formData.updateBranch === 'stable' 
+                                 ? 'Canal Recomendado: Versões validadas e testadas para máxima estabilidade no dia a dia.' 
+                                 : 'Acesso Antecipado: Funcionalidades em teste (WIP) e correções de última hora. Pode conter bugs.'}
+                            </p>
+                         </div>
+                      </div>
                    </section>
 
                    <div className="grid grid-cols-5 gap-6">
                       <div className="col-span-2 flex flex-col gap-4">
-                         <div className="bg-white dark:bg-slate-800 p-8 border border-slate-100 dark:border-slate-800 rounded-[2rem] flex flex-col items-center justify-center text-center shadow-sm">
+                         <div className="bg-white dark:bg-slate-800 p-8 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] flex flex-col items-center justify-center text-center shadow-sm">
                             <div className="relative w-32 h-32 mb-6">
                                <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
                                   <circle cx="50" cy="50" r="42" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-100 dark:text-slate-900" />

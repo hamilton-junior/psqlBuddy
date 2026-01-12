@@ -211,7 +211,17 @@ const App: React.FC = () => {
       </main>
 
       {/* Modals */}
-      {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} />}
+      {showSettings && (
+        <SettingsModal 
+          settings={settings} 
+          onSave={setSettings} 
+          onClose={() => setShowSettings(false)} 
+          simulationData={simulationData} 
+          schema={schema} 
+          credentials={credentials} 
+          availableVersion={updateInfo?.version}
+        />
+      )}
       
       {showDiagram && schema && (
         <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} credentials={credentials} />

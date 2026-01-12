@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
 import { 
@@ -25,7 +26,7 @@ interface SidebarProps {
 }
 
 declare const __APP_VERSION__: string;
-const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
+const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentStep, onNavigate, schema, hasResults = false, onOpenSettings, 
@@ -140,7 +141,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-xs font-bold text-indigo-400 hover:bg-indigo-400/5 ${isCollapsed ? 'justify-center px-2' : ''}`}
           >
              <CloudDownload className="w-5 h-5" />
-             {!isCollapsed && <span>Atualizar App</span>}
+             {!isCollapsed && <span>Buscar Atualizações</span>}
           </button>
 
           <button 
@@ -153,8 +154,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
            {!isCollapsed && (
               <div className="px-4 pt-4 flex items-center justify-between mt-2 border-t border-slate-900">
-                 <div className="flex items-center gap-2 text-[9px] font-black text-slate-600 uppercase tracking-widest">
-                    <Tag className="w-3 h-3 opacity-50" /> v{APP_VERSION}
+                 <div className="flex items-center gap-2 text-[9px] font-black text-slate-600 uppercase tracking-widest" title="Versão atualmente em uso">
+                    <Tag className="w-3 h-3 opacity-50" /> v{CURRENT_APP_VERSION}
                  </div>
                  <button 
                     onClick={() => onNavigate('roadmap')}
