@@ -1,0 +1,92 @@
+import React from 'react';
+import { Download, Rocket, RefreshCw, X, CheckCircle2, Sparkles, Loader2 } from 'lucide-react';
+
+interface UpdateModalProps {
+  updateInfo: { version: string, notes: string } | null;
+  downloadProgress: number | null;
+  isReady: boolean;
+  onClose: () => void;
+  onInstall: () => void;
+}
+
+const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress, isReady, onClose, onInstall }) => {
+  if (!updateInfo) return null;
+
+  return (
+    <div className="fixed inset-0 z-[150] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300">
+      <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+        
+        <div className="p-8 text-center relative overflow-hidden">
+           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+           
+           <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              {isReady ? (
+                 <Rocket className="w-10 h-10 text-indigo-600 animate-bounce" />
+              ) : (
+                 <Download className="w-10 h-10 text-indigo-600 animate-pulse" />
+              )}
+           </div>
+
+           <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Nova Versão v{updateInfo.version}</h3>
+           <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Uma atualização importante está disponível para você.</p>
+        </div>
+
+        <div className="px-8 pb-8 space-y-6">
+           <div className="bg-slate-50 dark:bg-slate-950/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 flex items-center gap-1.5">
+                 <Sparkles className="w-3 h-3 text-amber-500" /> Novidades
+              </span>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed italic">
+                 "{updateInfo.notes}"
+              </p>
+           </div>
+
+           {downloadProgress !== null && !isReady && (
+              <div className="space-y-3">
+                 <div className="flex justify-between items-end">
+                    <span className="text-xs font-bold text-slate-500">Baixando arquivos...</span>
+                    <span className="text-sm font-black text-indigo-600">{Math.round(downloadProgress)}%</span>
+                 </div>
+                 <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-indigo-600 transition-all duration-300 shadow-[0_0_10px_rgba(79,70,229,0.5)]" 
+                      style={{ width: `${downloadProgress}%` }}
+                    />
+                 </div>
+              </div>
+           )}
+
+           {isReady && (
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 dark:text-emerald-400 animate-in slide-in-from-bottom-2">
+                 <CheckCircle2 className="w-6 h-6 shrink-0" />
+                 <span className="text-xs font-bold">Download concluído! Reinicie para aplicar.</span>
+              </div>
+           )}
+
+           <div className="flex gap-3">
+              {!isReady && (
+                <button onClick={onClose} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-2xl text-sm font-bold transition-all">
+                   Lembrar depois
+                </button>
+              )}
+              <button 
+                onClick={isReady ? onInstall : undefined}
+                disabled={!isReady && downloadProgress !== null}
+                className={`flex-[2] py-4 rounded-2xl text-sm font-black text-white shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2
+                   ${isReady ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-900/20' : 'bg-slate-300 dark:bg-slate-700 cursor-wait'}
+                `}
+              >
+                 {isReady ? (
+                    <><RefreshCw className="w-4 h-4" /> Instalar e Reiniciar</>
+                 ) : (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Atualizando...</>
+                 )}
+              </button>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UpdateModal;

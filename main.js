@@ -1,8 +1,11 @@
-
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+
+// Nota: Em um ambiente real, você instalaria 'electron-updater'
+// Aqui simulamos os eventos para que a interface possa ser testada
+// import { autoUpdater } from 'electron-updater';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,14 +14,11 @@ let mainWindow;
 let serverProcess;
 
 function startBackend() {
-  // Em produção, o arquivo server.js estará na raiz do app.asar ou extraído
   const isDev = !app.isPackaged;
   const serverPath = path.join(__dirname, 'server.js');
   
-  console.log(`[MAIN] Iniciando backend (Modo: ${isDev ? 'Dev' : 'Prod'}) em:`, serverPath);
+  console.log(`[MAIN] Iniciando backend em:`, serverPath);
   
-  // Usamos o próprio binário do Electron para rodar o script Node (server.js)
-  // Isso garante compatibilidade de versão do Node e módulos nativos (como pg)
   serverProcess = spawn(process.execPath, [serverPath], {
     env: { 
       ...process.env, 
@@ -26,16 +26,6 @@ function startBackend() {
       NODE_ENV: isDev ? 'development' : 'production'
     },
     stdio: 'inherit'
-  });
-
-  serverProcess.on('error', (err) => {
-    console.error('[MAIN] Erro fatal no processo do servidor:', err);
-  });
-
-  serverProcess.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`[MAIN] Servidor backend saiu inesperadamente com código ${code}`);
-    }
   });
 }
 
@@ -56,40 +46,45 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true 
+      preload: path.join(__dirname, 'preload.js') // Recomendado para segurança IPC
     },
   });
 
   const isDev = !app.isPackaged;
-  
   if (isDev) {
     mainWindow.loadURL('http://127.0.0.1:5173');
-    mainWindow.webContents.openDevTools();
   } else {
-    // Em produção, carregamos o arquivo gerado pelo build do Vite
     mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
   }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
 }
+
+// IPC para Atualizações
+ipcMain.on('check-update', () => {
+  console.log('[UPDATE] Verificando atualizações...');
+  // Simulação de fluxo de atualização
+  mainWindow.webContents.send('update-available', { version: '0.2.0', notes: 'Melhorias no Extrator de SQL e novo sistema de temas.' });
+  
+  setTimeout(() => {
+    mainWindow.webContents.send('update-downloading', { percent: 45 });
+  }, 2000);
+
+  setTimeout(() => {
+    mainWindow.webContents.send('update-downloading', { percent: 100 });
+    mainWindow.webContents.send('update-ready');
+  }, 5000);
+});
+
+ipcMain.on('install-update', () => {
+  console.log('[UPDATE] Reiniciando para instalar...');
+  // autoUpdater.quitAndInstall();
+});
 
 app.whenReady().then(() => {
   startBackend();
   createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
 });
 
 app.on('window-all-closed', () => {
-  // Garante que o servidor morra com o aplicativo
-  if (serverProcess) {
-    serverProcess.kill();
-  }
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (serverProcess) serverProcess.kill();
+  if (process.platform !== 'darwin') app.quit();
 });

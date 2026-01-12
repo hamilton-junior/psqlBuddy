@@ -1,7 +1,6 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, GitCompare, Link, FileSearch, FileText, Scissors, BookOpen, Rocket, Tag } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, GitCompare, Link, FileSearch, FileText, Scissors, BookOpen, Rocket, Tag, CloudDownload } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
@@ -19,20 +18,18 @@ interface SidebarProps {
   onOpenLogAnalyzer?: () => void;
   onOpenTemplates?: () => void;
   onOpenSqlExtractor?: () => void;
+  onCheckUpdate?: () => void;
 }
 
-// Safely get the version from Vite define or fallback
 declare const __APP_VERSION__: string;
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  currentStep, onNavigate, schema, hasResults = false, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations, onOpenLogAnalyzer, onOpenTemplates, onOpenSqlExtractor
+  currentStep, onNavigate, schema, hasResults = false, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations, onOpenLogAnalyzer, onOpenTemplates, onOpenSqlExtractor, onCheckUpdate
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const toggleSidebar = () => {
-    setIsCollapsed(!isCollapsed);
-  };
+  const toggleSidebar = () => setIsCollapsed(!isCollapsed);
 
   const navItem = (step: AppStep, label: string, icon: React.ReactNode, disabled: boolean = false, tooltip: string) => {
     const isActive = currentStep === step;
@@ -51,39 +48,22 @@ const Sidebar: React.FC<SidebarProps> = ({
           ${isCollapsed ? 'justify-center px-2' : ''}
         `}
       >
-        <div className="shrink-0">
-           {icon}
-        </div>
-        
-        {!isCollapsed && (
-           <span className="truncate transition-opacity duration-200 animate-in fade-in">{label}</span>
-        )}
-        
+        <div className="shrink-0">{icon}</div>
+        {!isCollapsed && <span className="truncate animate-in fade-in">{label}</span>}
         {!isCollapsed && isActive && <ArrowRight className="w-4 h-4 ml-auto opacity-60" />}
-        
-        {isCollapsed && (
-           <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 dark:bg-slate-700 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-slate-700">
-              {label}
-           </div>
-        )}
       </button>
     );
   };
 
   return (
-    <div className={`${isCollapsed ? 'w-20' : 'w-72'} shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-200 h-full transition-all duration-300 ease-in-out relative`}>
+    <div className={`${isCollapsed ? 'w-20' : 'w-72'} shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-200 h-full transition-all duration-300 relative`}>
       
-      <button 
-         onClick={toggleSidebar}
-         className="absolute -right-3 top-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-white rounded-full p-1 shadow-md z-50 hover:scale-110 transition-all"
-         title={isCollapsed ? "Expandir Menu" : "Recolher Menu"}
-      >
+      <button onClick={toggleSidebar} className="absolute -right-3 top-8 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-indigo-600 rounded-full p-1 shadow-md z-50 transition-all">
          {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>
 
-      {/* Header */}
       <div className={`p-6 shrink-0 ${isCollapsed ? 'px-2 flex flex-col items-center' : ''}`}>
-        <div className={`flex items-center gap-3 mb-8 px-2 overflow-hidden ${isCollapsed ? 'justify-center px-0' : ''}`} title="PSQL Buddy - AI Query Builder">
+        <div className={`flex items-center gap-3 mb-8 px-2 overflow-hidden ${isCollapsed ? 'justify-center px-0' : ''}`}>
           <div className="p-2.5 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/30 shrink-0">
             <Database className="w-6 h-6 text-white" />
           </div>
@@ -99,14 +79,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           {navItem('connection', 'Conexão', <Server className="w-4.5 h-4.5" />, false, "Configurar conexão")}
           {navItem('builder', 'Construtor', <Layers className="w-4.5 h-4.5" />, !schema, "Construir queries")}
           {navItem('preview', 'Visualização', <Terminal className="w-4.5 h-4.5" />, !schema, "Visualizar SQL")}
-          {navItem('results', 'Resultados', <Table className="w-4.5 h-4.5" />, !hasResults, "Ver resultados da última query")}
-          
+          {navItem('results', 'Resultados', <Table className="w-4.5 h-4.5" />, !hasResults, "Ver resultados")}
           <div className="my-4 border-t border-slate-100 dark:border-slate-800/50"></div>
-          
-          {navItem('datadiff', 'Comparador', <GitCompare className="w-4.5 h-4.5" />, !schema, "Comparar dados entre tabelas")}
+          {navItem('datadiff', 'Comparador', <GitCompare className="w-4.5 h-4.5" />, !schema, "Comparar dados")}
         </div>
         
-        {/* Support Tools Section */}
         {schema && !isCollapsed && (
            <div className="mt-8 mb-2 px-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Ferramentas</div>
         )}
@@ -114,64 +91,35 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="space-y-1 mt-2">
            {schema && (
              <>
-               <button onClick={onOpenTemplates} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 hover:text-cyan-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Templates SQL">
-                  <FileText className="w-4 h-4 shrink-0" />
+               <button onClick={onOpenTemplates} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 hover:text-cyan-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`}>
+                  <FileText className="w-4 h-4" />
                   {!isCollapsed && <span>Templates SQL</span>}
                </button>
-               <button onClick={onOpenSqlExtractor} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Extrator de SQL">
-                  <Scissors className="w-4 h-4 shrink-0" />
+               <button onClick={onOpenSqlExtractor} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`}>
+                  <Scissors className="w-4 h-4" />
                   {!isCollapsed && <span>Extrator de SQL</span>}
-               </button>
-               <button onClick={onOpenLogAnalyzer} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Analisador de Logs">
-                  <FileSearch className="w-4 h-4 shrink-0" />
-                  {!isCollapsed && <span>Analisador de Logs</span>}
-               </button>
-               <button onClick={onOpenVirtualRelations} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Vínculos Manuais">
-                  <Link className="w-4 h-4 shrink-0" />
-                  {!isCollapsed && <span>Vínculos Manuais</span>}
-               </button>
-               <button onClick={onOpenDiagram} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Mapa Visual do Schema">
-                  <Map className="w-4 h-4 shrink-0" />
-                  {!isCollapsed && <span>Mapa do Schema</span>}
                </button>
              </>
            )}
-           <button onClick={onOpenHistory} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600 transition-colors ${isCollapsed ? 'justify-center px-2' : ''}`} title="Histórico de Execuções">
-              <History className="w-4 h-4 shrink-0" />
-              {!isCollapsed && <span>Histórico</span>}
-           </button>
         </div>
       </div>
 
       <div className="flex-1"></div>
 
       <div className={`px-4 pb-6 shrink-0 space-y-1 ${isCollapsed ? 'px-2' : ''}`}>
-        {onOpenCheatSheet && (
-           <button 
-              onClick={onOpenCheatSheet}
-              title={isCollapsed ? "Guia SQL" : "Aprenda os conceitos básicos de SQL"}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 ${isCollapsed ? 'justify-center px-2' : ''}`}
-           >
-              <BookOpen className="w-4 h-4 shrink-0" />
-              {!isCollapsed && <span>Guia SQL</span>}
-           </button>
-        )}
-        
-        {navItem('roadmap', 'Roadmap', <Rocket className={`w-4.5 h-4.5 ${currentStep === 'roadmap' ? 'text-white' : 'text-orange-500'}`} />, false, "Sugestões de melhorias")}
+        <button onClick={onCheckUpdate} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 ${isCollapsed ? 'justify-center px-2' : ''}`}>
+           <CloudDownload className="w-4 h-4 animate-pulse" />
+           {!isCollapsed && <span>Atualizar App</span>}
+        </button>
 
-        <button 
-           onClick={onOpenSettings}
-           title={isCollapsed ? "Configurações" : "Abrir configurações gerais e de IA"}
-           className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 ${isCollapsed ? 'justify-center px-2' : ''}`}
-         >
-           <Settings className="w-4 h-4 shrink-0" />
+        <button onClick={onOpenSettings} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 ${isCollapsed ? 'justify-center px-2' : ''}`}>
+           <Settings className="w-4 h-4" />
            {!isCollapsed && <span>Configurações</span>}
          </button>
 
          {!isCollapsed && (
             <div className="px-4 py-2 flex items-center gap-2 text-[10px] font-black text-slate-400/60 uppercase tracking-widest mt-2 border-t border-slate-100 dark:border-slate-800/50">
-               <Tag className="w-2.5 h-2.5" />
-               v{APP_VERSION}
+               <Tag className="w-2.5 h-2.5" /> v{APP_VERSION}
             </div>
          )}
       </div>
