@@ -140,9 +140,10 @@ export interface AppSettings {
   defaultDbUser: string;
   defaultDbName: string;
   defaultLimit: number;
-  defaultDiffLimit: number; // Nova configuração para limite de comparação
+  defaultDiffLimit: number; 
   defaultRowsPerPage: number;
   theme: 'light' | 'dark';
+  updateBranch: 'stable' | 'main';
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -158,9 +159,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultDbUser: 'postgres',
   defaultDbName: '',
   defaultLimit: 100,
-  defaultDiffLimit: 500, // Valor padrão inicial
+  defaultDiffLimit: 500, 
   defaultRowsPerPage: 10,
-  theme: 'dark'
+  theme: 'dark',
+  updateBranch: 'stable'
 };
 
 export interface SavedQuery {
@@ -218,7 +220,6 @@ export interface VirtualRelation {
   confidence?: number; 
 }
 
-// Added missing DashboardItem interface to resolve import error in DashboardStep.tsx
 export interface DashboardItem {
   id: string;
   title: string;

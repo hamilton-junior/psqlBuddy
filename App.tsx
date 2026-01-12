@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
@@ -54,7 +55,7 @@ const App: React.FC = () => {
   const [showSqlExtractor, setShowSqlExtractor] = useState(false);
   
   // Update States
-  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string} | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string} | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
 
@@ -62,11 +63,10 @@ const App: React.FC = () => {
     if (settings.theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
     localStorage.setItem('psql-buddy-settings', JSON.stringify(settings));
-  }, [settings.theme]);
+  }, [settings.theme, settings.updateBranch]);
 
   // Listener para IPC do Electron (Atualização)
   useEffect(() => {
-    // Fix: cast window to any to access electron property
     const electron = (window as any).electron;
     if (electron) {
       electron.on('update-available', (info: any) => setUpdateInfo(info));
@@ -76,14 +76,12 @@ const App: React.FC = () => {
   }, []);
 
   const handleCheckUpdate = () => {
-    // Fix: cast window to any to access electron property
     const electron = (window as any).electron;
-    if (electron) electron.send('check-update');
+    if (electron) electron.send('check-update', settings.updateBranch);
     else toast("Atualizações só estão disponíveis na versão Desktop.");
   };
 
   const handleInstallUpdate = () => {
-    // Fix: cast window to any to access electron property
     const electron = (window as any).electron;
     if (electron) electron.send('install-update');
   };
@@ -163,7 +161,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} />}
       {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={(sql) => { setQueryResult({sql, explanation: 'Extraído do log', tips: []}); setCurrentStep('preview'); }} settings={settings} />}
       
       {updateInfo && (

@@ -6,7 +6,7 @@ import {
   AlertCircle, GraduationCap, PenTool, DatabaseZap, HeartPulse, 
   Activity, CheckCircle2, XCircle, RefreshCw, Play, 
   Bug, Loader2, Database, User, Server, Hash, Shield, Terminal, ZapOff, ActivitySquare,
-  LayoutGrid, Monitor, Moon, Sun, ChevronRight, Gauge, GitCompare
+  LayoutGrid, Monitor, Moon, Sun, ChevronRight, Gauge, GitCompare, GitBranch, FlaskConical
 } from 'lucide-react';
 import { AppSettings, DatabaseSchema, DbCredentials } from '../types';
 import { runFullHealthCheck, HealthStatus, runRandomizedStressTest, StressTestLog } from '../services/healthService';
@@ -111,7 +111,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 font-sans animate-in fade-in duration-300">
       <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
         
-        {/* Header bar */}
         <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm shrink-0">
           <div className="flex items-center gap-4">
              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/50 rounded-2xl">
@@ -129,7 +128,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="flex-1 flex overflow-hidden">
           
-          {/* Sidebar */}
           <div className="w-64 border-r border-slate-100 dark:border-slate-800 p-6 flex flex-col gap-2 shrink-0 bg-slate-50/50 dark:bg-slate-950/20">
              <TabButton id="interface" label="Interface" icon={LayoutGrid} />
              <TabButton id="ai" label="IA Gemini" icon={Bot} />
@@ -153,7 +151,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
              </div>
           </div>
 
-          {/* Main Panel Content */}
           <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
              
              {activeTab === 'interface' && (
@@ -166,7 +163,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                          <button 
                            type="button"
                            onClick={() => setFormData({...formData, theme: 'light'})}
-                           className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 ${formData.theme === 'light' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-200'}`}
+                           className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 ${formData.theme === 'light' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-200'}`}
                          >
                             <div className="w-full aspect-video bg-white border border-slate-200 rounded-lg shadow-inner overflow-hidden flex flex-col">
                                <div className="h-2 bg-slate-100 w-full mb-1"></div>
@@ -180,7 +177,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                          <button 
                            type="button"
                            onClick={() => setFormData({...formData, theme: 'dark'})}
-                           className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 ${formData.theme === 'dark' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-200'}`}
+                           className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 ${formData.theme === 'dark' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-200'}`}
                          >
                             <div className="w-full aspect-video bg-slate-900 border border-slate-800 rounded-lg shadow-inner overflow-hidden flex flex-col">
                                <div className="h-2 bg-slate-800 w-full mb-1"></div>
@@ -377,9 +374,48 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
              {activeTab === 'diagnostics' && (
                 <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-300">
+                   {/* Painel de Canais de Atualização */}
+                   <section className="bg-white dark:bg-slate-800 p-6 border border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-sm">
+                      <div className="flex items-center gap-3 mb-6">
+                         <div className="p-2 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl">
+                            <GitBranch className="w-5 h-5" />
+                         </div>
+                         <div>
+                            <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">Canais de Lançamento (Release Channels)</h4>
+                            <p className="text-xs text-slate-500">Escolha de qual branch o aplicativo buscará atualizações.</p>
+                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700">
+                         <button 
+                            type="button"
+                            onClick={() => setFormData({...formData, updateBranch: 'stable'})}
+                            className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase transition-all
+                               ${formData.updateBranch === 'stable' 
+                                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                                  : 'text-slate-500 hover:text-slate-700'}
+                            `}
+                         >
+                            <CheckCircle2 className="w-4 h-4" /> Estável (branch: stable)
+                         </button>
+                         <button 
+                            type="button"
+                            onClick={() => setFormData({...formData, updateBranch: 'main'})}
+                            className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase transition-all
+                               ${formData.updateBranch === 'main' 
+                                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/20' 
+                                  : 'text-slate-500 hover:text-slate-700'}
+                            `}
+                         >
+                            <FlaskConical className="w-4 h-4" /> WIP (branch: main)
+                         </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-3 text-center italic">
+                         O canal <strong>WIP (main)</strong> recebe correções diárias, enquanto o <strong>Estável (stable)</strong> recebe versões validadas.
+                      </p>
+                   </section>
+
                    <div className="grid grid-cols-5 gap-6">
-                      
-                      {/* Health Score Panel */}
                       <div className="col-span-2 flex flex-col gap-4">
                          <div className="bg-white dark:bg-slate-800 p-8 border border-slate-100 dark:border-slate-800 rounded-[2rem] flex flex-col items-center justify-center text-center shadow-sm">
                             <div className="relative w-32 h-32 mb-6">
@@ -421,7 +457,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                          )}
                       </div>
 
-                      {/* Stress Test Panel */}
                       <div className="col-span-3 bg-slate-950 rounded-[2.5rem] flex flex-col overflow-hidden border border-slate-800 shadow-2xl">
                          <div className="px-6 py-4 bg-slate-900 flex justify-between items-center border-b border-slate-800">
                             <div className="flex items-center gap-3">
@@ -478,7 +513,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* Footer actions */}
         <div className="px-8 py-6 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-end gap-4 shrink-0">
           <button 
              onClick={onClose} 

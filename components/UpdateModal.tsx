@@ -1,8 +1,9 @@
+
 import React from 'react';
-import { Download, Rocket, RefreshCw, X, CheckCircle2, Sparkles, Loader2 } from 'lucide-react';
+import { Download, Rocket, RefreshCw, X, CheckCircle2, Sparkles, Loader2, GitBranch, FlaskConical } from 'lucide-react';
 
 interface UpdateModalProps {
-  updateInfo: { version: string, notes: string } | null;
+  updateInfo: { version: string, notes: string, branch?: string } | null;
   downloadProgress: number | null;
   isReady: boolean;
   onClose: () => void;
@@ -27,8 +28,21 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
               )}
            </div>
 
-           <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Nova Versão v{updateInfo.version}</h3>
-           <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Uma atualização importante está disponível para você.</p>
+           <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-2">
+                 <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Nova Versão v{updateInfo.version}</h3>
+                 {updateInfo.branch === 'Main' ? (
+                    <span className="bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800 flex items-center gap-1 uppercase tracking-widest">
+                       <GitBranch className="w-2.5 h-2.5" /> Main Branch
+                    </span>
+                 ) : (
+                    <span className="bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800 flex items-center gap-1 uppercase tracking-widest">
+                       <CheckCircle2 className="w-2.5 h-2.5" /> Stable Branch
+                    </span>
+                 )}
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">Uma atualização importante está disponível para você.</p>
+           </div>
         </div>
 
         <div className="px-8 pb-8 space-y-6">

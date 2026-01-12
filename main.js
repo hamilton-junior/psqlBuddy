@@ -1,11 +1,8 @@
+
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
-
-// Nota: Em um ambiente real, você instalaria 'electron-updater'
-// Aqui simulamos os eventos para que a interface possa ser testada
-// import { autoUpdater } from 'electron-updater';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,7 +43,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js') // Recomendado para segurança IPC
+      preload: path.join(__dirname, 'preload.js') 
     },
   });
 
@@ -59,24 +56,31 @@ function createWindow() {
 }
 
 // IPC para Atualizações
-ipcMain.on('check-update', () => {
-  console.log('[UPDATE] Verificando atualizações...');
-  // Simulação de fluxo de atualização
-  mainWindow.webContents.send('update-available', { version: '0.2.0', notes: 'Melhorias no Extrator de SQL e novo sistema de temas.' });
+ipcMain.on('check-update', (event, branch = 'stable') => {
+  console.log(`[UPDATE] Verificando atualizações na branch: ${branch}...`);
   
-  setTimeout(() => {
-    mainWindow.webContents.send('update-downloading', { percent: 45 });
-  }, 2000);
+  // Simulação de fluxo de atualização baseada na branch (main = WIP, stable = Estável)
+  const updateData = branch === 'main' 
+    ? { version: '0.3.0-nightly', notes: 'Atualização WIP (branch main): Novas funcionalidades experimentais e correções rápidas.', branch: 'Main' }
+    : { version: '0.2.0', notes: 'Atualização Estável (branch stable): Versão consolidada com foco em segurança e performance.', branch: 'Stable' };
 
+  // Simular pequeno delay de rede
   setTimeout(() => {
-    mainWindow.webContents.send('update-downloading', { percent: 100 });
-    mainWindow.webContents.send('update-ready');
-  }, 5000);
+    mainWindow.webContents.send('update-available', updateData);
+    
+    setTimeout(() => {
+      mainWindow.webContents.send('update-downloading', { percent: 45 });
+    }, 2000);
+
+    setTimeout(() => {
+      mainWindow.webContents.send('update-downloading', { percent: 100 });
+      mainWindow.webContents.send('update-ready');
+    }, 5000);
+  }, 1000);
 });
 
 ipcMain.on('install-update', () => {
-  console.log('[UPDATE] Reiniciando para instalar...');
-  // autoUpdater.quitAndInstall();
+  console.log('[UPDATE] Reiniciando para instalar atualização...');
 });
 
 app.whenReady().then(() => {
