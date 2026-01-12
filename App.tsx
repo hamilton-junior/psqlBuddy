@@ -24,6 +24,7 @@ import TemplateModal from './components/TemplateModal';
 import HistoryModal from './components/HistoryModal'; 
 import SqlExtractorModal from './components/SqlExtractorModal';
 import TourGuide, { TourStep } from './components/TourGuide';
+import Dialog from './components/common/Dialog';
 import { generateSqlFromBuilderState } from './services/geminiService';
 import { generateLocalSql } from './services/localSqlService';
 import { executeQueryReal } from './services/dbService';
@@ -105,7 +106,6 @@ const App: React.FC = () => {
        setSimulationData(simData);
     }
     
-    // Clear previous results when connection changes
     setExecutionResult([]);
     setQueryResult(null);
     setCurrentStep('builder');
@@ -130,7 +130,6 @@ const App: React.FC = () => {
     
     try {
       let result: QueryResult;
-      
       if (settings.enableAiGeneration) {
          result = await generateSqlFromBuilderState(schema, builderState, settings.enableAiTips, (msg) => setProgressMessage(msg));
       } else {
@@ -140,11 +139,9 @@ const App: React.FC = () => {
              result.validation = { isValid: true }; 
          }
       }
-      
       setQueryResult(result);
       setCurrentStep('preview');
     } catch (error: any) {
-      console.error(error);
       handleShowToast(error.message || "Erro ao gerar SQL", 'error');
     } finally {
       setIsGenerating(false);
@@ -167,36 +164,26 @@ const App: React.FC = () => {
 
   const handleExecuteQuery = async (sqlOverride?: string) => {
     if (!credentials || !schema) return;
-    
     const sqlToRun = sqlOverride || queryResult?.sql;
     if (!sqlToRun) return;
-
     setIsExecuting(true);
     setExecutionResult([]);
     const start = performance.now();
-
     try {
        let data: any[] = [];
        if (credentials.host === 'simulated') {
-          if (sqlOverride && sqlOverride !== queryResult?.sql) {
-             handleShowToast("Nota: Em modo simulação, edições manuais no SQL podem não refletir nos dados fictícios complexos. Usando lógica do construtor.", 'info');
-          }
           data = executeOfflineQuery(schema, simulationData, builderState);
           await new Promise(r => setTimeout(r, 600));
        } else {
           data = await executeQueryReal(credentials, sqlToRun);
        }
-       
        setExecutionResult(data);
        setExecutionDuration(performance.now() - start);
-       
        if (sqlOverride && queryResult) {
           setQueryResult({ ...queryResult, sql: sqlOverride });
        }
-       
        setCurrentStep('results');
     } catch (error: any) {
-       console.error(error);
        handleShowToast(error.message || "Erro na execução da query", 'error');
     } finally {
        setIsExecuting(false);
@@ -268,11 +255,7 @@ const App: React.FC = () => {
   };
 
   const handleRunExternalSql = (sql: string) => {
-     setQueryResult({
-        sql: sql,
-        explanation: 'Gerada via ferramenta externa.',
-        tips: []
-     });
+     setQueryResult({ sql: sql, explanation: 'Gerada via ferramenta externa.', tips: [] });
      setCurrentStep('preview');
   };
 
@@ -316,14 +299,9 @@ const App: React.FC = () => {
            
            {currentStep === 'builder' && schema && (
               <BuilderStep 
-                 schema={schema} 
-                 state={builderState} 
-                 onStateChange={setBuilderState}
-                 onGenerate={handleGenerateSql}
-                 onSkipAi={handleSkipAi}
-                 isGenerating={isGenerating}
-                 progressMessage={progressMessage}
-                 settings={settings}
+                 schema={schema} state={builderState} onStateChange={setBuilderState}
+                 onGenerate={handleGenerateSql} onSkipAi={handleSkipAi} isGenerating={isGenerating}
+                 progressMessage={progressMessage} settings={settings}
                  onDescriptionChange={(tableName, newDesc) => {
                     const updatedTables = schema.tables.map(t => t.name === tableName ? { ...t, description: newDesc } : t);
                     setSchema({ ...schema, tables: updatedTables });
@@ -334,137 +312,68 @@ const App: React.FC = () => {
 
            {currentStep === 'preview' && queryResult && (
               <PreviewStep 
-                 queryResult={queryResult}
-                 onExecute={handleExecuteQuery}
-                 onBack={() => setCurrentStep('builder')}
-                 isExecuting={isExecuting}
-                 isValidating={isValidating}
-                 validationDisabled={!settings.enableAiValidation}
+                 queryResult={queryResult} onExecute={handleExecuteQuery} onBack={() => setCurrentStep('builder')}
+                 isExecuting={isExecuting} isValidating={isValidating} validationDisabled={!settings.enableAiValidation}
                  schema={schema || undefined}
               />
            )}
 
            {currentStep === 'results' && (
               <ResultsStep 
-                 data={executionResult}
-                 sql={queryResult?.sql || ''}
+                 data={executionResult} sql={queryResult?.sql || ''}
                  onBackToBuilder={() => setCurrentStep('builder')}
-                 onNewConnection={() => { 
-                    setSchema(null); 
-                    setExecutionResult([]);
-                    setQueryResult(null);
-                    setCurrentStep('connection'); 
-                 }}
-                 settings={settings}
-                 onShowToast={handleShowToast}
-                 credentials={credentials}
-                 executionDuration={executionDuration}
-                 schema={schema || undefined}
+                 onNewConnection={() => { setSchema(null); setExecutionResult([]); setQueryResult(null); setCurrentStep('connection'); }}
+                 settings={settings} onShowToast={handleShowToast} credentials={credentials}
+                 executionDuration={executionDuration} schema={schema || undefined}
               />
            )}
 
            {currentStep === 'datadiff' && schema && (
-              <DataDiffStep 
-                 schema={schema} 
-                 credentials={credentials}
-                 simulationData={simulationData}
-                 settings={settings}
-              />
+              <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />
            )}
 
-           {currentStep === 'roadmap' && (
-              <RoadmapStep />
-           )}
+           {currentStep === 'roadmap' && <RoadmapStep />}
         </div>
       </main>
 
       {showSettings && (
          <SettingsModal 
-            settings={settings} 
-            onSave={setSettings} 
-            onClose={() => setShowSettings(false)}
-            schema={schema}
-            credentials={credentials}
-            simulationData={simulationData}
+            settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)}
+            schema={schema} credentials={credentials} simulationData={simulationData}
          />
       )}
 
       {showDiagram && schema && (
          <SchemaDiagramModal 
-            schema={schema} 
-            onClose={() => setShowDiagram(false)} 
-            onAddVirtualRelation={handleAddVirtualRelation}
-            credentials={credentials}
+            schema={schema} onClose={() => setShowDiagram(false)} 
+            onAddVirtualRelation={handleAddVirtualRelation} credentials={credentials}
          />
       )}
 
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
-      
       {showCheatSheet && <SqlCheatSheetModal onClose={() => setShowCheatSheet(false)} />}
-
       {showVirtualRelations && schema && (
          <VirtualRelationsModal
-            schema={schema}
-            existingRelations={virtualRelations}
-            onAddRelation={handleAddVirtualRelation}
-            onRemoveRelation={handleRemoveVirtualRelation}
-            onClose={() => setShowVirtualRelations(false)}
-            onCheckOverlap={handleCheckOverlap}
+            schema={schema} existingRelations={virtualRelations}
+            onAddRelation={handleAddVirtualRelation} onRemoveRelation={handleRemoveVirtualRelation}
+            onClose={() => setShowVirtualRelations(false)} onCheckOverlap={handleCheckOverlap}
             credentials={credentials}
          />
       )}
 
       {showLogAnalyzer && schema && (
-         <LogAnalyzerModal 
-            schema={schema} 
-            onClose={() => setShowLogAnalyzer(false)}
-            onRunSql={handleRunExternalSql}
-         />
+         <LogAnalyzerModal schema={schema} onClose={() => setShowLogAnalyzer(false)} onRunSql={handleRunExternalSql} />
       )}
 
-      {showTemplates && (
-         <TemplateModal 
-            onClose={() => setShowTemplates(false)}
-            onRunTemplate={handleRunExternalSql}
-         />
-      )}
-
-      {showSqlExtractor && (
-         <SqlExtractorModal 
-            onClose={() => setShowSqlExtractor(false)}
-            onRunSql={handleRunExternalSql}
-            settings={settings}
-         />
-      )}
-
-      {historyOpen && (
-         <HistoryModal 
-            onClose={() => setHistoryOpen(false)}
-            onLoadQuery={handleRunExternalSql}
-         />
-      )}
-
-      {tablePreview && (
-         <TablePreviewModal 
-            tableName={tablePreview.name}
-            data={tablePreview.data}
-            isLoading={tablePreview.loading}
-            error={tablePreview.error}
-            onClose={() => setTablePreview(null)}
-         />
-      )}
-
-      {showAiPreference && (
-         <AiPreferenceModal onSelect={handleAiPreferenceSelect} />
-      )}
+      {showTemplates && <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={handleRunExternalSql} />}
+      {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={handleRunExternalSql} settings={settings} />}
+      {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} onLoadQuery={handleRunExternalSql} />}
+      {tablePreview && <TablePreviewModal tableName={tablePreview.name} data={tablePreview.data} isLoading={tablePreview.loading} error={tablePreview.error} onClose={() => setTablePreview(null)} />}
+      {showAiPreference && <AiPreferenceModal onSelect={handleAiPreferenceSelect} />}
 
       <TourGuide 
-         steps={TOUR_STEPS}
-         isOpen={showTour}
-         onClose={() => setShowTour(false)}
-         onComplete={() => setShowTour(false)}
+         steps={TOUR_STEPS} isOpen={showTour} onClose={() => setShowTour(false)} onComplete={() => setShowTour(false)}
       />
-
     </div>
   );
 };

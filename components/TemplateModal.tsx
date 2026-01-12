@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Plus, Play, Trash2, Save, Code, Pencil } from 'lucide-react';
 import { QueryTemplate } from '../types';
+import Dialog from './common/Dialog';
 
 interface TemplateModalProps {
   onClose: () => void;
@@ -14,6 +15,8 @@ const TemplateModal: React.FC<TemplateModalProps> = ({ onClose, onRunTemplate })
   const [newTemplate, setNewTemplate] = useState<{id?: string, name: string, sql: string, description: string}>({ name: '', sql: 'SELECT * FROM users WHERE id = :id', description: '' });
   const [selectedTemplate, setSelectedTemplate] = useState<QueryTemplate | null>(null);
   const [params, setParams] = useState<Record<string, string>>({});
+  
+  const [dialogConfig, setDialogConfig] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void } | null>(null);
 
   useEffect(() => {
      const stored = localStorage.getItem('psql-buddy-templates');
@@ -32,15 +35,12 @@ const TemplateModal: React.FC<TemplateModalProps> = ({ onClose, onRunTemplate })
 
   const handleSave = () => {
      if (!newTemplate.name || !newTemplate.sql) return;
-     
      const params = extractParams(newTemplate.sql);
      
      if (newTemplate.id) {
-        // Edit Mode
         const updatedList = templates.map(t => t.id === newTemplate.id ? { ...t, name: newTemplate.name, sql: newTemplate.sql, description: newTemplate.description, parameters: params } : t);
         saveTemplates(updatedList);
      } else {
-        // Create Mode
         const template: QueryTemplate = {
            id: crypto.randomUUID(),
            name: newTemplate.name,
@@ -50,7 +50,6 @@ const TemplateModal: React.FC<TemplateModalProps> = ({ onClose, onRunTemplate })
         };
         saveTemplates([...templates, template]);
      }
-     
      setView('list');
   };
 
@@ -62,9 +61,14 @@ const TemplateModal: React.FC<TemplateModalProps> = ({ onClose, onRunTemplate })
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
      e.stopPropagation();
-     if(confirm("Excluir template?")) {
-        saveTemplates(templates.filter(t => t.id !== id));
-     }
+     setDialogConfig({
+        isOpen: true,
+        title: 'Excluir Template',
+        message: 'Deseja realmente remover este template? Esta ação não pode ser desfeita.',
+        onConfirm: () => {
+           saveTemplates(templates.filter(t => t.id !== id));
+        }
+     });
   };
 
   const handlePrepareRun = (t: QueryTemplate) => {
@@ -79,7 +83,6 @@ const TemplateModal: React.FC<TemplateModalProps> = ({ onClose, onRunTemplate })
      if (!selectedTemplate) return;
      let finalSql = selectedTemplate.sql;
      Object.entries(params).forEach(([key, val]) => {
-        // Simple sanitization for client-side replacement
         const safeVal = String(val).replace(/'/g, "''"); 
         finalSql = finalSql.replace(new RegExp(`:${key}\\b`, 'g'), `'${safeVal}'`);
      });
@@ -89,6 +92,18 @@ const TemplateModal: React.FC<TemplateModalProps> = ({ onClose, onRunTemplate })
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+      {dialogConfig && (
+        <Dialog 
+          isOpen={dialogConfig.isOpen}
+          type="danger"
+          title={dialogConfig.title}
+          message={dialogConfig.message}
+          onConfirm={dialogConfig.onConfirm}
+          onClose={() => setDialogConfig(null)}
+          confirmLabel="Sim, Excluir"
+        />
+      )}
+
       <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden max-h-[80vh]" onClick={e => e.stopPropagation()}>
          
          <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">

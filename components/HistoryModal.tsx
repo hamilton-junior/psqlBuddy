@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, History, Trash2, Play, Search, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { QueryHistoryItem } from '../types';
 import { getHistory, clearHistory, removeFromHistory } from '../services/historyService';
+import Dialog from './common/Dialog';
 
 interface HistoryModalProps {
   onClose: () => void;
@@ -12,24 +13,39 @@ interface HistoryModalProps {
 const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, onLoadQuery }) => {
   const [history, setHistory] = useState<QueryHistoryItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Dialog State
+  const [dialogConfig, setDialogConfig] = useState<{ isOpen: boolean, type: 'danger', title: string, message: string, onConfirm: () => void } | null>(null);
 
   useEffect(() => {
     setHistory(getHistory());
   }, []);
 
   const handleClearAll = () => {
-    if (confirm('Tem certeza que deseja limpar TODO o histórico?')) {
-      clearHistory();
-      setHistory([]);
-    }
+    setDialogConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Limpar Histórico',
+      message: 'Tem certeza que deseja limpar TODO o histórico de execuções? Esta ação não pode ser desfeita.',
+      onConfirm: () => {
+        clearHistory();
+        setHistory([]);
+      }
+    });
   };
 
   const handleDeleteItem = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Excluir este registro do histórico?')) {
-      const updated = removeFromHistory(id);
-      setHistory(updated);
-    }
+    setDialogConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Excluir Item',
+      message: 'Deseja remover este registro do histórico?',
+      onConfirm: () => {
+        const updated = removeFromHistory(id);
+        setHistory(updated);
+      }
+    });
   };
 
   const filteredHistory = history.filter(item => 
@@ -43,6 +59,18 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, onLoadQuery }) => 
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+      {dialogConfig && (
+        <Dialog 
+          isOpen={dialogConfig.isOpen}
+          title={dialogConfig.title}
+          message={dialogConfig.message}
+          type={dialogConfig.type}
+          onConfirm={dialogConfig.onConfirm}
+          onClose={() => setDialogConfig(null)}
+          confirmLabel="Sim, Excluir"
+        />
+      )}
+      
       <div className="bg-white dark:bg-slate-800 w-full max-w-3xl h-[80vh] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         
         {/* Header */}

@@ -4,6 +4,7 @@ import { DatabaseSchema, DbCredentials, AppSettings, SAMPLE_SCHEMA } from '../..
 import { connectToDatabase } from '../../services/dbService';
 import { generateSchemaFromTopic } from '../../services/geminiService';
 import { Server, Shield, Info, Loader2, Database, AlertCircle, Bot, Wand2, HardDrive, Save, Trash2, Bookmark } from 'lucide-react';
+import Dialog from '../common/Dialog';
 
 interface ConnectionStepProps {
   onSchemaLoaded: (schema: DatabaseSchema, credentials: DbCredentials) => void;
@@ -37,6 +38,17 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
   const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
 
+  // Dialog System
+  const [dialogConfig, setDialogConfig] = useState<{ 
+     isOpen: boolean, 
+     type: 'confirm' | 'danger' | 'prompt', 
+     title: string, 
+     message: string, 
+     placeholder?: string,
+     defaultValue?: string,
+     onConfirm: (val?: string) => void 
+  } | null>(null);
+
   // Simulation State
   const [simName, setSimName] = useState('');
   const [simDescription, setSimDescription] = useState('');
@@ -54,7 +66,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
     }
   }, []);
 
-  // Update fields if settings change externally (e.g. reset)
+  // Update fields if settings change externally
   useEffect(() => {
     if (!selectedProfileId) {
         setHost(settings.defaultDbHost);
@@ -66,36 +78,49 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
 
   const handleSaveProfile = () => {
     if (!dbName || !host || !user) {
-        alert("Preencha Host, Usuário e Nome do Banco para salvar.");
+        setError("Preencha Host, Usuário e Nome do Banco para salvar.");
         return;
     }
     
-    const name = prompt("Nome para esta conexão (ex: Produção, Local):", dbName);
-    if (!name) return;
-
-    const newProfile: SavedConnection = {
-        id: crypto.randomUUID(),
-        name,
-        host,
-        port,
-        user,
-        database: dbName
-    };
-
-    const updatedList = [...savedConnections, newProfile];
-    setSavedConnections(updatedList);
-    localStorage.setItem('psql-buddy-saved-connections', JSON.stringify(updatedList));
-    setSelectedProfileId(newProfile.id);
+    setDialogConfig({
+      isOpen: true,
+      type: 'prompt',
+      title: 'Novo Perfil de Conexão',
+      message: 'Defina um nome amigável para identificar este servidor.',
+      placeholder: 'Servidor Produção / Localhost',
+      defaultValue: dbName,
+      onConfirm: (name) => {
+         if (!name) return;
+         const newProfile: SavedConnection = {
+            id: crypto.randomUUID(),
+            name,
+            host,
+            port,
+            user,
+            database: dbName
+         };
+         const updatedList = [...savedConnections, newProfile];
+         setSavedConnections(updatedList);
+         localStorage.setItem('psql-buddy-saved-connections', JSON.stringify(updatedList));
+         setSelectedProfileId(newProfile.id);
+      }
+    });
   };
 
   const handleDeleteProfile = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (confirm("Remover esta conexão salva?")) {
-        const updatedList = savedConnections.filter(c => c.id !== id);
-        setSavedConnections(updatedList);
-        localStorage.setItem('psql-buddy-saved-connections', JSON.stringify(updatedList));
-        if (selectedProfileId === id) setSelectedProfileId('');
-    }
+    setDialogConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Excluir Perfil',
+      message: 'Deseja remover esta conexão salva? Esta ação é permanente.',
+      onConfirm: () => {
+         const updatedList = savedConnections.filter(c => c.id !== id);
+         setSavedConnections(updatedList);
+         localStorage.setItem('psql-buddy-saved-connections', JSON.stringify(updatedList));
+         if (selectedProfileId === id) setSelectedProfileId('');
+      }
+    });
   };
 
   const handleSelectProfile = (id: string) => {
@@ -108,7 +133,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         setPort(profile.port);
         setUser(profile.user);
         setDbName(profile.database);
-        setPassword(''); // Always clear password for security
+        setPassword('');
     }
   };
 
@@ -120,66 +145,28 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
     try {
       if (mode === 'real') {
         if (!dbName) throw new Error("Nome do banco é obrigatório");
-        
-        // Default password to 'postgres' if not provided
         const finalPassword = password || 'postgres';
-
-        const creds: DbCredentials = {
-          host,
-          port,
-          user,
-          password: finalPassword,
-          database: dbName
-        };
-
+        const creds: DbCredentials = { host, port, user, password: finalPassword, database: dbName };
         const schema = await connectToDatabase(creds);
         onSchemaLoaded(schema, creds);
       } else {
-        // Simulation Mode Logic
-        
-        // 1. Offline Mode: Load Sample Schema directly
-        // Either because global AI is off OR user toggled the offline switch
         if (!settings.enableAiGeneration || useOfflineSample) {
-           // Deep copy sample schema to avoid mutation issues
            const schema: DatabaseSchema = JSON.parse(JSON.stringify(SAMPLE_SCHEMA));
-           
-           const fakeCreds: DbCredentials = {
-              host: 'simulated',
-              port: '0000',
-              user: 'offline_user',
-              database: schema.name
-           };
-
-           // Artificial delay for better UX
+           const fakeCreds: DbCredentials = { host: 'simulated', port: '0000', user: 'offline_user', database: schema.name };
            await new Promise(resolve => setTimeout(resolve, 600));
            onSchemaLoaded(schema, fakeCreds);
            return;
         }
-
-        // 2. Online/AI Mode: Generate Schema
         if (!simName) throw new Error("Nome para a simulação é obrigatório");
         const context = simDescription || `A database named ${simName}`;
-        
         const schema = await generateSchemaFromTopic(simName, context);
-        schema.name = simName; // Ensure name matches user input
-        
-        // Pass fake credentials for simulation
-        const fakeCreds: DbCredentials = {
-           host: 'simulated',
-           port: '0000',
-           user: 'ai_user',
-           database: simName
-        };
-        
+        schema.name = simName;
+        const fakeCreds: DbCredentials = { host: 'simulated', port: '0000', user: 'ai_user', database: simName };
         onSchemaLoaded(schema, fakeCreds);
       }
     } catch (err: any) {
       console.error(err);
-      if (err.message === "QUOTA_ERROR") {
-         setError("Cota da API da IA excedida. Tente novamente mais tarde.");
-      } else {
-         setError(err.message || "Falha na conexão.");
-      }
+      setError(err.message === "QUOTA_ERROR" ? "Cota da API da IA excedida." : err.message || "Falha na conexão.");
     } finally {
       setLoading(false);
     }
@@ -187,6 +174,19 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
 
   return (
     <div className="max-w-3xl mx-auto">
+      {dialogConfig && (
+        <Dialog 
+          isOpen={dialogConfig.isOpen}
+          type={dialogConfig.type}
+          title={dialogConfig.title}
+          message={dialogConfig.message}
+          placeholder={dialogConfig.placeholder}
+          defaultValue={dialogConfig.defaultValue}
+          onConfirm={dialogConfig.onConfirm}
+          onClose={() => setDialogConfig(null)}
+        />
+      )}
+
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
           {mode === 'real' ? <Server className="w-6 h-6 text-indigo-600" /> : <Bot className="w-6 h-6 text-indigo-600" />}
@@ -362,9 +362,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                            Carregaremos um banco de dados de exemplo padrão (E-Commerce) instantaneamente para você testar.
                         </p>
                       </div>
-                      <div className="flex gap-2 text-xs text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded">
-                         <span>Tables: users, orders, products...</span>
-                      </div>
                    </div>
                 </div>
               ) : (
@@ -400,7 +397,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                       value={simDescription} 
                       onChange={e => setSimDescription(e.target.value)}
                       className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all h-32 resize-none"
-                      placeholder="Ex: Um sistema de delivery que tem clientes, entregadores, pedidos e itens de pedido. Preciso controlar o status da entrega..."
+                      placeholder="Ex: Um sistema de delivery que tem clientes, entregadores, pedidos e itens de pedido..."
                       required
                     />
                   </div>
@@ -455,16 +452,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
           </div>
         </form>
       </div>
-      
-      {mode === 'real' && (
-        <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl p-4 flex gap-3">
-          <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-800 dark:text-blue-200">
-            <p className="font-bold mb-1">Backend Local Necessário!</p>
-            <p>Certifique-se que você está rodando o servidor backend em um terminal diferente utilizando <code>npm run server</code>.</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -7,6 +7,7 @@ import { generateBuilderStateFromPrompt } from '../../services/geminiService';
 import { generateLocalSql } from '../../services/localSqlService';
 import BeginnerTip from '../BeginnerTip';
 import FormulaModal from '../FormulaModal';
+import Dialog from '../common/Dialog';
 
 interface BuilderStepProps {
   schema: DatabaseSchema;
@@ -245,6 +246,7 @@ interface TableCardProps {
   onSelectNone: (tableId: string, visibleColumns: string[]) => void;
   onSearchChange: (tableId: string, term: string) => void;
   onClearSearch: (tableId: string) => void;
+  onSearchSelect?: (tableId: string) => void;
   onHoverColumn: (tableId: string, colName: string, references?: string) => void;
   onHoverOutColumn: () => void;
 }
@@ -418,7 +420,7 @@ const TableCard = memo(({
           prev.colSearchTerm === next.colSearchTerm &&
           tableIdPrev === tableIdNext &&
           prev.selectedColumns === next.selectedColumns &&
-          prev.joinedColumnIds === next.joinedColumnIds && // Check for join changes
+          prev.joinedColumnIds === next.joinedColumnIds && 
           prev.aggregations === next.aggregations &&
           !isHoverRelevant;
 });
@@ -459,7 +461,6 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
      localStorage.setItem(`psql-buddy-collapsed-${schema.name}`, JSON.stringify(Array.from(collapsedTables)));
   }, [collapsedTables, schema.name]);
 
-  // Efficiency: Pre-calculate columns involved in JOINS for highlighting
   const joinedColumnIds = useMemo(() => {
      const ids = new Set<string>();
      state.joins.forEach(j => {
@@ -477,6 +478,17 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [liveSql, setLiveSql] = useState('');
   const [showFormulaModal, setShowFormulaModal] = useState(false);
+
+  // Dialog System
+  const [dialogConfig, setDialogConfig] = useState<{ 
+     isOpen: boolean, 
+     type: 'confirm' | 'danger' | 'prompt', 
+     title: string, 
+     message: string, 
+     placeholder?: string,
+     defaultValue?: string,
+     onConfirm: (val?: string) => void 
+  } | null>(null);
 
   useEffect(() => {
      if (state.selectedTables.length > 0) {
@@ -623,34 +635,55 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   }, [future, onStateChange]);
 
   const handleSaveQuery = () => {
-    const name = window.prompt("Nome da consulta para salvar:", `Consulta ${new Date().toLocaleTimeString()}`);
-    if (!name) return;
-    const newQuery: SavedQuery = {
-      id: crypto.randomUUID(),
-      name,
-      createdAt: Date.now(),
-      schemaName: schema.name,
-      state: JSON.parse(JSON.stringify(stateRef.current))
-    };
-    const newSavedList = [newQuery, ...savedQueries];
-    setSavedQueries(newSavedList);
-    localStorage.setItem('psql-buddy-saved-queries', JSON.stringify(newSavedList));
+    setDialogConfig({
+      isOpen: true,
+      type: 'prompt',
+      title: 'Salvar Consulta',
+      message: 'Dê um nome para identificar esta seleção posteriormente.',
+      placeholder: 'Minha Consulta customizada',
+      defaultValue: `Consulta ${new Date().toLocaleTimeString()}`,
+      onConfirm: (name) => {
+         if (!name) return;
+         const newQuery: SavedQuery = {
+            id: crypto.randomUUID(),
+            name,
+            createdAt: Date.now(),
+            schemaName: schema.name,
+            state: JSON.parse(JSON.stringify(stateRef.current))
+         };
+         const newSavedList = [newQuery, ...savedQueries];
+         setSavedQueries(newSavedList);
+         localStorage.setItem('psql-buddy-saved-queries', JSON.stringify(newSavedList));
+      }
+    });
   };
 
   const handleLoadQuery = (query: SavedQuery) => {
-    if (window.confirm(`Carregar "${query.name}"? Isso substituirá sua seleção atual.`)) {
-      updateStateWithHistory(query.state);
-      setShowSavedQueries(false);
-    }
+    setDialogConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Carregar Consulta',
+      message: `Carregar "${query.name}"? Isso substituirá sua seleção atual.`,
+      onConfirm: () => {
+         updateStateWithHistory(query.state);
+         setShowSavedQueries(false);
+      }
+    });
   };
 
   const handleDeleteQuery = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm("Excluir esta consulta salva?")) {
-      const newList = savedQueries.filter(q => q.id !== id);
-      setSavedQueries(newList);
-      localStorage.setItem('psql-buddy-saved-queries', JSON.stringify(newList));
-    }
+    setDialogConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Excluir Consulta',
+      message: 'Tem certeza que deseja remover esta consulta salva?',
+      onConfirm: () => {
+         const newList = savedQueries.filter(q => q.id !== id);
+         setSavedQueries(newList);
+         localStorage.setItem('psql-buddy-saved-queries', JSON.stringify(newList));
+      }
+    });
   };
 
   const relevantSavedQueries = useMemo(() => 
@@ -677,7 +710,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
           else setActiveTab('columns');
        }
     } catch (e) {
-       alert("Não foi possível preencher automaticamente. Tente reformular.");
+       // Silently fail or use toast, but avoiding alert
     } finally {
        setIsMagicFilling(false);
     }
@@ -987,6 +1020,20 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   return (
     <div className="w-full h-full flex flex-col relative">
       <FormulaModal isOpen={showFormulaModal} onClose={() => setShowFormulaModal(false)} onSave={handleAddCalculatedColumn} availableColumns={getAllSelectedTableColumns()} />
+      
+      {dialogConfig && (
+        <Dialog 
+          isOpen={dialogConfig.isOpen}
+          type={dialogConfig.type}
+          title={dialogConfig.title}
+          message={dialogConfig.message}
+          placeholder={dialogConfig.placeholder}
+          defaultValue={dialogConfig.defaultValue}
+          onConfirm={dialogConfig.onConfirm}
+          onClose={() => setDialogConfig(null)}
+        />
+      )}
+
       <div className="flex justify-between items-end mb-4 shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><Layers className="w-6 h-6 text-indigo-600" /> Query Builder (Construtor)</h2>
