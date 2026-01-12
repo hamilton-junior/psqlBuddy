@@ -7,6 +7,10 @@ import {
   Palette, History, FileText, Terminal
 } from 'lucide-react';
 
+// Safely get the version from Vite define or fallback
+declare const __APP_VERSION__: string;
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
+
 const RoadmapStep: React.FC = () => {
   const categories = [
     {
@@ -111,7 +115,7 @@ const RoadmapStep: React.FC = () => {
         <div className="hidden md:flex bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm items-center gap-4">
            <div className="text-right">
               <span className="block text-xs font-black text-slate-400 uppercase tracking-widest">Versão Atual</span>
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">v1.4.0-beta</span>
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">v{APP_VERSION}</span>
            </div>
            <div className="w-px h-8 bg-slate-100 dark:bg-slate-700"></div>
            <Github className="w-6 h-6 text-slate-400" />
@@ -140,7 +144,7 @@ const RoadmapStep: React.FC = () => {
                         <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-100 dark:bg-slate-700 group-hover:bg-indigo-500 transition-colors"></div>
                         
                         <div className="flex justify-between items-start mb-3">
-                           <h4 className="text-base font-black text-slate-800 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                           <h4 className="text-base font-black text-slate-800 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                               {item.title}
                            </h4>
                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border

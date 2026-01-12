@@ -1,7 +1,8 @@
 
 {
   "name": "psql-buddy",
-  "version": "1.0.0",
+  "version": "0.1.10",
+  "author": "Hamilton Junior",
   "type": "module",
   "main": "main.js",
   "scripts": {
@@ -42,7 +43,7 @@
   "build": {
     "appId": "com.psqlbuddy.app",
     "productName": "PSQL Buddy",
-    "copyright": "Copyright © 2024",
+    "copyright": "Copyright © 2026",
     "files": [
       "dist/**/*",
       "main.js",

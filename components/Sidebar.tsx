@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { AppStep, DatabaseSchema } from '../types';
-import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, GitCompare, Link, FileSearch, FileText, Scissors, BookOpen, Rocket } from 'lucide-react';
+import { Database, Layers, Terminal, Table, Server, ArrowRight, Settings, ChevronLeft, ChevronRight, Map, History, GitCompare, Link, FileSearch, FileText, Scissors, BookOpen, Rocket, Tag } from 'lucide-react';
 
 interface SidebarProps {
   currentStep: AppStep;
@@ -20,6 +20,10 @@ interface SidebarProps {
   onOpenTemplates?: () => void;
   onOpenSqlExtractor?: () => void;
 }
+
+// Safely get the version from Vite define or fallback
+declare const __APP_VERSION__: string;
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentStep, onNavigate, schema, hasResults = false, onOpenSettings, onOpenDiagram, onOpenHistory, onRegenerateClick, onDescriptionChange, onOpenShortcuts, onOpenCheatSheet, onOpenVirtualRelations, onOpenLogAnalyzer, onOpenTemplates, onOpenSqlExtractor
@@ -163,6 +167,13 @@ const Sidebar: React.FC<SidebarProps> = ({
            <Settings className="w-4 h-4 shrink-0" />
            {!isCollapsed && <span>Configurações</span>}
          </button>
+
+         {!isCollapsed && (
+            <div className="px-4 py-2 flex items-center gap-2 text-[10px] font-black text-slate-400/60 uppercase tracking-widest mt-2 border-t border-slate-100 dark:border-slate-800/50">
+               <Tag className="w-2.5 h-2.5" />
+               v{APP_VERSION}
+            </div>
+         )}
       </div>
     </div>
   );
