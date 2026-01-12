@@ -435,7 +435,6 @@ const RowInspector: React.FC<{ row: any, onClose: () => void }> = ({ row, onClos
    );
 };
 
-// --- Sub-component: VirtualTable ---
 interface VirtualTableProps {
    data: any[];
    columns: string[];
@@ -773,7 +772,6 @@ const VirtualTable = ({
    );
 };
 
-// --- Sub-component: ColumnProfiler ---
 const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => void }> = ({ data, column, onClose }) => {
    const stats = useMemo(() => {
       const values = data.map(r => r[column]);
@@ -802,7 +800,6 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
    );
 };
 
-// --- Sub-component: ExplainVisualizer ---
 const ExplainVisualizer = ({ plan, loading, error }: { plan: ExplainNode | null, loading: boolean, error: string | null }) => {
    if (loading) return <div className="p-10 text-center"><div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div><p className="text-slate-500">Analisando performance...</p></div>;
    if (error) return <div className="p-10 text-center flex flex-col items-center justify-center text-slate-400"><div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4"><AlertCircle className="w-8 h-8 text-red-500" /></div><h3 className="text-slate-700 dark:text-slate-200 font-bold mb-1">Falha na Análise</h3><p className="text-sm max-w-md">{error}</p></div>;
@@ -821,7 +818,6 @@ const ExplainVisualizer = ({ plan, loading, error }: { plan: ExplainNode | null,
    return <div className="p-6 overflow-auto bg-slate-50 dark:bg-slate-900 h-full">{renderNode(plan)}</div>;
 };
 
-// --- Filter Rules Interface ---
 interface FilterRule {
    id: string;
    column: string;
@@ -829,7 +825,6 @@ interface FilterRule {
    value: string;
 }
 
-// --- Sub-component: SmartFilterBar ---
 const SmartFilterBar: React.FC<{ columns: string[], filters: FilterRule[], onChange: (filters: FilterRule[]) => void, onClear: () => void }> = ({ columns, filters, onChange, onClear }) => {
    const [isOpen, setIsOpen] = useState(filters.length > 0);
    const addFilter = () => { onChange([...filters, { id: crypto.randomUUID(), column: columns[0] || '', operator: 'contains', value: '' }]); setIsOpen(true); };
