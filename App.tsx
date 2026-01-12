@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
-  AppSettings, DEFAULT_SETTINGS, VirtualRelation
+  AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem
 } from './types';
 import Sidebar from './components/Sidebar';
 import ConnectionStep from './components/steps/ConnectionStep';
@@ -10,9 +10,16 @@ import BuilderStep from './components/steps/BuilderStep';
 import PreviewStep from './components/steps/PreviewStep';
 import ResultsStep from './components/steps/ResultsStep';
 import DataDiffStep from './components/steps/DataDiffStep';
+import DashboardStep from './components/steps/DashboardStep';
 import RoadmapStep from './components/steps/RoadmapStep';
 import SettingsModal from './components/SettingsModal';
 import SchemaDiagramModal from './components/SchemaDiagramModal';
+import HistoryModal from './components/HistoryModal';
+import ShortcutsModal from './components/ShortcutsModal';
+import SqlCheatSheetModal from './components/SqlCheatSheetModal';
+import VirtualRelationsModal from './components/VirtualRelationsModal';
+import LogAnalyzerModal from './components/LogAnalyzerModal';
+import TemplateModal from './components/TemplateModal';
 import SqlExtractorModal from './components/SqlExtractorModal';
 import UpdateModal from './components/UpdateModal';
 import { generateSqlFromBuilderState } from './services/geminiService';
@@ -20,7 +27,6 @@ import { generateLocalSql } from './services/localSqlService';
 import { executeQueryReal } from './services/dbService';
 import { executeOfflineQuery, initializeSimulation, SimulationData } from './services/simulationService';
 import { Toaster, toast } from 'react-hot-toast';
-import { Info } from 'lucide-react';
 
 const INITIAL_BUILDER_STATE: BuilderState = {
   selectedTables: [],
@@ -51,8 +57,24 @@ const App: React.FC = () => {
     } catch { return DEFAULT_SETTINGS; }
   });
 
+  const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>(() => {
+    try {
+      const stored = localStorage.getItem('psql-buddy-dashboard');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+
+  // Modal Visibility States
   const [showSettings, setShowSettings] = useState(false);
+  const [showDiagram, setShowDiagram] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showCheatSheet, setShowCheatSheet] = useState(false);
+  const [showVirtualRelations, setShowVirtualRelations] = useState(false);
+  const [showLogAnalyzer, setShowLogAnalyzer] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [showSqlExtractor, setShowSqlExtractor] = useState(false);
+  const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
   
   // Update States
   const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string} | null>(null);
@@ -64,6 +86,10 @@ const App: React.FC = () => {
     else document.documentElement.classList.remove('dark');
     localStorage.setItem('psql-buddy-settings', JSON.stringify(settings));
   }, [settings.theme, settings.updateBranch]);
+
+  useEffect(() => {
+    localStorage.setItem('psql-buddy-dashboard', JSON.stringify(dashboardItems));
+  }, [dashboardItems]);
 
   // Listener para IPC do Electron (Atualização)
   useEffect(() => {
@@ -134,13 +160,29 @@ const App: React.FC = () => {
     }
   };
 
+  const handleRunSqlExternal = (sql: string) => {
+    setQueryResult({ sql, explanation: 'Carregado de ferramenta externa.', tips: [] });
+    setCurrentStep('preview');
+  };
+
   return (
     <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors duration-500">
       <Toaster position="top-right" />
       
       <Sidebar 
-        currentStep={currentStep} onNavigate={setCurrentStep} schema={schema} hasResults={executionResult.length > 0}
-        onOpenSettings={() => setShowSettings(true)} onOpenSqlExtractor={() => setShowSqlExtractor(true)}
+        currentStep={currentStep} 
+        onNavigate={setCurrentStep} 
+        schema={schema} 
+        hasResults={executionResult.length > 0}
+        onOpenSettings={() => setShowSettings(true)} 
+        onOpenDiagram={() => setShowDiagram(true)}
+        onOpenHistory={() => setShowHistory(true)}
+        onOpenShortcuts={() => setShowShortcuts(true)}
+        onOpenCheatSheet={() => setShowCheatSheet(true)}
+        onOpenVirtualRelations={() => setShowVirtualRelations(true)}
+        onOpenLogAnalyzer={() => setShowLogAnalyzer(true)}
+        onOpenTemplates={() => setShowTemplates(true)}
+        onOpenSqlExtractor={() => setShowSqlExtractor(true)}
         onCheckUpdate={handleCheckUpdate}
       />
 
@@ -157,12 +199,54 @@ const App: React.FC = () => {
               <ResultsStep data={executionResult} sql={queryResult?.sql || ''} onBackToBuilder={() => setCurrentStep('builder')} onNewConnection={() => setCurrentStep('connection')} settings={settings} onShowToast={(m) => toast(m)} credentials={credentials} schema={schema || undefined} />
            )}
            {currentStep === 'datadiff' && schema && <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />}
+           {currentStep === 'dashboard' && (
+              <DashboardStep 
+                items={dashboardItems} 
+                onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} 
+                onClearAll={() => setDashboardItems([])} 
+              />
+           )}
            {currentStep === 'roadmap' && <RoadmapStep />}
         </div>
       </main>
 
+      {/* Modals */}
       {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} />}
-      {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={(sql) => { setQueryResult({sql, explanation: 'Extraído do log', tips: []}); setCurrentStep('preview'); }} settings={settings} />}
+      
+      {showDiagram && schema && (
+        <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} credentials={credentials} />
+      )}
+      
+      {showHistory && (
+        <HistoryModal onClose={() => setShowHistory(false)} onLoadQuery={handleRunSqlExternal} />
+      )}
+      
+      {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
+      
+      {showCheatSheet && <SqlCheatSheetModal onClose={() => setShowCheatSheet(false)} />}
+      
+      {showVirtualRelations && schema && (
+        <VirtualRelationsModal 
+           schema={schema} 
+           existingRelations={virtualRelations} 
+           onAddRelation={(r) => setVirtualRelations(prev => [...prev, r])}
+           onRemoveRelation={(id) => setVirtualRelations(prev => prev.filter(r => r.id !== id))}
+           onClose={() => setShowVirtualRelations(false)}
+           credentials={credentials}
+        />
+      )}
+      
+      {showLogAnalyzer && schema && (
+        <LogAnalyzerModal schema={schema} onClose={() => setShowLogAnalyzer(false)} onRunSql={handleRunSqlExternal} />
+      )}
+      
+      {showTemplates && (
+        <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={handleRunSqlExternal} />
+      )}
+      
+      {showSqlExtractor && (
+        <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={handleRunSqlExternal} settings={settings} />
+      )}
       
       {updateInfo && (
         <UpdateModal 

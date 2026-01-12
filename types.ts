@@ -63,7 +63,6 @@ export interface QueryResult {
   optimization?: OptimizationAnalysis;
 }
 
-// Added 'dashboard' and 'roadmap' to AppStep
 export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'roadmap';
 
 export type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'ILIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL';
@@ -75,7 +74,7 @@ export interface Filter {
   column: string;
   operator: Operator;
   value: string;
-  wildcardPosition?: WildcardPosition; // New: control % placement
+  wildcardPosition?: WildcardPosition;
 }
 
 export type AggregateFunction = 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'NONE';
