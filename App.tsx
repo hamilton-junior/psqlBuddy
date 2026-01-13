@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
@@ -98,6 +99,7 @@ const App: React.FC = () => {
     const electron = (window as any).electron;
     if (electron) {
       electron.on('update-available', (info: any) => {
+        console.log("[APP] Evento: update-available", info);
         setUpdateInfo(info);
         if (info.allVersions) setRemoteVersions(info.allVersions);
         setDownloadProgress(null);
@@ -106,12 +108,23 @@ const App: React.FC = () => {
       });
       
       electron.on('update-not-available', (info: any) => {
+        console.log("[APP] Evento: update-not-available", info);
         toast.success("O aplicativo já está atualizado.");
       });
 
-      electron.on('sync-versions', (vers: any) => setRemoteVersions(vers));
-      electron.on('update-downloading', (progress: any) => setDownloadProgress(progress.percent));
-      electron.on('update-ready', () => setUpdateReady(true));
+      electron.on('sync-versions', (vers: any) => {
+        console.log("[APP] Evento: sync-versions", vers);
+        setRemoteVersions(vers);
+      });
+
+      electron.on('update-downloading', (progress: any) => {
+        setDownloadProgress(progress.percent);
+      });
+
+      electron.on('update-ready', () => {
+        console.log("[APP] Evento: update-ready");
+        setUpdateReady(true);
+      });
       
       // Busca inicial silenciosa
       electron.send('check-update', settings.updateBranch);
@@ -122,6 +135,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
+      console.log("[APP] Solicitando check-update para canal:", settings.updateBranch);
       electron.send('check-update', settings.updateBranch);
     }
   }, [settings.updateBranch]);
