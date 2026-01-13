@@ -99,56 +99,68 @@ async function fetchGitHubData(apiPath) {
 function parseTotalCommitsFromLink(linkHeader) {
   if (!linkHeader) return 0;
   const links = Array.isArray(linkHeader) ? linkHeader[0] : linkHeader;
+  // O GitHub retorna no header 'link' a URL da última página. No nosso caso (per_page=1), o número da página é o total.
   const match = links.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
   return match ? parseInt(match[1], 10) : 0;
 }
 
 function compareVersions(vRemote, vLocal) {
-  console.log(`[DEBUG:Version] Iniciando comparação. Remota: "${vRemote}" | Local: "${vLocal}"`);
-  if (!vRemote || !vLocal) return 'equal';
+  console.log(`[UPDATE:Compare] Verificando: Remota(${vRemote}) vs Local(${vLocal})`);
   
-  const clean = (v) => String(v).trim().replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
-  const r = clean(vRemote);
-  const l = clean(vLocal);
+  const parse = (v) => String(v).trim().replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const r = parse(vRemote);
+  const l = parse(vLocal);
   
   for (let i = 0; i < 3; i++) {
-    const remoteVal = r[i] || 0;
-    const localVal = l[i] || 0;
-    if (remoteVal > localVal) {
-      console.log(`[DEBUG:Version] Resultado: NEWER (Remoto ${remoteVal} > Local ${localVal})`);
+    if (r[i] > l[i]) {
+      console.log(`[UPDATE:Compare] Resultado: NOVA VERSÃO DETECTADA (índice ${i}: ${r[i]} > ${l[i]})`);
       return 'newer';
     }
-    if (remoteVal < localVal) {
-      console.log(`[DEBUG:Version] Resultado: OLDER (Remoto ${remoteVal} < Local ${localVal})`);
+    if (r[i] < l[i]) {
+      console.log(`[UPDATE:Compare] Resultado: DOWNGRADE DETECTADO (índice ${i}: ${r[i]} < ${l[i]})`);
       return 'older';
     }
   }
+  
+  console.log(`[UPDATE:Compare] Resultado: VERSÕES IGUAIS`);
   return 'equal';
 }
 
 async function getGitHubBranchStatus(branch) {
   try {
+    // Buscamos apenas 1 por página para pegar o total de commits via Link Header de forma performática
     const response = await fetchGitHubData(`/repos/${GITHUB_REPO}/commits?sha=${branch}&per_page=1`);
     if (!response.ok) return { error: true, status: response.status, branch };
+    
     const commits = response.json;
     const linkHeader = response.headers['link'];
-    let count = parseTotalCommitsFromLink(linkHeader) || (Array.isArray(commits) ? commits.length : 0);
+    
+    // Se não houver link header, significa que só há 1 commit ou falha na API
+    let count = parseTotalCommitsFromLink(linkHeader);
+    if (count === 0 && Array.isArray(commits)) count = commits.length;
+
+    // Lógica de versão sincronizada com o workflow (0.1.X)
     const major = Math.floor(count / 1000);
     const minor = Math.floor((count % 1000) / 100);
     const patch = count % 100;
     const versionString = `${major}.${minor}.${patch}`;
+    
     return {
       version: versionString,
       lastMessage: (Array.isArray(commits) && commits[0]?.commit?.message) || "Sem descrição.",
       url: `https://github.com/${GITHUB_REPO}/archive/refs/heads/${branch}.zip`,
       ok: true
     };
-  } catch (e) { return { error: true, message: e.message }; }
+  } catch (e) { 
+    return { error: true, message: e.message }; 
+  }
 }
 
 function getAppVersion() {
   try {
     if (app.isPackaged) return app.getVersion();
+    
+    // Em desenvolvimento, tentamos ler via Git para bater com a lógica do build
     const commitCount = execSync('git rev-list --count HEAD').toString().trim();
     const count = parseInt(commitCount, 10) || 0;
     const major = Math.floor(count / 1000);
@@ -156,6 +168,7 @@ function getAppVersion() {
     const patch = count % 100;
     return `${major}.${minor}.${patch}`;
   } catch (e) { 
+    // Fallback para package.json se git falhar
     try {
       const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
       return pkg.version;
@@ -166,24 +179,26 @@ function getAppVersion() {
 ipcMain.on('check-update', async (event, branch = 'stable') => {
   console.log(`[IPC] Verificando atualização canal: ${branch}`);
   try {
-    const [mainStatus, stableStatus] = await Promise.all([
+    const currentAppVersion = getAppVersion();
+    const targetStatus = await getGitHubBranchStatus(branch === 'main' ? 'main' : 'stable');
+
+    // Sincronizar versões das abas de settings
+    const [mainS, stableS] = await Promise.all([
       getGitHubBranchStatus('main'),
       getGitHubBranchStatus('stable')
     ]);
     
     if (mainWindow) {
        mainWindow.webContents.send('sync-versions', {
-          stable: stableStatus.ok ? stableStatus.version : "Erro",
-          main: mainStatus.ok ? mainStatus.version : "Erro",
+          stable: stableS.ok ? stableS.version : "Erro",
+          main: mainS.ok ? mainS.version : "Erro",
        });
     }
-    
-    const currentAppVersion = getAppVersion();
-    const targetStatus = branch === 'main' ? mainStatus : stableStatus;
 
     if (targetStatus && targetStatus.ok) {
       updateUrl = targetStatus.url;
       const result = compareVersions(targetStatus.version, currentAppVersion);
+      
       mainWindow.webContents.send('update-check-result', {
         comparison: result,
         remoteVersion: targetStatus.version,
@@ -199,28 +214,18 @@ ipcMain.on('check-update', async (event, branch = 'stable') => {
 });
 
 ipcMain.on('start-download', () => {
-  console.log(`[UPDATE] Iniciando download real: ${updateUrl}`);
-  
-  if (!updateUrl) {
-    console.error("[UPDATE] URL de download não definida.");
-    return;
-  }
+  if (!updateUrl) return;
 
-  // No Electron, para baixar arquivos grandes de forma robusta e mostrar progresso real:
   const request = net.request(updateUrl);
-  
   request.on('response', (response) => {
     const totalBytes = parseInt(response.headers['content-length'], 10) || 0;
     let receivedBytes = 0;
     const tempFilePath = path.join(os.tmpdir(), 'psqlbuddy-update.zip');
     const fileStream = fs.createWriteStream(tempFilePath);
 
-    console.log(`[UPDATE] Tamanho total: ${totalBytes} bytes`);
-
     response.on('data', (chunk) => {
       receivedBytes += chunk.length;
       fileStream.write(chunk);
-      
       if (totalBytes > 0) {
         const percent = (receivedBytes / totalBytes) * 100;
         mainWindow.webContents.send('update-downloading', { percent });
@@ -229,26 +234,23 @@ ipcMain.on('start-download', () => {
 
     response.on('end', () => {
       fileStream.end();
-      console.log(`[UPDATE] Download concluído em: ${tempFilePath}`);
-      mainWindow.webContents.send('update-ready');
+      console.log(`[UPDATE] Arquivo salvo em: ${tempFilePath}`);
+      mainWindow.webContents.send('update-ready', { path: tempFilePath });
     });
   });
-
-  request.on('error', (err) => {
-    console.error(`[UPDATE] Erro no download: ${err.message}`);
-  });
-
   request.end();
 });
 
 ipcMain.on('install-update', () => { 
   const isDev = !app.isPackaged;
-  console.log(`[UPDATE] Solicitada instalação. Modo: ${isDev ? 'DESENVOLVIMENTO' : 'PRODUÇÃO'}`);
+  console.log(`[UPDATE] Executando rotina de instalação final...`);
   
   if (isDev) {
-    console.log("%c[AVISO] No modo dev (npm dev:all), o reinício não altera a versão.", "color: orange; font-weight: bold;");
-    console.log("[DICA] Para atualizar o código-fonte realmente, utilize 'git pull'.");
-    console.log("[INFO] O reinício simula o ciclo completo de atualização de um binário real.");
+    console.warn("[DEV MODE] O binário não será substituído automaticamente. Em produção, os arquivos do ASAR seriam trocados.");
+    console.info("[INFO] Para atualizar o código-fonte, execute 'git pull' no terminal.");
+  } else {
+    // Aqui em uma implementação real de prod usaríamos electron-updater ou fs.rename no ASAR
+    console.log("[PROD MODE] Reiniciando para aplicar alterações pendentes.");
   }
 
   app.relaunch(); 

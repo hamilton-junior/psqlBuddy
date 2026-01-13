@@ -54,7 +54,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
               {isReady ? (
                  <Rocket className="w-10 h-10 text-indigo-600 animate-bounce" />
               ) : isDownloading ? (
-                 <Download className="w-10 h-10 text-indigo-600 animate-pulse" />
+                 <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
               ) : isDowngrade ? (
                  <AlertTriangle className="w-10 h-10 text-amber-600" />
               ) : (
@@ -85,10 +85,10 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                     )}
                  </div>
               </div>
-              <p className="text-slate-500 dark:text-slate-400 text-sm mt-2 font-medium">
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-2 font-medium leading-relaxed">
                  {isDowngrade 
-                    ? `A versão disponível no GitHub (v${updateInfo.version}) é anterior à sua atual (v${updateInfo.currentVersion}).` 
-                    : 'Uma nova atualização foi encontrada no GitHub.'}
+                    ? `A versão v${updateInfo.version} disponível no GitHub é anterior à sua instalada (v${updateInfo.currentVersion}).` 
+                    : `Uma nova versão (v${updateInfo.version}) foi localizada no GitHub.`}
               </p>
            </div>
         </div>
@@ -100,7 +100,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                     <AlertTriangle className="w-4 h-4" /> Confirmar Downgrade
                  </h4>
                  <p className="text-xs text-amber-700 dark:text-amber-200/70 leading-relaxed mb-4 font-medium">
-                    Você está prestes a instalar a versão <strong>v{updateInfo.version}</strong>, que é inferior à sua atual (v{updateInfo.currentVersion}). Deseja prosseguir com a reinstalação?
+                    Você deseja substituir a versão <strong>v{updateInfo.currentVersion}</strong> pela <strong>v{updateInfo.version}</strong>?
                  </p>
                  <div className="flex gap-2">
                     <button onClick={handleCancelDowngrade} className="flex-1 py-2 bg-white dark:bg-slate-800 text-xs font-bold rounded-lg border border-amber-200 dark:border-amber-700">Não, cancelar</button>
@@ -110,7 +110,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
            ) : (
               <div className="bg-slate-50 dark:bg-slate-950/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800 max-h-40 overflow-y-auto custom-scrollbar">
                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 text-amber-50" /> Notas da Versão
+                    <Sparkles className="w-3 h-3 text-indigo-400" /> Histórico da Versão
                  </span>
                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed italic whitespace-pre-wrap">
                     {updateInfo.notes}
@@ -121,8 +121,8 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
            {isDownloading && (
               <div className="space-y-3 animate-in slide-in-from-top-2">
                  <div className="flex justify-between items-end">
-                    <span className="text-xs font-bold text-slate-500">Baixando arquivos...</span>
-                    <span className="text-sm font-black text-indigo-600">{Math.round(downloadProgress)}%</span>
+                    <span className="text-xs font-bold text-slate-500">Fazendo download...</span>
+                    <span className="text-sm font-black text-indigo-600">{Math.round(downloadProgress || 0)}%</span>
                  </div>
                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div 
@@ -136,7 +136,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
            {isReady && (
               <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 dark:text-emerald-400 animate-in slide-in-from-bottom-2">
                  <CheckCircle2 className="w-6 h-6 shrink-0" />
-                 <span className="text-xs font-bold">Arquivos preparados! O app será reiniciado ao confirmar.</span>
+                 <span className="text-xs font-bold leading-tight">Pacote baixado com sucesso! Clique abaixo para reiniciar o aplicativo.</span>
               </div>
            )}
 
@@ -151,14 +151,14 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                     className={`flex-[2] py-4 rounded-2xl text-sm font-black text-white shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 ${isDowngrade ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-900/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-900/20'}`}
                   >
                     {isDowngrade ? <RefreshCw className="w-4 h-4" /> : <Download className="w-4 h-4" />} 
-                    {isDowngrade ? 'Reinstalar v' + updateInfo.version : 'Atualizar agora'}
+                    {isDowngrade ? 'Reinstalar v' + updateInfo.version : 'Atualizar Agora'}
                   </button>
                 </>
               )}
 
               {isDownloading && (
                 <div className="flex-1 py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-sm font-bold text-slate-400 flex items-center justify-center gap-3 cursor-wait">
-                   <Loader2 className="w-4 h-4 animate-spin" /> Extraindo pacotes...
+                   <Loader2 className="w-4 h-4 animate-spin" /> Aguarde...
                 </div>
               )}
 
@@ -167,7 +167,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                   onClick={onInstall}
                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-sm font-black text-white shadow-xl shadow-indigo-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <RefreshCw className="w-4 h-4" /> Reiniciar Agora
+                  <RefreshCw className="w-4 h-4" /> Finalizar & Reiniciar
                 </button>
               )}
            </div>
