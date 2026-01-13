@@ -430,27 +430,27 @@ const TableCard = memo(({
 
 const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange, onGenerate, onSkipAi, isGenerating, progressMessage, settings, onDescriptionChange, onPreviewTable }) => {
   const [activeTab, setActiveTab] = useState<TabType>(() => {
-    return (localStorage.getItem(`psql-buddy-tab-${schema.name}`) as TabType) || 'columns';
+    return (localStorage.getItem(`psqlBuddy-tab-${schema.name}`) as TabType) || 'columns';
   });
 
   useEffect(() => {
-    localStorage.setItem(`psql-buddy-tab-${schema.name}`, activeTab);
+    localStorage.setItem(`psqlBuddy-tab-${schema.name}`, activeTab);
   }, [activeTab, schema.name]);
   
   const [columnSearchTerms, setColumnSearchTerms] = useState<Record<string, string>>(() => {
     try {
-        const stored = localStorage.getItem(`psql-buddy-search-${schema.name}`);
+        const stored = localStorage.getItem(`psqlBuddy-search-${schema.name}`);
         return stored ? JSON.parse(stored) : {};
     } catch { return {}; }
   });
 
   useEffect(() => {
-    localStorage.setItem(`psql-buddy-search-${schema.name}`, JSON.stringify(columnSearchTerms));
+    localStorage.setItem(`psqlBuddy-search-${schema.name}`, JSON.stringify(columnSearchTerms));
   }, [columnSearchTerms, schema.name]);
   
   const [collapsedTables, setCollapsedTables] = useState<Set<string>>(() => {
     try {
-      const stored = localStorage.getItem(`psql-buddy-collapsed-${schema.name}`);
+      const stored = localStorage.getItem(`psqlBuddy-collapsed-${schema.name}`);
       return stored ? new Set(JSON.parse(stored)) : new Set();
     } catch {
       return new Set();
@@ -458,7 +458,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   });
 
   useEffect(() => {
-     localStorage.setItem(`psql-buddy-collapsed-${schema.name}`, JSON.stringify(Array.from(collapsedTables)));
+     localStorage.setItem(`psqlBuddy-collapsed-${schema.name}`, JSON.stringify(Array.from(collapsedTables)));
   }, [collapsedTables, schema.name]);
 
   const joinedColumnIds = useMemo(() => {
@@ -527,7 +527,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   }, [state]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('psql-buddy-saved-queries');
+    const saved = localStorage.getItem('psqlBuddy-saved-queries');
     if (saved) {
       try {
         setSavedQueries(JSON.parse(saved));
@@ -653,7 +653,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
          };
          const newSavedList = [newQuery, ...savedQueries];
          setSavedQueries(newSavedList);
-         localStorage.setItem('psql-buddy-saved-queries', JSON.stringify(newSavedList));
+         localStorage.setItem('psqlBuddy-saved-queries', JSON.stringify(newSavedList));
       }
     });
   };
@@ -681,7 +681,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       onConfirm: () => {
          const newList = savedQueries.filter(q => q.id !== id);
          setSavedQueries(newList);
-         localStorage.setItem('psql-buddy-saved-queries', JSON.stringify(newList));
+         localStorage.setItem('psqlBuddy-saved-queries', JSON.stringify(newList));
       }
     });
   };

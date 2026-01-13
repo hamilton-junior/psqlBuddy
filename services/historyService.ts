@@ -1,7 +1,7 @@
 
 import { QueryHistoryItem } from '../types';
 
-const STORAGE_KEY = 'psql-buddy-history';
+const STORAGE_KEY = 'psqlBuddy-history';
 
 export const getHistory = (): QueryHistoryItem[] => {
   try {

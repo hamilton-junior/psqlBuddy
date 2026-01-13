@@ -417,35 +417,35 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   const [expandedTables, setExpandedTables] = useState<Set<string>>(() => {
     try {
-      const stored = localStorage.getItem(`psql-buddy-viewer-tables-${schema.name}`);
+      const stored = localStorage.getItem(`psqlBuddy-viewer-tables-${schema.name}`);
       return stored ? new Set(JSON.parse(stored)) : new Set();
     } catch { return new Set(); }
   });
 
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(() => {
     try {
-      const stored = localStorage.getItem(`psql-buddy-viewer-schemas-${schema.name}`);
+      const stored = localStorage.getItem(`psqlBuddy-viewer-schemas-${schema.name}`);
       return stored ? new Set(JSON.parse(stored)) : new Set(['public', '__favorites__']);
     } catch { return new Set(['public', '__favorites__']); }
   });
 
   const [favoriteTables, setFavoriteTables] = useState<Set<string>>(() => {
      try {
-        const stored = localStorage.getItem(`psql-buddy-favorites-${schema.name}`);
+        const stored = localStorage.getItem(`psqlBuddy-favorites-${schema.name}`);
         return stored ? new Set(JSON.parse(stored)) : new Set();
      } catch { return new Set(); }
   });
 
   useEffect(() => {
-    localStorage.setItem(`psql-buddy-viewer-tables-${schema.name}`, JSON.stringify(Array.from(expandedTables)));
+    localStorage.setItem(`psqlBuddy-viewer-tables-${schema.name}`, JSON.stringify(Array.from(expandedTables)));
   }, [expandedTables, schema.name]);
 
   useEffect(() => {
-    localStorage.setItem(`psql-buddy-viewer-schemas-${schema.name}`, JSON.stringify(Array.from(expandedSchemas)));
+    localStorage.setItem(`psqlBuddy-viewer-schemas-${schema.name}`, JSON.stringify(Array.from(expandedSchemas)));
   }, [expandedSchemas, schema.name]);
 
   useEffect(() => {
-     localStorage.setItem(`psql-buddy-favorites-${schema.name}`, JSON.stringify(Array.from(favoriteTables)));
+     localStorage.setItem(`psqlBuddy-favorites-${schema.name}`, JSON.stringify(Array.from(favoriteTables)));
   }, [favoriteTables, schema.name]);
 
   useEffect(() => {

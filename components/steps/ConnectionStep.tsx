@@ -57,7 +57,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
   // Load saved connections on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('psql-buddy-saved-connections');
+      const saved = localStorage.getItem('psqlBuddy-saved-connections');
       if (saved) {
         setSavedConnections(JSON.parse(saved));
       }
@@ -101,7 +101,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
          };
          const updatedList = [...savedConnections, newProfile];
          setSavedConnections(updatedList);
-         localStorage.setItem('psql-buddy-saved-connections', JSON.stringify(updatedList));
+         localStorage.setItem('psqlBuddy-saved-connections', JSON.stringify(updatedList));
          setSelectedProfileId(newProfile.id);
       }
     });
@@ -117,7 +117,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
       onConfirm: () => {
          const updatedList = savedConnections.filter(c => c.id !== id);
          setSavedConnections(updatedList);
-         localStorage.setItem('psql-buddy-saved-connections', JSON.stringify(updatedList));
+         localStorage.setItem('psqlBuddy-saved-connections', JSON.stringify(updatedList));
          if (selectedProfileId === id) setSelectedProfileId('');
       }
     });

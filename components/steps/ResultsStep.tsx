@@ -469,7 +469,7 @@ const VirtualTable = ({
 
    const [manualMappings, setManualMappings] = useState<Record<string, ManualLink[]>>(() => {
       try {
-         const stored = localStorage.getItem('psql-buddy-manual-drilldown-links-v2');
+         const stored = localStorage.getItem('psqlBuddy-manual-drilldown-links-v2');
          return stored ? JSON.parse(stored) : {};
       } catch { return {}; }
    });
@@ -489,7 +489,7 @@ const VirtualTable = ({
         newMappings[colName] = links;
       }
       setManualMappings(newMappings);
-      localStorage.setItem('psql-buddy-manual-drilldown-links-v2', JSON.stringify(newMappings));
+      localStorage.setItem('psqlBuddy-manual-drilldown-links-v2', JSON.stringify(newMappings));
    };
 
    const handleSort = (col: string) => {

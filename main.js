@@ -11,7 +11,7 @@ let mainWindow;
 let serverProcess;
 
 // Repositório oficial para conferência de versão
-const GITHUB_REPO = "Hamilton-Junior/psql-buddy";
+const GITHUB_REPO = "Hamilton-Junior/psqlBuddy";
 
 function startBackend() {
   const isDev = !app.isPackaged;

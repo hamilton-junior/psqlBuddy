@@ -19,13 +19,13 @@ const TemplateModal: React.FC<TemplateModalProps> = ({ onClose, onRunTemplate })
   const [dialogConfig, setDialogConfig] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void } | null>(null);
 
   useEffect(() => {
-     const stored = localStorage.getItem('psql-buddy-templates');
+     const stored = localStorage.getItem('psqlBuddy-templates');
      if (stored) setTemplates(JSON.parse(stored));
   }, []);
 
   const saveTemplates = (list: QueryTemplate[]) => {
      setTemplates(list);
-     localStorage.setItem('psql-buddy-templates', JSON.stringify(list));
+     localStorage.setItem('psqlBuddy-templates', JSON.stringify(list));
   };
 
   const extractParams = (sql: string) => {

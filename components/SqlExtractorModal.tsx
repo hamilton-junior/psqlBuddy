@@ -12,11 +12,11 @@ interface SqlExtractorModalProps {
 }
 
 const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql, settings }) => {
-  const [logInput, setLogInput] = useState(() => localStorage.getItem('psql-buddy-extractor-log') || '');
+  const [logInput, setLogInput] = useState(() => localStorage.getItem('psqlBuddy-extractor-log') || '');
   const [isExtractingAi, setIsExtractingAi] = useState(false);
   const [queries, setQueries] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('psql-buddy-extractor-results');
+      const saved = localStorage.getItem('psqlBuddy-extractor-results');
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
@@ -32,11 +32,11 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
   } | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('psql-buddy-extractor-log', logInput);
+    localStorage.setItem('psqlBuddy-extractor-log', logInput);
   }, [logInput]);
 
   useEffect(() => {
-    localStorage.setItem('psql-buddy-extractor-results', JSON.stringify(queries));
+    localStorage.setItem('psqlBuddy-extractor-results', JSON.stringify(queries));
   }, [queries]);
 
   const handleLocalExtract = () => {
@@ -93,7 +93,7 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
       message: 'Deseja realmente limpar todo o histórico de consultas extraídas?',
       onConfirm: () => {
         setQueries([]);
-        localStorage.removeItem('psql-buddy-extractor-results');
+        localStorage.removeItem('psqlBuddy-extractor-results');
         toast.success("Histórico limpo.");
       }
     });
