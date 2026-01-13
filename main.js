@@ -1,5 +1,5 @@
 
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, net } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
@@ -9,6 +9,9 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow;
 let serverProcess;
+
+// Configuração do Repositório (Altere se necessário)
+const GITHUB_REPO = "Hamilton-Junior/psql-buddy";
 
 function startBackend() {
   const isDev = !app.isPackaged;
@@ -65,29 +68,85 @@ function createWindow() {
   }
 }
 
-// --- LOGICA DE ATUALIZAÇÃO ---
+// --- LOGICA DE ATUALIZAÇÃO REAL ---
 
-ipcMain.on('check-update', (event, branch = 'stable') => {
-  console.log(`[UPDATE] Verificando branch: ${branch}...`);
+async function fetchGitHubReleases() {
+  return new Promise((resolve, reject) => {
+    const request = net.request({
+      method: 'GET',
+      protocol: 'https:',
+      hostname: 'api.github.com',
+      path: `/repos/${GITHUB_REPO}/releases`,
+      headers: {
+        'User-Agent': 'PSQL-Buddy-App'
+      }
+    });
+
+    request.on('response', (response) => {
+      let data = '';
+      response.on('data', (chunk) => { data += chunk; });
+      response.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    request.on('error', (err) => reject(err));
+    request.end();
+  });
+}
+
+ipcMain.on('check-update', async (event, branch = 'stable') => {
+  console.log(`[UPDATE] Buscando atualizações reais no GitHub (Branch: ${branch})...`);
   
-  // Simula metadados da atualização
-  const updateData = branch === 'main' 
-    ? { version: '0.3.0-nightly', notes: 'Recursos experimentais: Novo Canvas de Diagrama e exportação para PDF.', branch: 'Main' }
-    : { version: '0.2.0', notes: 'Melhorias de estabilidade, suporte a SSL e novo visual para o Comparador de Dados.', branch: 'Stable' };
-
-  // Retorna apenas a disponibilidade
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('update-available', updateData);
+  try {
+    const releases = await fetchGitHubReleases();
+    
+    if (!Array.isArray(releases) || releases.length === 0) {
+      console.log("[UPDATE] Nenhum lançamento encontrado no repositório.");
+      return;
     }
-  }, 1200);
+
+    let targetRelease;
+    if (branch === 'stable') {
+      // Pega o lançamento mais recente que NÃO é pre-release
+      targetRelease = releases.find(r => !r.prerelease && !r.draft);
+    } else {
+      // Pega absolutamente o mais recente (incluindo pre-releases)
+      targetRelease = releases[0];
+    }
+
+    if (targetRelease) {
+      const currentVersion = app.getVersion();
+      const latestVersion = targetRelease.tag_name.replace('v', '');
+
+      // Só notifica se a versão do GitHub for diferente/maior que a atual
+      // (Em desenvolvimento currentVersion costuma ser o do package.json)
+      const updateData = {
+        version: latestVersion,
+        notes: targetRelease.body || "Nenhuma nota de lançamento fornecida.",
+        branch: branch === 'main' ? 'Main' : 'Stable',
+        isPrerelease: targetRelease.prerelease,
+        url: targetRelease.html_url
+      };
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-available', updateData);
+      }
+    }
+  } catch (error) {
+    console.error("[UPDATE] Erro ao consultar API do GitHub:", error.message);
+  }
 });
 
 ipcMain.on('start-download', () => {
-  console.log('[UPDATE] Usuário iniciou o download...');
+  console.log('[UPDATE] Iniciando download simulado dos assets do GitHub...');
   let progress = 0;
   const interval = setInterval(() => {
-    progress += Math.random() * 15;
+    progress += Math.random() * 20;
     if (progress >= 100) {
       progress = 100;
       clearInterval(interval);
@@ -96,11 +155,11 @@ ipcMain.on('start-download', () => {
     } else {
       mainWindow.webContents.send('update-downloading', { percent: progress });
     }
-  }, 400);
+  }, 300);
 });
 
 ipcMain.on('install-update', () => {
-  console.log('[UPDATE] Reiniciando para "instalar"...');
+  console.log('[UPDATE] Reiniciando app...');
   app.relaunch();
   app.exit();
 });

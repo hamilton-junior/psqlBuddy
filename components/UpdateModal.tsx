@@ -1,9 +1,15 @@
 
 import React from 'react';
-import { Download, Rocket, RefreshCw, X, CheckCircle2, Sparkles, Loader2, GitBranch, FlaskConical, BellRing } from 'lucide-react';
+import { Download, Rocket, RefreshCw, X, CheckCircle2, Sparkles, Loader2, GitBranch, FlaskConical, BellRing, AlertTriangle } from 'lucide-react';
 
 interface UpdateModalProps {
-  updateInfo: { version: string, notes: string, branch?: string } | null;
+  updateInfo: { 
+    version: string, 
+    notes: string, 
+    branch?: string,
+    isPrerelease?: boolean,
+    url?: string 
+  } | null;
   downloadProgress: number | null;
   isReady: boolean;
   onClose: () => void;
@@ -34,29 +40,39 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
            </div>
 
            <div className="flex flex-col items-center gap-2">
-              <div className="flex items-center gap-2">
-                 <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Nova Versão v{updateInfo.version}</h3>
-                 {updateInfo.branch === 'Main' ? (
-                    <span className="bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800 flex items-center gap-1 uppercase tracking-widest">
-                       <GitBranch className="w-2.5 h-2.5" /> Main Branch
-                    </span>
-                 ) : (
-                    <span className="bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800 flex items-center gap-1 uppercase tracking-widest">
-                       <CheckCircle2 className="w-2.5 h-2.5" /> Stable Branch
-                    </span>
-                 )}
+              <div className="flex flex-col items-center gap-2">
+                 <div className="flex items-center gap-2">
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">v{updateInfo.version}</h3>
+                    {updateInfo.isPrerelease && (
+                       <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 text-[8px] font-black px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1 uppercase tracking-widest">
+                          <AlertTriangle className="w-2 h-2" /> WIP / Tag
+                       </span>
+                    )}
+                 </div>
+                 
+                 <div className="flex gap-2">
+                    {updateInfo.branch === 'Main' ? (
+                       <span className="bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800 flex items-center gap-1 uppercase tracking-widest">
+                          <GitBranch className="w-2.5 h-2.5" /> Main Branch
+                       </span>
+                    ) : (
+                       <span className="bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-[9px] font-black px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800 flex items-center gap-1 uppercase tracking-widest">
+                          <CheckCircle2 className="w-2.5 h-2.5" /> Stable Branch
+                       </span>
+                    )}
+                 </div>
               </div>
-              <p className="text-slate-500 dark:text-slate-400 text-sm">Uma atualização importante está disponível para você.</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Versão detectada no GitHub.</p>
            </div>
         </div>
 
         <div className="px-8 pb-8 space-y-6">
-           <div className="bg-slate-50 dark:bg-slate-950/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
+           <div className="bg-slate-50 dark:bg-slate-950/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800 max-h-40 overflow-y-auto custom-scrollbar">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 flex items-center gap-1.5">
-                 <Sparkles className="w-3 h-3 text-amber-500" /> Novidades
+                 <Sparkles className="w-3 h-3 text-amber-500" /> Notas da Versão
               </span>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed italic">
-                 "{updateInfo.notes}"
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed italic whitespace-pre-wrap">
+                 {updateInfo.notes}
               </p>
            </div>
 
@@ -78,7 +94,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
            {isReady && (
               <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 dark:text-emerald-400 animate-in slide-in-from-bottom-2">
                  <CheckCircle2 className="w-6 h-6 shrink-0" />
-                 <span className="text-xs font-bold">Download concluído! Reinicie para aplicar as mudanças.</span>
+                 <span className="text-xs font-bold">Arquivos preparados! O app será reiniciado ao confirmar.</span>
               </div>
            )}
 
@@ -86,13 +102,13 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
               {!isDownloading && !isReady && (
                 <>
                   <button onClick={onClose} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-2xl text-sm font-bold transition-all">
-                     Lembrar depois
+                     Depois
                   </button>
                   <button 
                     onClick={onStartDownload}
                     className="flex-[2] py-4 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-sm font-black text-white shadow-xl shadow-indigo-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
                   >
-                    <Download className="w-4 h-4" /> Baixar Agora
+                    <Download className="w-4 h-4" /> Atualizar
                   </button>
                 </>
               )}
@@ -100,7 +116,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
               {isDownloading && (
                 <div className="flex-1 py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-sm font-bold text-slate-400 flex items-center justify-center gap-3 cursor-wait">
                    <Loader2 className="w-4 h-4 animate-spin" />
-                   Preparando pacotes...
+                   Extraindo pacotes...
                 </div>
               )}
 
@@ -109,7 +125,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                   onClick={onInstall}
                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-sm font-black text-white shadow-xl shadow-indigo-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <RefreshCw className="w-4 h-4" /> Instalar e Reiniciar
+                  <RefreshCw className="w-4 h-4" /> Reiniciar Agora
                 </button>
               )}
            </div>
