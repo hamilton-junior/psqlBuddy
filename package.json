@@ -5,7 +5,7 @@
   "author": "Hamilton Junior",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Hamilton-Junior/psql-buddy"
+    "url": "https://github.com/Hamilton-Junior/psqlHelper"
   },
   "type": "module",
   "main": "main.js",
