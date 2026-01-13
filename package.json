@@ -1,11 +1,10 @@
-
 {
   "name": "psqlBuddy",
   "version": "0.1.10",
   "author": "Hamilton Junior",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Hamilton-Junior/psqlHelper"
+    "url": "https://github.com/Hamilton-Junior/psqlBuddy"
   },
   "type": "module",
   "main": "main.js",
@@ -22,30 +21,30 @@
   "dependencies": {
     "@google/genai": "1.35.0",
     "@monaco-editor/react": "4.7.0",
-    "cors": "^2.8.5",
-    "express": "4.22.1",
-    "lucide-react": "0.562.0",
-    "pg": "8.16.3",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "recharts": "2.15.4",
+    "cors": "2.8.5",
+    "express": "5.0.1",
+    "lucide-react": "0.475.0",
+    "pg": "8.13.1",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "recharts": "2.15.0",
     "jspdf": "2.5.2",
-    "html2canvas": "^1.4.1",
-    "react-hot-toast": "2.6.0"
+    "html2canvas": "1.4.1",
+    "react-hot-toast": "2.5.1"
   },
   "devDependencies": {
-    "@types/react": "18.3.27",
-    "@types/react-dom": "18.3.7",
-    "@vitejs/plugin-react": "4.7.0",
-    "autoprefixer": "10.4.23",
-    "concurrently": "9.2.1",
-    "electron": "31.7.7",
-    "electron-builder": "26.4.0",
-    "postcss": "8.5.6",
-    "tailwindcss": "3.4.19",
-    "typescript": "5.9.3",
-    "vite": "5.4.21",
-    "cross-env": "10.1.0"
+    "@types/react": "19.0.8",
+    "@types/react-dom": "19.0.3",
+    "@vitejs/plugin-react": "4.3.4",
+    "autoprefixer": "10.4.20",
+    "concurrently": "9.1.2",
+    "electron": "34.0.0",
+    "electron-builder": "26.0.0",
+    "postcss": "8.5.1",
+    "tailwindcss": "4.0.0",
+    "typescript": "5.7.3",
+    "vite": "6.0.7",
+    "cross-env": "7.0.3"
   },
   "build": {
     "appId": "com.psqlbuddy.app",

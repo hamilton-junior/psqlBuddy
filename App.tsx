@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
@@ -54,14 +53,14 @@ const App: React.FC = () => {
   
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
-      const stored = localStorage.getItem('psql-buddy-settings');
+      const stored = localStorage.getItem('psqlBuddy-settings');
       return stored ? { ...DEFAULT_SETTINGS, ...JSON.parse(stored) } : DEFAULT_SETTINGS;
     } catch { return DEFAULT_SETTINGS; }
   });
 
   const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>(() => {
     try {
-      const stored = localStorage.getItem('psql-buddy-dashboard');
+      const stored = localStorage.getItem('psqlBuddy-dashboard');
       return stored ? JSON.parse(stored) : [];
     } catch { return []; }
   });
@@ -87,11 +86,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (settings.theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
-    localStorage.setItem('psql-buddy-settings', JSON.stringify(settings));
+    localStorage.setItem('psqlBuddy-settings', JSON.stringify(settings));
   }, [settings.theme, settings.updateBranch]);
 
   useEffect(() => {
-    localStorage.setItem('psql-buddy-dashboard', JSON.stringify(dashboardItems));
+    localStorage.setItem('psqlBuddy-dashboard', JSON.stringify(dashboardItems));
   }, [dashboardItems]);
 
   // Listener para IPC do Electron (Atualização)

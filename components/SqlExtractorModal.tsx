@@ -149,7 +149,7 @@ const SqlExtractorModal: React.FC<SqlExtractorModalProps> = ({ onClose, onRunSql
               <div className="absolute bottom-4 right-4 flex gap-2">
                 {settings.enableAiGeneration && (
                   <button onClick={handleAiExtract} disabled={isExtractingAi || !logInput.trim()} className="bg-white dark:bg-slate-800 hover:bg-slate-50 text-slate-600 dark:text-slate-300 border border-slate-200 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all disabled:opacity-50">
-                    {isExtractingAi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-500" />}
+                    {isExtractingAi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-50" />}
                     IA
                   </button>
                 )}

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Plus, Play, Trash2, Save, Code, Pencil } from 'lucide-react';
 import { QueryTemplate } from '../types';

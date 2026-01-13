@@ -1,4 +1,3 @@
-
 import { app, BrowserWindow, ipcMain, net } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -61,7 +60,7 @@ async function fetchGitHubData(apiPath) {
       hostname: 'api.github.com',
       path: apiPath,
       headers: { 
-        'User-Agent': 'PSQL-Buddy-App',
+        'User-Agent': 'PSQLBuddy-App',
         'Accept': 'application/vnd.github.v3+json',
         'Cache-Control': 'no-cache'
       }

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DatabaseSchema, DbCredentials, AppSettings, SAMPLE_SCHEMA } from '../../types';
 import { connectToDatabase } from '../../services/dbService';

@@ -1,4 +1,3 @@
-
 import { QueryHistoryItem } from '../types';
 
 const STORAGE_KEY = 'psqlBuddy-history';

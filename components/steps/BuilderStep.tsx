@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useCallback, memo, useRef } from 'react';
 import { DatabaseSchema, BuilderState, ExplicitJoin, JoinType, Filter, Operator, OrderBy, AppSettings, SavedQuery, AggregateFunction, Column, Table, CalculatedColumn } from '../../types';
 import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square, Plus, Trash2, ArrowRightLeft, Filter as FilterIcon, ArrowDownAZ, List, Link2, ChevronDown, Save, FolderOpen, Calendar, Clock, Key, Combine, ArrowRight, ArrowLeft, FastForward, Target, CornerDownRight, Wand2, Loader2, Undo2, Redo2, Calculator, Sparkles, LayoutTemplate, PlayCircle, Eye, Info, ChevronUp, Link as LinkIcon } from 'lucide-react';
@@ -181,12 +180,12 @@ const ColumnItem = memo(({ col, tableId, tableName, isSelected, aggregation, isH
             <span className="text-[10px] text-slate-400 font-mono">{col.type}</span>
             
             {isRelTarget && !isInJoin && (
-               <span className="text-[9px] font-extrabold uppercase bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 px-1.5 py-0 rounded-full flex items-center gap-0.5 shadow-sm">
+               <span className="text-[9px] font-extrabold uppercase bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm">
                  <Target className="w-2.5 h-2.5" /> Alvo
                </span>
             )}
             {isRelSource && !isInJoin && (
-               <span className="text-[9px] font-extrabold uppercase bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200 px-1.5 py-0 rounded-full flex items-center gap-0.5 shadow-sm">
+               <span className="text-[9px] font-extrabold uppercase bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm">
                  <CornerDownRight className="w-2.5 h-2.5" /> Ref
                </span>
             )}
@@ -309,7 +308,7 @@ const TableCard = memo(({
     <div className={`bg-white dark:bg-slate-800 rounded-lg border overflow-hidden shadow-sm transition-all duration-300
       ${isCollapsed ? 'border-slate-200 dark:border-slate-700' : 'border-indigo-100 dark:border-slate-600 ring-1 ring-indigo-50 dark:ring-transparent'}
       ${isTarget ? 'ring-2 ring-amber-400 border-amber-300 dark:border-amber-600 shadow-md scale-[1.01] z-10' : ''}
-      ${isChild ? 'ring-2 ring-emerald-400 border-emerald-300 dark:border-emerald-600 shadow-md scale-[1.01] z-10' : ''}
+      ${isChild ? 'ring-2 ring-emerald-400 border-emerald-300 dark:border-emerald-700 border-l-4 border-l-emerald-600 shadow-lg z-10' : ''}
     `}>
        <div 
          className={`px-4 py-3 border-b flex justify-between items-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors
@@ -779,6 +778,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
       newTables = currentState.selectedTables.filter(t => t !== tableId);
       const newColumns = currentState.selectedColumns.filter(c => !c.startsWith(`${tableId}.`));
       const newJoins = currentState.joins.filter(j => j.fromTable !== tableId && j.toTable !== tableId);
+      const newJoinsFiltered = currentState.joins.filter(j => j.fromTable !== tableId && j.toTable !== tableId);
       const newFilters = currentState.filters.filter(f => !f.column.startsWith(`${tableId}.`));
       const newAggs = { ...currentState.aggregations };
       Object.keys(newAggs).forEach(key => {
@@ -789,7 +789,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
         selectedTables: newTables, 
         selectedColumns: newColumns, 
         aggregations: newAggs,
-        joins: newJoins, 
+        joins: newJoinsFiltered, 
         filters: newFilters 
       });
       setColumnSearchTerms(prev => {
