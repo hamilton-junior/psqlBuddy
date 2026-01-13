@@ -14,7 +14,11 @@ const GITHUB_REPO = "Hamilton-Junior/psql-buddy";
 
 function startBackend() {
   const isDev = !app.isPackaged;
-  if (isDev && process.env.SKIP_BACKEND === '1') return;
+  if (isDev && process.env.SKIP_BACKEND === '1') {
+    console.log(`[MAIN] SKIP_BACKEND ativo. Assumindo que o servidor já está rodando na porta 3000.`);
+    return;
+  }
+
   const serverPath = path.join(__dirname, 'server.js');
   serverProcess = spawn(process.execPath, [serverPath], {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
@@ -34,7 +38,14 @@ function createWindow() {
 
   const isDev = !app.isPackaged;
   if (isDev) {
-    mainWindow.loadURL('http://127.0.0.1:5173');
+    const url = 'http://127.0.0.1:5173';
+    const loadWithRetry = () => {
+      mainWindow.loadURL(url).catch(() => {
+        console.log("[MAIN] Vite ainda não está pronto, tentando novamente em 2s...");
+        setTimeout(loadWithRetry, 2000);
+      });
+    };
+    loadWithRetry();
   } else {
     mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
   }
@@ -52,7 +63,11 @@ async function fetchGitHubData(path) {
       let data = '';
       response.on('data', (chunk) => { data += chunk; });
       response.on('end', () => {
-        resolve({ json: data ? JSON.parse(data) : {}, headers: response.headers });
+        try {
+          resolve({ json: data ? JSON.parse(data) : {}, headers: response.headers });
+        } catch (e) {
+          resolve({ json: {}, headers: response.headers });
+        }
       });
     });
     request.on('error', reject);
@@ -63,20 +78,24 @@ async function fetchGitHubData(path) {
 // Calcula versão baseada em commits (Lógica: 0.1.10 = 110 commits)
 async function getCalculatedMainVersion() {
   try {
-    // Busca apenas 1 commit para pegar o total no header Link
-    const { headers } = await fetchGitHubData(`/repos/${GITHUB_REPO}/commits?per_page=1`);
+    const { json, headers } = await fetchGitHubData(`/repos/${GITHUB_REPO}/commits?per_page=1`);
     const link = headers['link'];
+    let count = 0;
+
     if (link && Array.isArray(link)) {
       const lastPageMatch = link[0].match(/&page=(\d+)>; rel="last"/);
       if (lastPageMatch) {
-        const count = parseInt(lastPageMatch[1], 10);
-        const major = Math.floor(count / 1000);
-        const minor = Math.floor((count % 1000) / 100);
-        const patch = count % 100;
-        return `${major}.${minor}.${patch}`;
+        count = parseInt(lastPageMatch[1], 10);
       }
+    } else if (Array.isArray(json)) {
+       // Se não tem link header, mas json é array, tem apenas o que veio
+       count = json.length;
     }
-    return "0.0.0";
+
+    const major = Math.floor(count / 1000);
+    const minor = Math.floor((count % 1000) / 100);
+    const patch = count % 100;
+    return `${major}.${minor}.${patch}`;
   } catch (e) { return "0.0.0"; }
 }
 
@@ -85,17 +104,18 @@ ipcMain.on('check-update', async (event, branch = 'stable') => {
     const { json: releases } = await fetchGitHubData(`/repos/${GITHUB_REPO}/releases`);
     const mainVer = await getCalculatedMainVersion();
     
-    const latestRelease = releases.find(r => !r.prerelease && !r.draft);
+    // Valida se a resposta de releases é um array
+    const releaseList = Array.isArray(releases) ? releases : [];
+    
+    const latestRelease = releaseList.find(r => !r.prerelease && !r.draft);
     const stableVer = latestRelease ? latestRelease.tag_name.replace('v', '') : "0.1.0";
 
-    // Informação completa para o SettingsModal
     const versionsInfo = {
       stable: stableVer,
       main: `${mainVer}-nightly`
     };
 
-    // Lógica de notificação de nova atualização
-    let targetRelease = branch === 'stable' ? latestRelease : releases[0];
+    let targetRelease = branch === 'stable' ? latestRelease : releaseList[0];
     if (targetRelease) {
       const latestVersion = targetRelease.tag_name.replace('v', '');
       if (latestVersion !== app.getVersion()) {
@@ -104,12 +124,11 @@ ipcMain.on('check-update', async (event, branch = 'stable') => {
           notes: targetRelease.body,
           branch: branch === 'main' ? 'Main' : 'Stable',
           isPrerelease: targetRelease.prerelease,
-          allVersions: versionsInfo // Dados para o modal de config
+          allVersions: versionsInfo
         });
       }
     }
     
-    // Sempre envia o status das versões para sincronizar o SettingsModal
     mainWindow.webContents.send('sync-versions', versionsInfo);
 
   } catch (error) {
