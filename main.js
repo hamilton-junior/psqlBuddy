@@ -96,7 +96,7 @@ function parseTotalCommitsFromLink(linkHeader) {
   if (!linkHeader) return 0;
   const links = Array.isArray(linkHeader) ? linkHeader[0] : linkHeader;
   
-  // Regex aprimorada para capturar o número da última página (total de commits quando per_page=1)
+  // Captura o número da última página (total de commits quando per_page=1)
   const match = links.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
   return match ? parseInt(match[1], 10) : 0;
 }
@@ -113,12 +113,10 @@ async function getGitHubBranchStatus(branch) {
     const linkHeader = response.headers['link'];
     let count = parseTotalCommitsFromLink(linkHeader);
 
-    // Se não houver link header, significa que há apenas 1 página (repositório pequeno ou 1 commit)
     if (count === 0 && Array.isArray(commits)) {
       count = commits.length;
     }
 
-    // Versão gerada dinamicamente: 159 commits = 0.1.59
     const major = Math.floor(count / 1000);
     const minor = Math.floor((count % 1000) / 100);
     const patch = count % 100;
@@ -136,16 +134,16 @@ async function getGitHubBranchStatus(branch) {
   }
 }
 
-ipcMain.on('check-update', async (event, branch = 'stable') => {
+ipcMain.on('check-update', async (event, requestedBranch = 'stable') => {
   try {
-    // Busca ambas as branches para manter a UI sempre pronta para troca de canal
+    // Tenta obter status de ambas as principais branches
     const [mainStatus, stableStatus] = await Promise.all([
       getGitHubBranchStatus('main'),
       getGitHubBranchStatus('stable')
     ]);
 
     const versionsInfo = {
-      stable: (stableStatus && stableStatus.ok) ? stableStatus.version : "Erro",
+      stable: (stableStatus && stableStatus.ok) ? stableStatus.version : (mainStatus.ok ? mainStatus.version : "Erro"),
       main: (mainStatus && mainStatus.ok) ? mainStatus.version : "Erro",
     };
 
@@ -153,27 +151,30 @@ ipcMain.on('check-update', async (event, branch = 'stable') => {
        mainWindow.webContents.send('sync-versions', versionsInfo);
     }
 
-    // Se estivermos em produção, comparamos com a versão do app
-    // Em dev (npm run dev), comparamos com o build time version
     const currentAppVersion = app.isPackaged ? app.getVersion() : '0.1.10'; 
-    const targetStatus = branch === 'main' ? mainStatus : stableStatus;
+    
+    // Fallback inteligente: se pediu stable mas não existe, usa main
+    let targetStatus = requestedBranch === 'main' ? mainStatus : stableStatus;
+    if (!targetStatus.ok && requestedBranch === 'stable' && mainStatus.ok) {
+      targetStatus = mainStatus;
+    }
 
     if (targetStatus && targetStatus.ok) {
       if (targetStatus.version !== currentAppVersion) {
         mainWindow.webContents.send('update-available', {
           version: targetStatus.version,
           notes: targetStatus.lastMessage,
-          branch: branch === 'main' ? 'Main' : 'Stable',
-          isPrerelease: branch === 'main',
+          branch: targetStatus.branch === 'main' ? 'Main' : 'Stable',
+          isPrerelease: targetStatus.branch === 'main',
           allVersions: versionsInfo,
           downloadUrl: targetStatus.url
         });
       } else {
         mainWindow.webContents.send('update-not-available', { version: currentAppVersion });
       }
-    } else if (targetStatus && targetStatus.error) {
+    } else {
        mainWindow.webContents.send('update-error', { 
-         message: `Branch '${branch}' indisponível no repositório.` 
+         message: `Repositório ou branch indisponível no GitHub.` 
        });
     }
   } catch (error) {
