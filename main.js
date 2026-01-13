@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, net } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -142,9 +142,26 @@ async function getGitHubBranchStatus(branch) {
 function getAppVersion() {
   try {
     if (app.isPackaged) return app.getVersion();
-    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
-    return pkg.version;
-  } catch (e) { return '0.1.10'; }
+    
+    // Em desenvolvimento, tenta ler a contagem de commits local para bater com a lógica do GitHub
+    const commitCount = execSync('git rev-list --count HEAD').toString().trim();
+    const count = parseInt(commitCount, 10) || 0;
+    const major = Math.floor(count / 1000);
+    const minor = Math.floor((count % 1000) / 100);
+    const patch = count % 100;
+    const versionString = `${major}.${minor}.${patch}`;
+    
+    console.log(`[DEBUG:LocalVersion] Calculada via Git: ${versionString} (Total Commits: ${count})`);
+    return versionString;
+  } catch (e) { 
+    // Fallback para package.json se não estiver em um repo git
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+      return pkg.version;
+    } catch (e2) {
+      return '0.1.10'; 
+    }
+  }
 }
 
 ipcMain.on('check-update', async (event, branch = 'stable') => {
