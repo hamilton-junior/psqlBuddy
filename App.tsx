@@ -78,6 +78,7 @@ const App: React.FC = () => {
   
   // Update States
   const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string} | null>(null);
+  const [remoteVersions, setRemoteVersions] = useState<{stable: string, main: string} | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
 
@@ -97,20 +98,24 @@ const App: React.FC = () => {
     if (electron) {
       electron.on('update-available', (info: any) => {
         setUpdateInfo(info);
+        if (info.allVersions) setRemoteVersions(info.allVersions);
         setDownloadProgress(null);
         setUpdateReady(false);
       });
+      electron.on('sync-versions', (vers: any) => setRemoteVersions(vers));
       electron.on('update-downloading', (progress: any) => setDownloadProgress(progress.percent));
       electron.on('update-ready', () => setUpdateReady(true));
+      
+      // Busca inicial silenciosa
+      electron.send('check-update', settings.updateBranch);
     }
   }, []);
 
   const handleCheckUpdate = () => {
     const electron = (window as any).electron;
     if (electron) {
-      toast.loading("Verificando atualizações...", { id: 'upd-check' });
+      toast.loading("Verificando GitHub...", { id: 'upd-check' });
       electron.send('check-update', settings.updateBranch);
-      // O listener em useEffect capturará se houver algo
       setTimeout(() => toast.dismiss('upd-check'), 1500);
     } else {
       toast.error("Atualizações disponíveis apenas na versão desktop.");
@@ -234,7 +239,7 @@ const App: React.FC = () => {
           simulationData={simulationData} 
           schema={schema} 
           credentials={credentials} 
-          availableVersion={updateInfo?.version}
+          remoteVersions={remoteVersions}
         />
       )}
       

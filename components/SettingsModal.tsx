@@ -20,7 +20,7 @@ interface SettingsModalProps {
   schema?: DatabaseSchema | null;
   credentials?: DbCredentials | null;
   simulationData?: SimulationData;
-  availableVersion?: string | null; // Adicionado para exibir no diagnóstico
+  remoteVersions?: { stable: string, main: string } | null;
 }
 
 type TabId = 'interface' | 'ai' | 'database' | 'diagnostics';
@@ -30,7 +30,7 @@ const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSI
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
   settings, onSave, onClose, quotaExhausted,
-  schema, credentials, simulationData = {}, availableVersion
+  schema, credentials, simulationData = {}, remoteVersions
 }) => {
   const [formData, setFormData] = useState<AppSettings>({ ...settings });
   const [activeTab, setActiveTab] = useState<TabId>('interface');
@@ -112,9 +112,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   );
 
   const getLatestForBranch = () => {
-    if (availableVersion) return availableVersion;
-    // Fallback fictício para quando não houver info do servidor
-    return formData.updateBranch === 'stable' ? '0.1.10' : '0.3.0-nightly';
+    if (!remoteVersions) return "Carregando...";
+    return formData.updateBranch === 'stable' ? remoteVersions.stable : remoteVersions.main;
   };
 
   return (
@@ -384,7 +383,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
              {activeTab === 'diagnostics' && (
                 <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-300">
-                   {/* Novo Painel de Versão e Lançamentos */}
                    <section className="bg-white dark:bg-slate-800 p-8 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] shadow-sm overflow-hidden relative group">
                       <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/5 rounded-full blur-3xl group-hover:bg-indigo-500/10 transition-colors"></div>
                       
