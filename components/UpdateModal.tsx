@@ -59,7 +59,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                     <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">v{updateInfo.version}</h3>
                     {isDowngrade && (
                        <span className="bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[8px] font-black px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 uppercase tracking-widest">
-                          Versão Inferior
+                          Versão Anterior
                        </span>
                     )}
                  </div>
@@ -76,8 +76,10 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                     )}
                  </div>
               </div>
-              <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
-                 {isDowngrade ? `A versão atual (v${updateInfo.currentVersion}) é mais recente.` : 'Uma nova atualização foi encontrada no GitHub.'}
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-2 font-medium">
+                 {isDowngrade 
+                    ? `A versão disponível no GitHub (v${updateInfo.version}) é anterior à sua atual (v${updateInfo.currentVersion}).` 
+                    : 'Uma nova atualização foi encontrada no GitHub.'}
               </p>
            </div>
         </div>
@@ -86,10 +88,10 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
            {showDowngradeConfirm ? (
               <div className="bg-amber-50 dark:bg-amber-950/40 p-4 rounded-2xl border border-amber-200 dark:border-amber-800 animate-in zoom-in-95">
                  <h4 className="text-sm font-black text-amber-800 dark:text-amber-400 mb-2 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" /> Confirmar Reinstalação
+                    <AlertTriangle className="w-4 h-4" /> Confirmar Downgrade
                  </h4>
                  <p className="text-xs text-amber-700 dark:text-amber-200/70 leading-relaxed mb-4 font-medium">
-                    Você está prestes a instalar a versão <strong>v{updateInfo.version}</strong>, que é inferior à sua atual (v{updateInfo.currentVersion}). Isso é incomum. Deseja prosseguir mesmo assim?
+                    Você está prestes a instalar a versão <strong>v{updateInfo.version}</strong>, que é inferior à sua atual (v{updateInfo.currentVersion}). Deseja prosseguir com a reinstalação?
                  </p>
                  <div className="flex gap-2">
                     <button onClick={() => setShowDowngradeConfirm(false)} className="flex-1 py-2 bg-white dark:bg-slate-800 text-xs font-bold rounded-lg border border-amber-200 dark:border-amber-700">Não, cancelar</button>

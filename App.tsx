@@ -111,7 +111,7 @@ const App: React.FC = () => {
           if (isManual) {
             setUpdateInfo({ version: remoteVersion, notes, branch, updateType: 'downgrade', currentVersion: localVersion });
           }
-          toast(`Sua versão (v${localVersion}) já é a mais recente.`, { id: 'update-toast', icon: '✅' });
+          toast(`Sua versão (v${localVersion}) é mais recente que a do canal ${branch} (v${remoteVersion}).`, { id: 'update-toast', icon: '✅' });
         } else {
           // Versões iguais
           if (isManual) {
