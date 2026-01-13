@@ -121,6 +121,7 @@ const App: React.FC = () => {
       };
 
       const handleUpdateError = (err: any) => {
+        manualCheckRef.current = false;
         toast.error(`Falha ao buscar atualizações: ${err.message}`, { id: 'update-toast' });
       };
 
@@ -150,8 +151,18 @@ const App: React.FC = () => {
     const electron = (window as any).electron;
     if (electron) {
       manualCheckRef.current = true;
+      // Define um timeout de segurança para o toast caso o backend não responda
+      const safetyTimeout = setTimeout(() => {
+        if (manualCheckRef.current) {
+          manualCheckRef.current = false;
+          toast.error("O servidor de atualização demorou a responder.", { id: 'update-toast' });
+        }
+      }, 10000);
+
       toast.loading("Verificando GitHub...", { id: 'update-toast' });
       electron.send('check-update', settings.updateBranch);
+      
+      return () => clearTimeout(safetyTimeout);
     } else {
       toast.error("Atualizações automáticas disponíveis apenas no Desktop.");
     }
