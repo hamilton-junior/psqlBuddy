@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight, AlertTriangle, Undo2, ShieldAlert, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { AppSettings, ExplainNode, DatabaseSchema, Table } from '../../types';
@@ -11,9 +10,6 @@ import { addToHistory } from '../../services/historyService';
 import { executeQueryReal, explainQueryReal } from '../../services/dbService';
 import BeginnerTip from '../BeginnerTip';
 
-/**
- * Log centralizado para facilitar debug do componente de resultados
- */
 const resultsLogger = (context: string, message: string, data?: any) => {
   const timestamp = new Date().toLocaleTimeString();
   console.log(`%c[${timestamp}] [RESULTS:${context}] %c${message}`, "color: #6366f1; font-weight: bold", "color: inherit", data || '');
@@ -21,7 +17,6 @@ const resultsLogger = (context: string, message: string, data?: any) => {
 
 const getTableId = (t: any) => `${t.schema || 'public'}.${t.name}`;
 
-// Interface para um vínculo individual
 interface ManualLink {
   id: string;
   table: string;
@@ -29,7 +24,6 @@ interface ManualLink {
   previewCol: string;
 }
 
-// --- Sub-componente de Renderização ANSI ---
 const AnsiTerminal: React.FC<{ text: string }> = ({ text }) => {
   const parts: string[] = text.split(/(\x1b\[\d+m)/);
   let currentColor = "";
@@ -47,12 +41,12 @@ const AnsiTerminal: React.FC<{ text: string }> = ({ text }) => {
           if (part.startsWith("\x1b[")) {
             const code = part.match(/\d+/)?.[0];
             switch(code) {
-               case "31": currentColor = "text-rose-500"; break;   // Red
-               case "32": currentColor = "text-emerald-400"; break; // Green
-               case "33": currentColor = "text-amber-400"; break;   // Yellow
-               case "34": currentColor = "text-blue-400"; break;    // Blue
-               case "36": currentColor = "text-cyan-400"; break;    // Cyan
-               case "0": currentColor = ""; break;                  // Reset
+               case "31": currentColor = "text-rose-500"; break;
+               case "32": currentColor = "text-emerald-400"; break;
+               case "33": currentColor = "text-amber-400"; break;
+               case "34": currentColor = "text-blue-400"; break;
+               case "36": currentColor = "text-cyan-400"; break;
+               case "0": currentColor = ""; break;
             }
             return null;
           }
@@ -63,7 +57,6 @@ const AnsiTerminal: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-// --- Sub-componente de Preview no Hover (Multi-vínculo + Interativo) ---
 const HoverPreviewTooltip: React.FC<{
   links: ManualLink[];
   value: any;
@@ -181,7 +174,6 @@ const HoverPreviewTooltip: React.FC<{
   );
 };
 
-// --- Sub-componente para Configurar Vínculos Manuais (Múltiplos) ---
 const ManualMappingPopover: React.FC<{ 
   column: string, 
   schema: DatabaseSchema, 
@@ -252,7 +244,6 @@ const ManualMappingPopover: React.FC<{
       onSave(updated);
     }
     
-    // Reset
     setSelectedTable('');
     setKeyCol('');
     setPreviewCol('');
@@ -447,7 +438,7 @@ interface VirtualTableProps {
    schema?: DatabaseSchema;
    defaultTableName?: string | null;
    credentials?: any;
-   pendingEdits?: Record<string, string>; // rowIdx-colKey -> newValue
+   pendingEdits?: Record<string, string>;
 }
 
 const VirtualTable = ({ 
@@ -471,7 +462,6 @@ const VirtualTable = ({
    const [editingCell, setEditingCell] = useState<{rowIdx: number, col: string} | null>(null);
    const editInputRef = useRef<HTMLInputElement>(null);
    
-   // Client-side sorting state
    const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' | null }>({ key: '', direction: null });
    
    const [hoverPreview, setHoverPreview] = useState<{links: ManualLink[], val: any, x: number, y: number, persistent: boolean} | null>(null);
@@ -502,7 +492,6 @@ const VirtualTable = ({
       localStorage.setItem('psql-buddy-manual-drilldown-links-v2', JSON.stringify(newMappings));
    };
 
-   // Logic for local sorting
    const handleSort = (col: string) => {
       setSortConfig(prev => {
          if (prev.key === col) {
@@ -511,7 +500,7 @@ const VirtualTable = ({
          }
          return { key: col, direction: 'asc' };
       });
-      setCurrentPage(1); // Reset page on sort change
+      setCurrentPage(1);
    };
 
    const sortedData = useMemo(() => {
@@ -531,7 +520,6 @@ const VirtualTable = ({
          } else if (typeof aVal === 'boolean' && typeof bVal === 'boolean') {
             comparison = aVal === bVal ? 0 : aVal ? 1 : -1;
          } else {
-            // Numeric comparison fallback for strings that represent numbers
             comparison = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
          }
 
@@ -875,17 +863,9 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      return null;
   }, [sql]);
 
-  /**
-   * Lógica de prioridade de Chave Primária para CRUD (Nova Ordem solicitada):
-   * 1. Schema Metadata PK (Informação real do banco de dados)
-   * 2. grid (Identificador padrão do sistema)
-   * 3. gfid (Identificador global)
-   * 4. id (Identificador genérico)
-   */
   const bestPkColumn = useMemo(() => {
      if (!columns || columns.length === 0) return '';
      
-     // 1. Prioridade Máxima: Verificar Metadados do Schema (Primary Key real)
      if (mainTableName && schema) {
         const tableParts = mainTableName.split('.');
         const sName = tableParts.length > 1 ? tableParts[0] : 'public';
@@ -899,7 +879,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
         if (schemaPk && columns.includes(schemaPk)) return schemaPk;
      }
 
-     // 2. Prioridades manuais específicas de fallback (grid > gfid > id)
      const priorities = ['grid', 'gfid', 'id'];
      for (const p of priorities) {
         if (columns.includes(p)) return p;
@@ -908,7 +887,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      return '';
   }, [mainTableName, schema, columns]);
 
-  // Se o usuário já escolheu ou o sistema detectou
   const finalPkColumn = userSelectedPk || bestPkColumn;
 
   useEffect(() => { if (data) addToHistory({ sql, rowCount: data.length, durationMs: executionDuration || 0, status: 'success', schemaName: 'Database' }); }, []);
@@ -1044,7 +1022,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   
   const handleExportInsert = () => { 
     if (filteredData.length === 0) return; 
-    const tableName = "exported_data"; 
+    const tableName = mainTableName || "exported_data"; 
     const cols = columns.join(', '); 
     const statements = filteredData.map((row: any) => { 
       const values = columns.map(col => { 
@@ -1059,6 +1037,31 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
     setShowExportMenu(false); 
     onShowToast("SQL INSERTs copiados!", "success"); 
   }; 
+
+  const handleExportCSV = () => {
+    if (filteredData.length === 0) return;
+    const headers = columns.join(',');
+    const rows = filteredData.map(row => {
+      return columns.map(col => {
+        let val = row[col];
+        if (val === null) return '';
+        val = String(val).replace(/"/g, '""');
+        return `"${val}"`;
+      }).join(',');
+    }).join('\n');
+    
+    const csvContent = `${headers}\n${rows}`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `results_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setShowExportMenu(false);
+    onShowToast("CSV exportado!", "success");
+  };
   
   const handleExplain = async () => { 
     setActiveTab('explain'); 
@@ -1181,7 +1184,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
            {activeTab === 'table' && !hasPendingEdits && (<div className="flex items-center gap-2"><SmartFilterBar columns={columns} filters={filters} onChange={setFilters} onClear={() => setFilters([])} />{filters.length === 0 && (<div className="relative group"><Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" /><input type="text" placeholder="Busca rápida..." value={localSearch} onChange={(e) => setLocalSearch(e.target.value)} className="pl-8 pr-4 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-48" /></div>)}</div>)}
            <div className="relative">
               <button onClick={() => setShowExportMenu(!showExportMenu)} className={`flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors text-slate-700 dark:text-slate-300 ${showExportMenu ? 'ring-2 ring-indigo-500' : ''}`}><Download className="w-4 h-4" /> Exportar</button>
-              {showExportMenu && (<div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-[90] overflow-hidden animate-in fade-in zoom-in-95" onClick={() => setShowExportMenu(false)}><div className="p-2 border-b border-slate-100 dark:border-slate-700"><button onClick={() => { setShowCodeModal(true); setShowExportMenu(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-indigo-600 font-medium"><FileCode className="w-3.5 h-3.5" /> Exportar Código</button><button onClick={handleExportInsert} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><Database className="w-3.5 h-3.5" /> Copy as SQL INSERT</button></div><div className="p-2"><button onClick={() => { navigator.clipboard.writeText(JSON.stringify(filteredData)); onShowToast("JSON copiado!", "success"); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><FileJson className="w-3.5 h-3.5" /> Copy JSON Raw</button></div></div>)}
+              {showExportMenu && (<div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-[90] overflow-hidden animate-in fade-in zoom-in-95" onClick={() => setShowExportMenu(false)}><div className="p-2 border-b border-slate-100 dark:border-slate-700"><button onClick={() => { setShowCodeModal(true); setShowExportMenu(false); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2 text-indigo-600 font-medium"><FileCode className="w-3.5 h-3.5" /> Exportar Código</button><button onClick={handleExportInsert} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><Database className="w-3.5 h-3.5" /> Copy as SQL INSERT</button><button onClick={handleExportCSV} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><FileSpreadsheet className="w-3.5 h-3.5" /> Export as CSV</button></div><div className="p-2"><button onClick={() => { navigator.clipboard.writeText(JSON.stringify(filteredData)); onShowToast("JSON copiado!", "success"); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 rounded flex items-center gap-2"><FileJson className="w-3.5 h-3.5" /> Copy JSON Raw</button></div></div>)}
            </div>
            {!isFullscreen && <button onClick={toggleFullscreen} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors" title="Tela Cheia"><Maximize2 className="w-5 h-5" /></button>}
         </div>

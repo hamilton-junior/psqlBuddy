@@ -1,7 +1,7 @@
-
 import React, { useState, useMemo, useEffect, useCallback, memo, useDeferredValue, useRef } from 'react';
 import { DatabaseSchema, Table, Column } from '../types';
-import { Database, Table as TableIcon, Key, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight, Loader2, ArrowRight, Folder, FolderOpen, Play, Info, Star } from 'lucide-react';
+import { Database, Table as TableIcon, Key, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight, Loader2, ArrowRight, Folder, FolderOpen, Play, Info, Star, Copy } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 interface SchemaViewerProps {
   schema: DatabaseSchema;
@@ -18,23 +18,17 @@ type SortField = 'name' | 'type' | 'key';
 type SortDirection = 'asc' | 'desc';
 type VisualState = 'normal' | 'focused' | 'dimmed' | 'parent' | 'child' | 'target' | 'source';
 
-// Helper to generate unique ID
 const getTableId = (t: Table) => `${t.schema || 'public'}.${t.name}`;
 
-// Helper to extract table ID from reference string (schema.table.col or table.col)
 const getRefTableId = (ref: string, currentSchema: string) => {
   const parts = ref.split('.');
   if (parts.length === 3) {
-    // schema.table.col
     return `${parts[0]}.${parts[1]}`;
   } else if (parts.length === 2) {
-    // table.col (legacy/simulated) - assume same schema or public
     return `${currentSchema || 'public'}.${parts[0]}`;
   }
   return '';
 };
-
-// --- Sub-component Memoized: SchemaColumnItem ---
 
 interface SchemaColumnItemProps {
   col: Column;
@@ -77,6 +71,12 @@ const SchemaColumnItem = memo(({
        </span>
      );
   }
+
+  const handleCopyColumn = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(col.name);
+    toast.success(`Coluna "${col.name}" copiada!`, { id: 'col-copy' });
+  };
 
   const getTooltip = () => {
     let lines = [`Coluna: ${col.name}`, `Tipo: ${col.type.toUpperCase()}`];
@@ -122,6 +122,13 @@ const SchemaColumnItem = memo(({
                   <Link className={`w-3 h-3 ml-1.5 opacity-70 ${isRelSource ? 'text-emerald-600' : 'text-blue-500'}`} aria-label="Foreign Key" />
                 </span>
               )}
+              <button 
+                onClick={handleCopyColumn}
+                className="p-1 opacity-0 group-hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-600 rounded transition-all ml-1"
+                title="Copiar nome da coluna"
+              >
+                <Copy className="w-3 h-3 text-slate-400" />
+              </button>
             </div>
             {col.isForeignKey && !isRelSource && (
               <span className={`text-[9px] flex items-center gap-0.5 transition-colors mt-0.5 truncate ${
@@ -139,8 +146,6 @@ const SchemaColumnItem = memo(({
     </div>
   );
 });
-
-// --- Sub-component Memoized: SchemaTableItem ---
 
 interface SchemaTableItemProps {
   table: Table;
@@ -214,6 +219,13 @@ const SchemaTableItem = memo(({
       break;
   }
 
+  const handleCopyTable = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const fullName = `${table.schema || 'public'}.${table.name}`;
+    navigator.clipboard.writeText(fullName);
+    toast.success(`Tabela "${fullName}" copiada!`, { id: 'table-copy' });
+  };
+
   const getColumns = () => {
     let cols = [...table.columns];
     if (selectedTypeFilter) cols = cols.filter(c => c.type.toUpperCase().includes(selectedTypeFilter));
@@ -265,6 +277,13 @@ const SchemaTableItem = memo(({
         <div className="flex-1 min-w-0 pr-2">
            <div className="flex items-center gap-2">
               <span className={`font-medium text-sm truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-700 dark:text-slate-200'}`}>{table.name}</span>
+              <button 
+                 onClick={handleCopyTable}
+                 className="p-1 rounded opacity-0 group-hover/table:opacity-100 transition-all hover:bg-slate-100 dark:hover:bg-slate-700"
+                 title="Copiar nome completo da tabela"
+              >
+                 <Copy className="w-3 h-3 text-slate-400 hover:text-indigo-500" />
+              </button>
               <button 
                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(tableId); }}
                  className={`p-1 rounded opacity-0 group-hover/table:opacity-100 transition-opacity ${isFavorite ? 'opacity-100 text-amber-400 hover:text-amber-500' : 'text-slate-300 hover:text-amber-400'}`}
@@ -385,8 +404,6 @@ const SchemaTableItem = memo(({
          prev.selectedTypeFilter === next.selectedTypeFilter;
 });
 
-// --- Main Component ---
-
 const SchemaViewer: React.FC<SchemaViewerProps> = ({ 
   schema, onRegenerateClick, loading = false, onDescriptionChange,
   selectionMode = false, selectedTableIds = [], onToggleTable, onPreviewTable
@@ -408,7 +425,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem(`psql-buddy-viewer-schemas-${schema.name}`);
-      // Adiciona __favorites__ ao padrão para começar aberto, mas permitindo colapso
       return stored ? new Set(JSON.parse(stored)) : new Set(['public', '__favorites__']);
     } catch { return new Set(['public', '__favorites__']); }
   });
@@ -557,7 +573,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   const groupedTables = useMemo(() => {
     const groups: Record<string, Table[]> = {};
     
-    // 1. Separar favoritas do conjunto COMPLETO de filtradas (para garantir que sempre apareçam)
     const favorites: Table[] = [];
     const others: Table[] = [];
     
@@ -570,12 +585,10 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
       }
     });
 
-    // 2. Adicionar favoritas ao grupo virtual (sempre renderizadas se houver match)
     if (favorites.length > 0) {
       groups['__favorites__'] = favorites;
     }
 
-    // 3. Aplicar o limite de renderização APENAS no restante das tabelas
     const visibleOthers = others.slice(0, renderLimit);
     visibleOthers.forEach(table => {
       const s = table.schema || 'public';
@@ -589,13 +602,11 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   const sortedSchemas = useMemo(() => {
      const schemas = Object.keys(groupedTables);
      
-     // Sempre prioriza os favoritos acima de tudo
      return schemas.sort((a, b) => {
         if (a === '__favorites__') return -1;
         if (b === '__favorites__') return 1;
         
         if (debouncedTerm) {
-            // Se houver busca, mantém a lógica de rank por relevância após os favoritos
             const findRank = (s: string) => {
                const idx = filteredTables.findIndex(t => (t.schema || 'public') === s);
                return idx === -1 ? Infinity : idx;
@@ -754,7 +765,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   const totalVisibleCount = useMemo(() => {
     let count = 0;
-    // Fix: Explicitly cast to Table[][] to avoid property 'length' error on 'unknown'
     (Object.values(groupedTables) as Table[][]).forEach(list => count += list.length);
     return count;
   }, [groupedTables]);
@@ -896,7 +906,6 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
                   </div>
                );
             })}
-            {/* O indicador de carregamento agora só aparece se houver algo expandido ou busca ativa */}
             {filteredTables.length > totalVisibleCount && (expandedSchemas.size > 0 || debouncedTerm) && (
               <div className="py-4 text-center text-slate-400 flex items-center justify-center gap-2">
                  <Loader2 className="w-4 h-4 animate-spin" />

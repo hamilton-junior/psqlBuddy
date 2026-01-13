@@ -1,0 +1,79 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'release'
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Necessário para contar commits
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Calculate and Set Version
+        id: vars
+        shell: bash
+        run: |
+          # Conta o total de commits
+          COUNT=$(git rev-list --count HEAD)
+          
+          # Lógica 0.1.X
+          MAJOR=$((COUNT / 1000))
+          MINOR=$(((COUNT % 1000) / 100))
+          PATCH=$((COUNT % 100))
+          VERSION="$MAJOR.$MINOR.$PATCH"
+          
+          echo "Calculated Version: v$VERSION"
+          
+          # Atualiza package.json para o electron-builder
+          npm version $VERSION --no-git-tag-version
+          
+          # Exporta variáveis para os próximos passos
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Version Tag
+        if: matrix.os == 'ubuntu-latest' # Cria a tag apenas uma vez (no runner Linux)
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.vars.outputs.tag_name }}
+          git push origin ${{ steps.vars.outputs.tag_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Frontend
+        run: npm run build
+        env:
+          VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
+
+      - name: Build and Publish Electron App
+        uses: samuelmeuli/action-electron-builder@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Publica o binário associado à nova tag numerada
+          args: "--publish always"
+        env:
+          APP_BUNDLE_ID: com.psqlbuddy.app
