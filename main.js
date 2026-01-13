@@ -75,20 +75,20 @@ async function fetchGitHubData(path) {
   });
 }
 
-// Calcula versão baseada em commits (Lógica: 0.1.10 = 110 commits)
+// Calcula versão baseada em commits (Lógica idêntica ao vite.config: 0.1.10 = 110 commits)
 async function getCalculatedMainVersion() {
   try {
     const { json, headers } = await fetchGitHubData(`/repos/${GITHUB_REPO}/commits?per_page=1`);
     const link = headers['link'];
     let count = 0;
 
+    // A API do GitHub retorna o total de commits através do link de paginação "last"
     if (link && Array.isArray(link)) {
       const lastPageMatch = link[0].match(/&page=(\d+)>; rel="last"/);
       if (lastPageMatch) {
         count = parseInt(lastPageMatch[1], 10);
       }
     } else if (Array.isArray(json)) {
-       // Se não tem link header, mas json é array, tem apenas o que veio
        count = json.length;
     }
 
@@ -96,29 +96,39 @@ async function getCalculatedMainVersion() {
     const minor = Math.floor((count % 1000) / 100);
     const patch = count % 100;
     return `${major}.${minor}.${patch}`;
-  } catch (e) { return "0.0.0"; }
+  } catch (e) { 
+    return "0.0.0"; 
+  }
 }
 
 ipcMain.on('check-update', async (event, branch = 'stable') => {
   try {
+    console.log(`[UPDATE] Verificando GitHub para canal: ${branch}`);
     const { json: releases } = await fetchGitHubData(`/repos/${GITHUB_REPO}/releases`);
     const mainVer = await getCalculatedMainVersion();
     
-    // Valida se a resposta de releases é um array
     const releaseList = Array.isArray(releases) ? releases : [];
-    
     const latestRelease = releaseList.find(r => !r.prerelease && !r.draft);
     const stableVer = latestRelease ? latestRelease.tag_name.replace('v', '') : "0.1.0";
 
     const versionsInfo = {
       stable: stableVer,
-      main: `${mainVer}-nightly`
+      main: mainVer
     };
 
+    // Notifica o renderer sobre as versões disponíveis para o SettingsModal
+    if (mainWindow && !mainWindow.isDestroyed()) {
+       mainWindow.webContents.send('sync-versions', versionsInfo);
+    }
+
+    // Lógica de notificação de atualização (exibe modal se houver nova versão)
     let targetRelease = branch === 'stable' ? latestRelease : releaseList[0];
     if (targetRelease) {
       const latestVersion = targetRelease.tag_name.replace('v', '');
-      if (latestVersion !== app.getVersion()) {
+      const currentAppVersion = app.getVersion();
+      
+      // Se a versão do GitHub for diferente da local, avisa
+      if (latestVersion !== currentAppVersion) {
         mainWindow.webContents.send('update-available', {
           version: latestVersion,
           notes: targetRelease.body,
@@ -128,9 +138,6 @@ ipcMain.on('check-update', async (event, branch = 'stable') => {
         });
       }
     }
-    
-    mainWindow.webContents.send('sync-versions', versionsInfo);
-
   } catch (error) {
     console.error("[UPDATE] Erro GitHub:", error.message);
   }

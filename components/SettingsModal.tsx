@@ -112,7 +112,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   );
 
   const getLatestForBranch = () => {
-    if (!remoteVersions) return "Carregando...";
+    if (!remoteVersions) return "Consultando...";
     return formData.updateBranch === 'stable' ? remoteVersions.stable : remoteVersions.main;
   };
 
@@ -421,32 +421,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             <button 
                                type="button"
                                onClick={() => setFormData({...formData, updateBranch: 'stable'})}
-                               className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase transition-all
+                               className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl text-xs transition-all
                                   ${formData.updateBranch === 'stable' 
                                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' 
                                      : 'text-slate-500 hover:text-slate-700'}
                                `}
                             >
-                               <CheckCircle2 className="w-4 h-4" /> Estável (Stable)
+                               <span className="flex items-center gap-2 font-black uppercase"><CheckCircle2 className="w-4 h-4" /> Estável</span>
+                               <span className="text-[9px] opacity-70 font-mono">v{remoteVersions?.stable || '---'}</span>
                             </button>
                             <button 
                                type="button"
                                onClick={() => setFormData({...formData, updateBranch: 'main'})}
-                               className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase transition-all
+                               className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl text-xs transition-all
                                   ${formData.updateBranch === 'main' 
                                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/20' 
                                      : 'text-slate-500 hover:text-slate-700'}
                                `}
                             >
-                               <FlaskConical className="w-4 h-4" /> Cutting Edge (Main)
+                               <span className="flex items-center gap-2 font-black uppercase"><FlaskConical className="w-4 h-4" /> Main / Dev</span>
+                               <span className="text-[9px] opacity-70 font-mono">v{remoteVersions?.main || '---'}</span>
                             </button>
                          </div>
-                         <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+                         <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700">
                             <p className="text-xs text-slate-600 dark:text-slate-400 flex items-start gap-2">
                                <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                                {formData.updateBranch === 'stable' 
                                  ? 'Canal Recomendado: Versões validadas e testadas para máxima estabilidade no dia a dia.' 
-                                 : 'Acesso Antecipado: Funcionalidades em teste (WIP) e correções de última hora. Pode conter bugs.'}
+                                 : 'Acesso Antecipado: Versão atualizada a cada commit no repositório. Pode conter bugs experimentais.'}
                             </p>
                          </div>
                       </div>

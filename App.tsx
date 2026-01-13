@@ -111,6 +111,14 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Re-verifica versões se o branch mudar
+  useEffect(() => {
+    const electron = (window as any).electron;
+    if (electron) {
+      electron.send('check-update', settings.updateBranch);
+    }
+  }, [settings.updateBranch]);
+
   const handleCheckUpdate = () => {
     const electron = (window as any).electron;
     if (electron) {
