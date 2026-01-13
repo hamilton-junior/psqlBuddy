@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DatabaseSchema, DbCredentials, AppSettings, SAMPLE_SCHEMA } from '../../types';
 import { connectToDatabase } from '../../services/dbService';
 import { generateSchemaFromTopic } from '../../services/geminiService';
-import { Server, Shield, Info, Loader2, Database, AlertCircle, Bot, Wand2, HardDrive, Save, Trash2, Bookmark } from 'lucide-react';
+import { Server, Shield, Info, Loader2, Database, AlertCircle, Bot, Wand2, HardDrive, Save, Trash2, Bookmark, Tag } from 'lucide-react';
 import Dialog from '../common/Dialog';
 
 interface ConnectionStepProps {
@@ -21,23 +21,23 @@ interface SavedConnection {
   database: string;
 }
 
+declare const __APP_VERSION__: string;
+const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
+
 const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, settings }) => {
   const [mode, setMode] = useState<ConnectMode>('real');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Real Connection State
   const [host, setHost] = useState(settings.defaultDbHost);
   const [port, setPort] = useState(settings.defaultDbPort);
   const [user, setUser] = useState(settings.defaultDbUser);
   const [password, setPassword] = useState('');
   const [dbName, setDbName] = useState(settings.defaultDbName);
   
-  // Saved Connections State
   const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
 
-  // Dialog System
   const [dialogConfig, setDialogConfig] = useState<{ 
      isOpen: boolean, 
      type: 'confirm' | 'danger' | 'prompt', 
@@ -48,24 +48,17 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
      onConfirm: (val?: string) => void 
   } | null>(null);
 
-  // Simulation State
   const [simName, setSimName] = useState('');
   const [simDescription, setSimDescription] = useState('');
   const [useOfflineSample, setUseOfflineSample] = useState(false);
   
-  // Load saved connections on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem('psqlBuddy-saved-connections');
-      if (saved) {
-        setSavedConnections(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.error("Failed to load saved connections", e);
-    }
+      if (saved) setSavedConnections(JSON.parse(saved));
+    } catch (e) { console.error("Failed to load saved connections", e); }
   }, []);
 
-  // Update fields if settings change externally
   useEffect(() => {
     if (!selectedProfileId) {
         setHost(settings.defaultDbHost);
@@ -125,7 +118,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
   const handleSelectProfile = (id: string) => {
     setSelectedProfileId(id);
     if (!id) return;
-    
     const profile = savedConnections.find(c => c.id === id);
     if (profile) {
         setHost(profile.host);
@@ -140,7 +132,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       if (mode === 'real') {
         if (!dbName) throw new Error("Nome do banco é obrigatório");
@@ -164,7 +155,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         onSchemaLoaded(schema, fakeCreds);
       }
     } catch (err: any) {
-      console.error(err);
       setError(err.message === "QUOTA_ERROR" ? "Cota da API da IA excedida." : err.message || "Falha na conexão.");
     } finally {
       setLoading(false);
@@ -186,16 +176,22 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         />
       )}
 
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-          {mode === 'real' ? <Server className="w-6 h-6 text-indigo-600" /> : <Bot className="w-6 h-6 text-indigo-600" />}
-          {mode === 'real' ? 'Conexão ao Banco de Dados' : 'Simulação de Banco'}
-        </h2>
-        <p className="text-slate-500 dark:text-slate-400 mt-2">
-          {mode === 'real' 
-            ? 'Conecte-se a instância de seu Banco de Dados PostgreSQL local.' 
-            : 'Gere ou carregue um banco de dados virtual para testar queries.'}
-        </p>
+      <div className="mb-8 flex justify-between items-start">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+            {mode === 'real' ? <Server className="w-6 h-6 text-indigo-600" /> : <Bot className="w-6 h-6 text-indigo-600" />}
+            {mode === 'real' ? 'Conexão ao Banco de Dados' : 'Simulação de Banco'}
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 mt-2">
+            {mode === 'real' 
+              ? 'Conecte-se a instância de seu Banco de Dados PostgreSQL local.' 
+              : 'Gere ou carregue um banco de dados virtual para testar queries.'}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full flex items-center gap-2 shadow-sm">
+           <Tag className="w-3.5 h-3.5 text-indigo-500" />
+           <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">v{CURRENT_APP_VERSION}</span>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -223,8 +219,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         <form onSubmit={handleConnect} className="p-8 space-y-6">
           {mode === 'real' ? (
             <div className="grid grid-cols-2 gap-6 animate-in fade-in slide-in-from-right-4 duration-300">
-              
-              {/* Saved Connections Dropdown */}
               <div className="col-span-2">
                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
                     <Bookmark className="w-3.5 h-3.5" /> Conexões Salvas
@@ -261,7 +255,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                   type="text" 
                   value={host} 
                   onChange={e => setHost(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
                   placeholder="localhost" 
                 />
               </div>
@@ -271,7 +265,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                   type="text" 
                   value={user} 
                   onChange={e => setUser(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
                   placeholder="postgres" 
                 />
               </div>
@@ -283,7 +277,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                     type="text" 
                     value={dbName} 
                     onChange={e => setDbName(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
                     placeholder="ex: ecommerce, analytics_db"
                     required 
                   />
@@ -295,7 +289,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                   type="password" 
                   value={password} 
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
                   placeholder="••••••••" 
                 />
                 <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
@@ -308,12 +302,11 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                   type="number" 
                   value={port} 
                   onChange={e => setPort(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
                   placeholder="5432" 
                 />
               </div>
 
-              {/* Save Button Row */}
               <div className="col-span-2 flex justify-end">
                  <button 
                    type="button" 
@@ -326,7 +319,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
             </div>
           ) : (
             <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-              
               {settings.enableAiGeneration && (
                   <div className="flex items-center justify-between bg-indigo-50/50 dark:bg-indigo-900/10 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
                      <div className="flex items-center gap-3 text-sm text-slate-700 dark:text-slate-300">
@@ -343,13 +335,12 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                          onChange={(e) => setUseOfflineSample(e.target.checked)} 
                          className="sr-only peer" 
                        />
-                       <div className="w-11 h-6 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                       <div className="w-11 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                      </label>
                   </div>
               )}
 
               {useOfflineSample || !settings.enableAiGeneration ? (
-                 // OFFLINE MODE UI
                 <div className="animate-in fade-in duration-300">
                    <div className="p-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center text-center gap-4">
                       <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm text-slate-400">
@@ -364,13 +355,10 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                    </div>
                 </div>
               ) : (
-                // AI MODE UI
                 <div className="space-y-6 animate-in fade-in duration-300">
                   <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl flex gap-3 text-indigo-900 dark:text-indigo-200 text-sm">
                     <Bot className="w-5 h-5 shrink-0 mt-0.5" />
-                    <p>
-                      A IA pode criar uma <strong>estrutura simulada</strong> baseada na sua ideia.
-                    </p>
+                    <p>A IA pode criar uma <strong>estrutura simulada</strong> baseada na sua ideia.</p>
                   </div>
 
                   <div>
@@ -381,7 +369,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                         type="text" 
                         value={simName} 
                         onChange={e => setSimName(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                        className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
                         placeholder="ex: startup_saas, pizzaria_delivery, biblioteca"
                         required 
                       />
@@ -389,20 +377,17 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                      Descrição do Negócio (Contexto)
-                    </label>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Descrição do Negócio (Contexto)</label>
                     <textarea 
                       value={simDescription} 
                       onChange={e => setSimDescription(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-all h-32 resize-none"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 h-32 resize-none"
                       placeholder="Ex: Um sistema de delivery que tem clientes, entregadores, pedidos e itens de pedido..."
                       required
                     />
                   </div>
                 </div>
               )}
-
             </div>
           )}
 
@@ -416,32 +401,22 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
           <div className="pt-6 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
             <div className="flex items-center gap-2 text-slate-400 text-xs">
                 {mode === 'real' ? (
-                  <>
-                    <Shield className="w-4 h-4" />
-                    <span>Credenciais salvas apenas localmente.</span>
-                  </>
+                  <><Shield className="w-4 h-4" /><span>Credenciais salvas apenas localmente.</span></>
                 ) : (
-                  <>
-                    <Info className="w-4 h-4" />
-                    <span>Nenhum dado real será armazenado.</span>
-                  </>
+                  <><Info className="w-4 h-4" /><span>Nenhum dado real será armazenado.</span></>
                 )}
             </div>
             <div className="flex gap-3">
               <button 
                 type="submit" 
                 disabled={loading}
-                className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2"
+                className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-lg transition-all flex items-center gap-2"
               >
                 {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {mode === 'real' ? 'Conectando...' : 'Carregando...'}
-                  </>
+                  <><Loader2 className="w-4 h-4 animate-spin" />{mode === 'real' ? 'Conectando...' : 'Carregando...'}</>
                 ) : (
                   mode === 'real' ? 'Conectar ao BD Local' : (
-                    <>
-                       {(!settings.enableAiGeneration || useOfflineSample) ? <HardDrive className="w-4 h-4" /> : <Wand2 className="w-4 h-4" />}
+                    <>{(!settings.enableAiGeneration || useOfflineSample) ? <HardDrive className="w-4 h-4" /> : <Wand2 className="w-4 h-4" />}
                        {(!settings.enableAiGeneration || useOfflineSample) ? 'Carregar Exemplo' : 'Criar Simulação'}
                     </>
                   )

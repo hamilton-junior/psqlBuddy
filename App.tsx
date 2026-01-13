@@ -3,7 +3,6 @@ import {
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
   AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem
 } from './types';
-// Add missing Rocket icon import from lucide-react
 import { Rocket } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import ConnectionStep from './components/steps/ConnectionStep';
@@ -78,7 +77,7 @@ const App: React.FC = () => {
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
   
   // Update States
-  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string} | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade'|'downgrade', currentVersion?: string} | null>(null);
   const [remoteVersions, setRemoteVersions] = useState<{stable: string, main: string} | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
@@ -93,51 +92,43 @@ const App: React.FC = () => {
     localStorage.setItem('psqlBuddy-dashboard', JSON.stringify(dashboardItems));
   }, [dashboardItems]);
 
-  // Listener para IPC do Electron (Atualização)
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
       const handleUpdateAvailable = (info: any) => {
-        // Só atualiza o estado se for uma versão diferente da que já sabemos,
-        // evitando que o modal apareça novamente em re-renders.
         setUpdateInfo(prev => {
-           if (prev?.version === info.version) return prev;
+           if (prev?.version === info.version && prev?.updateType === info.updateType) return prev;
            return info;
         });
-        
         if (info.allVersions) setRemoteVersions(info.allVersions);
         setDownloadProgress(null);
         setUpdateReady(false);
         
-        // Uso de ID fixo impede que múltiplos toasts de atualização se empilhem
-        toast.success(`Nova versão disponível: v${info.version}`, { id: 'update-toast' });
+        if (info.updateType === 'upgrade') {
+           toast.success(`Nova versão disponível: v${info.version}`, { id: 'update-toast' });
+        } else {
+           toast.success(`Versão atual é a mais recente. (GitHub: v${info.version})`, { id: 'update-toast' });
+        }
       };
 
       const handleUpdateNotAvailable = (info: any) => {
-        console.log("App está atualizado:", info.version);
+        console.log("App está atualizado.");
       };
 
       const handleUpdateError = (err: any) => {
-        toast.error(`Falha na atualização: ${err.message}`, { id: 'update-toast' });
-      };
-
-      const handleSyncVersions = (vers: any) => setRemoteVersions(vers);
-      
-      const handleDownloading = (progress: any) => setDownloadProgress(progress.percent);
-      
-      const handleUpdateReady = () => {
-        setUpdateReady(true);
-        toast.success("Download concluído! Pronto para instalar.", { id: 'update-toast' });
+        toast.error(`Erro ao verificar: ${err.message}`, { id: 'update-toast' });
       };
 
       electron.on('update-available', handleUpdateAvailable);
       electron.on('update-not-available', handleUpdateNotAvailable);
       electron.on('update-error', handleUpdateError);
-      electron.on('sync-versions', handleSyncVersions);
-      electron.on('update-downloading', handleDownloading);
-      electron.on('update-ready', handleUpdateReady);
+      electron.on('sync-versions', (v: any) => setRemoteVersions(v));
+      electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
+      electron.on('update-ready', () => {
+        setUpdateReady(true);
+        toast.success("Download concluído!", { id: 'update-toast' });
+      });
       
-      // Busca inicial silenciosa ao montar o componente ou trocar de branch
       electron.send('check-update', settings.updateBranch);
 
       return () => {
@@ -154,12 +145,11 @@ const App: React.FC = () => {
   const handleCheckUpdate = () => {
     const electron = (window as any).electron;
     if (electron) {
-      toast.loading("Buscando atualizações...", { id: 'update-check-manual' });
+      toast.loading("Verificando...", { id: 'manual-update-check' });
       electron.send('check-update', settings.updateBranch);
-      // O toast de loading será substituído pelo de sucesso ou erro via ID se houver algo novo
-      setTimeout(() => toast.dismiss('update-check-manual'), 1500);
+      setTimeout(() => toast.dismiss('manual-update-check'), 1000);
     } else {
-      toast.error("Atualizações automáticas não disponíveis via navegador.");
+      toast.error("Disponível apenas na versão Desktop.");
     }
   };
 
