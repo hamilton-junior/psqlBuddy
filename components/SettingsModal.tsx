@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { AppSettings, DatabaseSchema, DbCredentials } from '../types';
 import { runFullHealthCheck, HealthStatus, runRandomizedStressTest, StressTestLog } from '../services/healthService';
-import { SimulationData } from '../simulationService';
+import { SimulationData } from '../services/simulationService';
 
 interface SettingsModalProps {
   settings: AppSettings;
