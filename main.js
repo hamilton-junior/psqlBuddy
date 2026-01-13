@@ -94,10 +94,21 @@ async function fetchGitHubData(apiPath) {
 function parseTotalCommitsFromLink(linkHeader) {
   if (!linkHeader) return 0;
   const links = Array.isArray(linkHeader) ? linkHeader[0] : linkHeader;
-  
-  // Regex aprimorada para capturar o número da última página (total de commits quando per_page=1)
   const match = links.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
   return match ? parseInt(match[1], 10) : 0;
+}
+
+// Função para comparar versões semânticas (v1 > v2)
+function isNewer(vRemote, vLocal) {
+  const r = vRemote.split('.').map(Number);
+  const l = vLocal.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const remotePart = r[i] || 0;
+    const localPart = l[i] || 0;
+    if (remotePart > localPart) return true;
+    if (remotePart < localPart) return false;
+  }
+  return false;
 }
 
 async function getGitHubBranchStatus(branch) {
@@ -112,7 +123,6 @@ async function getGitHubBranchStatus(branch) {
     const linkHeader = response.headers['link'];
     let count = parseTotalCommitsFromLink(linkHeader);
 
-    // Se não houver link header, significa que há apenas 1 página (repositório pequeno ou 1 commit)
     if (count === 0 && Array.isArray(commits)) {
       count = commits.length;
     }
@@ -137,7 +147,6 @@ async function getGitHubBranchStatus(branch) {
 
 ipcMain.on('check-update', async (event, branch = 'stable') => {
   try {
-    // Busca ambas as branches para manter a UI sempre pronta para troca de canal
     const [mainStatus, stableStatus] = await Promise.all([
       getGitHubBranchStatus('main'),
       getGitHubBranchStatus('stable')
@@ -152,13 +161,12 @@ ipcMain.on('check-update', async (event, branch = 'stable') => {
        mainWindow.webContents.send('sync-versions', versionsInfo);
     }
 
-    // Se estivermos em produção, comparamos com a versão do app
-    // Em dev (npm run dev), comparamos com o build time version
     const currentAppVersion = app.isPackaged ? app.getVersion() : '0.1.10'; 
     const targetStatus = branch === 'main' ? mainStatus : stableStatus;
 
     if (targetStatus && targetStatus.ok) {
-      if (targetStatus.version !== currentAppVersion) {
+      // Ajuste: Só informa se a versão encontrada for MAIOR que a atual
+      if (isNewer(targetStatus.version, currentAppVersion)) {
         mainWindow.webContents.send('update-available', {
           version: targetStatus.version,
           notes: targetStatus.lastMessage,

@@ -1,4 +1,3 @@
-
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
@@ -13,6 +12,12 @@ contextBridge.exposeInMainWorld('electron', {
     let validChannels = ['update-available', 'update-not-available', 'update-downloading', 'update-ready', 'sync-versions', 'update-error'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (event, ...args) => func(...args));
+    }
+  },
+  removeAllListeners: (channel) => {
+    let validChannels = ['update-available', 'update-not-available', 'update-downloading', 'update-ready', 'sync-versions', 'update-error'];
+    if (validChannels.includes(channel)) {
+      ipcRenderer.removeAllListeners(channel);
     }
   }
 });

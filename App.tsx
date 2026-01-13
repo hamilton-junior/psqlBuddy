@@ -98,25 +98,23 @@ const App: React.FC = () => {
     const electron = (window as any).electron;
     if (electron) {
       electron.on('update-available', (info: any) => {
-        console.log("[UPDATE] Nova versão disponível:", info);
         setUpdateInfo(info);
         if (info.allVersions) setRemoteVersions(info.allVersions);
         setDownloadProgress(null);
         setUpdateReady(false);
-        toast.success(`Nova versão encontrada: v${info.version}`);
+        // Uso de ID único para evitar repetição do toast
+        toast.success(`Nova versão encontrada: v${info.version}`, { id: 'update-available-toast' });
       });
       
       electron.on('update-not-available', (info: any) => {
-        console.log("[UPDATE] Sistema atualizado.");
+        // Silencioso ou log
       });
 
       electron.on('update-error', (err: any) => {
-        console.warn("[UPDATE] Erro na verificação:", err.message);
-        toast.error(`Falha ao buscar versão: ${err.message}`, { duration: 5000 });
+        toast.error(`Falha ao buscar versão: ${err.message}`, { id: 'update-error-toast' });
       });
 
       electron.on('sync-versions', (vers: any) => {
-        console.log("[UPDATE] Sincronizando versões:", vers);
         setRemoteVersions(vers);
       });
 
@@ -126,19 +124,21 @@ const App: React.FC = () => {
 
       electron.on('update-ready', () => {
         setUpdateReady(true);
-        toast.success("Download concluído! Pronto para instalar.");
+        toast.success("Download concluído! Pronto para instalar.", { id: 'update-ready-toast' });
       });
       
       // Busca inicial silenciosa
       electron.send('check-update', settings.updateBranch);
-    }
-  }, []);
 
-  // Re-verifica versões se o branch mudar
-  useEffect(() => {
-    const electron = (window as any).electron;
-    if (electron) {
-      electron.send('check-update', settings.updateBranch);
+      return () => {
+         // Limpeza de listeners para evitar duplicação em re-renders
+         electron.removeAllListeners('update-available');
+         electron.removeAllListeners('update-not-available');
+         electron.removeAllListeners('update-error');
+         electron.removeAllListeners('sync-versions');
+         electron.removeAllListeners('update-downloading');
+         electron.removeAllListeners('update-ready');
+      }
     }
   }, [settings.updateBranch]);
 
