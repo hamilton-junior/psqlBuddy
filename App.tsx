@@ -76,8 +76,9 @@ const App: React.FC = () => {
   const [showSqlExtractor, setShowSqlExtractor] = useState(false);
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
   
-  // Update States (Refatorados para Electron-Updater)
+  // Update States
   const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string} | null>(null);
+  const [remoteVersions, setRemoteVersions] = useState<{stable: string, main: string} | null>(null);
   const [currentAppVersion, setCurrentAppVersion] = useState<string>('...');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
@@ -93,16 +94,13 @@ const App: React.FC = () => {
     localStorage.setItem('psqlBuddy-dashboard', JSON.stringify(dashboardItems));
   }, [dashboardItems]);
 
-  // Listener para IPC do Electron (AutoUpdater)
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
-      // Receber versão atual do processo principal
       electron.on('app-version', (v: string) => setCurrentAppVersion(v));
+      electron.on('sync-versions', (v: any) => setRemoteVersions(v));
 
       const handleUpdateAvailable = (info: any) => {
-        console.log(`[UPDATE] Disponível: ${info.version}`);
-        
         const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
         const isManual = manualCheckRef.current;
         manualCheckRef.current = false;
@@ -125,29 +123,23 @@ const App: React.FC = () => {
         setUpdateInfo(null);
       };
 
-      const handleUpdateError = (err: any) => {
-        console.error("[UPDATE] Erro:", err);
-        manualCheckRef.current = false;
-        if (manualCheckRef.current) toast.error(`Falha ao buscar updates: ${err.message}`, { id: 'update-toast' });
-      };
-
       electron.on('update-available', handleUpdateAvailable);
       electron.on('update-not-available', handleUpdateNotAvailable);
-      electron.on('update-error', handleUpdateError);
-      electron.on('update-downloading', (p: any) => {
-        setDownloadProgress(p.percent);
+      electron.on('update-error', (err: any) => {
+        manualCheckRef.current = false;
+        console.error("[UPDATE] Erro:", err);
       });
+      electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
       electron.on('update-ready', () => {
         setUpdateReady(true);
         setDownloadProgress(100);
-        toast.success("Update pronto para instalar!", { id: 'update-toast' });
+        toast.success("Pronto para instalar!", { id: 'update-toast' });
       });
 
       return () => {
          electron.removeAllListeners('update-available');
          electron.removeAllListeners('update-not-available');
-         electron.removeAllListeners('update-error');
-         electron.removeAllListeners('update-downloading');
+         electron.removeAllListeners('sync-versions');
          electron.removeAllListeners('update-ready');
       }
     }
@@ -157,10 +149,7 @@ const App: React.FC = () => {
     const electron = (window as any).electron;
     if (electron) {
       manualCheckRef.current = true;
-      toast.loading("Verificando atualizações no GitHub...", { id: 'update-toast' });
       electron.send('check-update');
-    } else {
-      toast.error("Atualização disponível apenas na versão Desktop.");
     }
   };
 
@@ -175,17 +164,12 @@ const App: React.FC = () => {
 
   const handleStartDownload = () => {
     const electron = (window as any).electron;
-    if (electron) {
-      setDownloadProgress(0);
-      electron.send('start-download');
-    }
+    if (electron) { setDownloadProgress(0); electron.send('start-download'); }
   };
 
   const handleInstallUpdate = () => {
     const electron = (window as any).electron;
-    if (electron) {
-      electron.send('install-update');
-    }
+    if (electron) electron.send('install-update');
   };
 
   const handleSchemaLoaded = (loadedSchema: DatabaseSchema, creds: DbCredentials) => {
@@ -199,12 +183,9 @@ const App: React.FC = () => {
     if (!schema) return;
     setIsGenerating(true);
     try {
-      let result: QueryResult;
-      if (settings.enableAiGeneration) {
-         result = await generateSqlFromBuilderState(schema, builderState, settings.enableAiTips);
-      } else {
-         result = generateLocalSql(schema, builderState);
-      }
+      let result = settings.enableAiGeneration 
+        ? await generateSqlFromBuilderState(schema, builderState, settings.enableAiTips)
+        : generateLocalSql(schema, builderState);
       setQueryResult(result);
       setCurrentStep('preview');
     } catch (error: any) {
@@ -220,13 +201,9 @@ const App: React.FC = () => {
     if (!sqlToRun) return;
     setIsExecuting(true);
     try {
-       let data: any[] = [];
-       if (credentials.host === 'simulated') {
-          data = executeOfflineQuery(schema, simulationData, builderState);
-          await new Promise(r => setTimeout(r, 600));
-       } else {
-          data = await executeQueryReal(credentials, sqlToRun);
-       }
+       let data = credentials.host === 'simulated'
+          ? executeOfflineQuery(schema, simulationData, builderState)
+          : await executeQueryReal(credentials, sqlToRun);
        setExecutionResult(data);
        setCurrentStep('results');
     } catch (error: any) {
@@ -286,7 +263,6 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Modals */}
       {showSettings && (
         <SettingsModal 
           settings={settings} 
@@ -294,7 +270,8 @@ const App: React.FC = () => {
           onClose={() => setShowSettings(false)} 
           simulationData={simulationData} 
           schema={schema} 
-          credentials={credentials} 
+          credentials={credentials}
+          remoteVersions={remoteVersions}
         />
       )}
       
