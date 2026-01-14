@@ -88,6 +88,15 @@ export default function SettingsModal({
     return Math.round((success / total) * 100);
   }, [healthResults]);
 
+  const formatVer = (v: string | undefined) => {
+     if (!v || v === '---') return '...';
+     if (v === 'Erro') return 'Erro';
+     // Se já começa com 'v', retorna como está. Caso contrário, adiciona o prefixo se começar com número.
+     if (v.startsWith('v')) return v;
+     if (/^[0-9]/.test(v)) return 'v' + v;
+     return v;
+  };
+
   const Toggle = ({ checked, onChange, colorClass = "peer-checked:bg-indigo-600" }: { checked: boolean, onChange: (val: boolean) => void, colorClass?: string }) => (
     <label className="relative inline-flex items-center cursor-pointer">
       <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="sr-only peer" />
@@ -131,15 +140,9 @@ export default function SettingsModal({
        );
     }
 
-    // Se começa com número, garante que tenha o prefixo 'v'
-    let display = latest;
-    if (/^[0-9]/.test(display)) {
-       display = 'v' + display;
-    }
-
     return (
        <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
-          {display}
+          {formatVer(latest)}
        </div>
     );
   };
@@ -181,7 +184,7 @@ export default function SettingsModal({
                       </div>
                       <div className="flex items-center justify-between text-[11px] font-medium text-slate-500">
                          <span>Sessão:</span>
-                         <span className="text-indigo-500">v{CURRENT_APP_VERSION}</span>
+                         <span className="text-indigo-500">{formatVer(CURRENT_APP_VERSION)}</span>
                       </div>
                    </div>
                 </div>
@@ -220,7 +223,7 @@ export default function SettingsModal({
                                <div className="h-2 bg-slate-800 w-full mb-1"></div>
                                <div className="px-2 space-y-1">
                                   <div className="h-1 bg-slate-700 w-3/4 rounded-full"></div>
-                                  <div className="h-1 bg-slate-800 w-1/2 rounded-full"></div>
+                                  <div className="h-1 bg-slate-100 w-1/2 rounded-full"></div>
                                </div>
                             </div>
                             <span className="text-sm font-bold flex items-center gap-2 text-slate-700 dark:text-slate-200"><Moon className="w-4 h-4" /> Escuro</span>
@@ -362,7 +365,7 @@ export default function SettingsModal({
                             type="text" 
                             value={formData.defaultDbPort} 
                             onChange={e => setFormData({...formData, defaultDbPort: e.target.value})} 
-                            className="w-full p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none" 
+                            className="w-full p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none" 
                          />
                       </div>
 
@@ -427,7 +430,7 @@ export default function SettingsModal({
                       <div className="grid grid-cols-2 gap-6 mb-8">
                          <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Versão em Execução</span>
-                            <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">v{CURRENT_APP_VERSION}</div>
+                            <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{formatVer(CURRENT_APP_VERSION)}</div>
                             <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
                                <Info className="w-3 h-3" /> Instância Local
                             </p>
@@ -458,7 +461,7 @@ export default function SettingsModal({
                                `}
                             >
                                <span className="flex items-center gap-2 font-black uppercase"><CheckCircle2 className="w-4 h-4" /> Estável</span>
-                               <span className="text-[9px] opacity-70 font-mono">v{remoteVersions?.stable || '...'}</span>
+                               <span className="text-[9px] opacity-70 font-mono">{formatVer(remoteVersions?.stable)}</span>
                             </button>
                             <button 
                                type="button"
@@ -470,7 +473,7 @@ export default function SettingsModal({
                                `}
                             >
                                <span className="flex items-center gap-2 font-black uppercase"><FlaskConical className="w-4 h-4" /> Main / Dev</span>
-                               <span className="text-[9px] opacity-70 font-mono">v{remoteVersions?.main ? (remoteVersions.main.includes('(') ? remoteVersions.main.split(' ')[0] : remoteVersions.main) : '...'}</span>
+                               <span className="text-[9px] opacity-70 font-mono">{formatVer(remoteVersions?.main)}</span>
                             </button>
                          </div>
                          <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700">
