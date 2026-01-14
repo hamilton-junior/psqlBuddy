@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('electron', {
       'update-ready', 
       'sync-versions', 
       'update-error',
-      'update-check-result'
+      'app-version'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (event, ...args) => func(...args));
@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('electron', {
       'update-ready', 
       'sync-versions', 
       'update-error',
-      'update-check-result'
+      'app-version'
     ];
     if (validChannels.includes(channel)) {
       ipcRenderer.removeAllListeners(channel);

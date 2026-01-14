@@ -22,6 +22,7 @@
     "@google/genai": "1.35.0",
     "@monaco-editor/react": "4.7.0",
     "cors": "2.8.5",
+    "electron-updater": "^6.1.7",
     "express": "5.0.1",
     "html2canvas": "1.4.1",
     "jspdf": "2.5.2",
@@ -51,6 +52,13 @@
     "appId": "com.psqlbuddy.app",
     "productName": "PSQL Buddy",
     "copyright": "Copyright © 2026",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Hamilton-Junior",
+        "repo": "psqlBuddy"
+      }
+    ],
     "files": [
       "dist/**/*",
       "main.js",
