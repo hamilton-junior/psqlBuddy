@@ -105,11 +105,11 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                     <AlertTriangle className="w-4 h-4" /> Confirmar Downgrade
                  </h4>
                  <p className="text-xs text-amber-700 dark:text-amber-200/70 leading-relaxed mb-4 font-medium">
-                    Deseja realmente retornar para a versão <strong>v{updateInfo.version}</strong>? Isso pode ser necessário para garantir estabilidade.
+                    Deseja realmente retornar para a versão <strong>v{updateInfo.version}</strong>? Isso pode ser necessário para garantir estabilidade caso tenha problemas no canal atual.
                  </p>
                  <div className="flex gap-2">
                     <button onClick={handleCancelDowngrade} className="flex-1 py-2 bg-white dark:bg-slate-800 text-xs font-bold rounded-lg border border-amber-200 dark:border-amber-700">Cancelar</button>
-                    <button onClick={onStartDownload} className="flex-1 py-2 bg-amber-600 text-white text-xs font-black rounded-lg shadow-md">Sim, instalar</button>
+                    <button onClick={onStartDownload} className="flex-1 py-2 bg-amber-600 text-white text-xs font-black rounded-lg shadow-md">Sim, reinstalar</button>
                  </div>
               </div>
            ) : (
@@ -141,7 +141,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
            {isReady && (
               <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4 rounded-2xl flex items-center gap-3 text-emerald-800 dark:text-emerald-400 animate-in slide-in-from-bottom-2">
                  <CheckCircle2 className="w-6 h-6 shrink-0" />
-                 <span className="text-xs font-bold leading-tight">Download concluído! Clique abaixo para aplicar as mudanças e reiniciar.</span>
+                 <span className="text-xs font-bold leading-tight">Download concluído! Clique abaixo para aplicar as mudanças e reiniciar o PSQL Buddy.</span>
               </div>
            )}
 
@@ -157,7 +157,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ updateInfo, downloadProgress,
                        ${isDowngrade ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-900/20' : isMainBranch ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-900/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-900/20'}`}
                   >
                     {isDowngrade ? <RefreshCw className="w-4 h-4" /> : <Download className="w-4 h-4" />} 
-                    {isDowngrade ? 'Reinstalar v' + updateInfo.version : 'Atualizar Agora'}
+                    {isDowngrade ? 'Solicitar Reversão' : 'Atualizar Agora'}
                   </button>
                 </>
               )}

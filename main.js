@@ -156,14 +156,14 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', async () => {
     const currentVer = app.getVersion();
     mainWindow.webContents.send('app-version', currentVer);
-    console.log(`[APP] [MAIN] Versão local enviada para frontend: ${currentVer}`);
+    console.log(`[APP] [MAIN] Versão local enviada: ${currentVer}`);
     
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
   });
 }
 
-// Eventos do autoUpdater (apenas produção para o canal oficial)
+// Eventos do autoUpdater
 autoUpdater.on('update-available', (info) => {
   console.log(`[APP] [MAIN] autoUpdater: Nova versão detectada: ${info.version}`);
   mainWindow.webContents.send('update-available', { 
@@ -174,7 +174,7 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', () => {
-  console.log('[APP] [MAIN] autoUpdater: Nenhuma atualização oficial necessária.');
+  console.log('[APP] [MAIN] autoUpdater: Nenhuma atualização necessária.');
   mainWindow.webContents.send('update-not-available');
 });
 
@@ -195,44 +195,44 @@ autoUpdater.on('error', (err) => {
 ipcMain.on('check-update', async (event, branch) => {
   const targetBranch = branch || 'stable';
   const current = app.getVersion();
-  console.log(`[APP] [MAIN] Verificação manual solicitada. Canal: ${targetBranch}, Versão Local: ${current}`);
+  console.log(`[APP] [MAIN] Verificação manual solicitada. Canal: ${targetBranch}, Local: ${current}`);
   
   if (app.isPackaged && targetBranch === 'stable') {
-    console.log('[APP] [MAIN] Delegando verificação para autoUpdater nativo.');
+    console.log('[APP] [MAIN] Usando autoUpdater oficial.');
     autoUpdater.checkForUpdates();
   } else {
-    console.log('[APP] [MAIN] Realizando comparação manual via GitHub API.');
+    console.log('[APP] [MAIN] Verificação manual via GitHub API.');
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
     
     const remote = (targetBranch === 'main') ? versions.main : versions.stable;
     
     if (remote === 'Erro' || remote === '---') {
-       console.log('[APP] [MAIN] Falha ao obter versão remota. Abortando verificação.');
+       console.log('[APP] [MAIN] Versão remota indisponível.');
        mainWindow.webContents.send('update-not-available');
        return;
     }
 
-    const comparison = compareVersions(remote, current, 'Manual-Check-Logic');
+    const comparison = compareVersions(remote, current, 'Manual-Check');
 
     if (comparison > 0) {
-      console.log(`[APP] [MAIN] Informando Upgrade: ${remote} > ${current}`);
+      console.log(`[APP] [MAIN] Enviando: Upgrade Disponível (${remote} > ${current})`);
       mainWindow.webContents.send('update-available', { 
         version: remote, 
-        releaseNotes: targetBranch === 'main' ? 'Novas alterações detectadas na branch de desenvolvimento (main).' : 'Nova versão estável disponível no GitHub.',
+        releaseNotes: targetBranch === 'main' ? 'Novas alterações detectadas na branch main.' : 'Nova versão estável disponível.',
         updateType: 'upgrade',
         isManual: true 
       });
     } else if (comparison < 0) {
-      console.log(`[APP] [MAIN] Informando Downgrade: ${remote} < ${current}`);
+      console.log(`[APP] [MAIN] Enviando: Downgrade Detectado (${remote} < ${current})`);
       mainWindow.webContents.send('update-available', { 
         version: remote, 
-        releaseNotes: `A versão oficial do canal ${targetBranch} (${remote}) é anterior à sua versão local (${current}).`,
+        releaseNotes: `A versão oficial do canal ${targetBranch} (${remote}) é anterior à sua instalada (${current}).`,
         updateType: 'downgrade',
         isManual: true 
       });
     } else {
-      console.log('[APP] [MAIN] Versões são idênticas. Nada a fazer.');
+      console.log('[APP] [MAIN] Versões idênticas. Enviando update-not-available.');
       mainWindow.webContents.send('update-not-available');
     }
   }
@@ -240,10 +240,10 @@ ipcMain.on('check-update', async (event, branch) => {
 
 ipcMain.on('start-download', () => { 
   if (app.isPackaged) {
-    console.log('[APP] [MAIN] Iniciando download oficial via autoUpdater.');
+    console.log('[APP] [MAIN] Iniciando download via autoUpdater.');
     autoUpdater.downloadUpdate(); 
   } else {
-    console.log("[APP] [MAIN] Ambiente de desenvolvimento: Download ignorado.");
+    console.log("[APP] [MAIN] Download ignorado em modo desenvolvimento.");
   }
 });
 

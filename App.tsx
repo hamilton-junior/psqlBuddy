@@ -122,16 +122,13 @@ const App: React.FC = () => {
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
     const isManual = manualCheckRef.current || info.isManual;
     
-    // IMPORTANTE: Manter o manualCheckRef apenas para o toast de sucesso se não houver atualização
-    // mas o reset deve ocorrer após a detecção
     const updateType = info.updateType || 'upgrade';
 
-    console.log(`[APP] [UPDATE_HANDLER] Recebido do Backend: v${info.version}, Tipo: ${updateType}, Manual: ${isManual}`);
+    console.log(`[APP] [UPDATE_HANDLER] v${info.version}, Tipo: ${updateType}, Manual: ${isManual}`);
 
-    // Se as versões são iguais, o backend envia update-not-available, 
-    // mas se por algum erro chegar aqui, fazemos uma última defesa.
-    if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion, 'Final-UI-Guard') === 0) {
-      console.log(`[APP] [UPDATE_HANDLER] Versões idênticas em UI Guard. Ignorando.`);
+    // Guarda final contra versões idênticas
+    if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion, 'UI-Guard') === 0) {
+      console.log(`[APP] [UPDATE_HANDLER] Versões idênticas em UI Guard. Cancelando.`);
       setUpdateInfo(null);
       manualCheckRef.current = false;
       return;
@@ -139,10 +136,10 @@ const App: React.FC = () => {
 
     // Só exibe se for manual ou se não estiver na lista de ignorados
     if (isManual || !ignoredVersions.includes(info.version)) {
-      console.log(`[APP] [UPDATE_HANDLER] Definindo estado updateInfo para exibição do modal.`);
+      console.log(`[APP] [UPDATE_HANDLER] Exibindo modal para v${info.version}`);
       setUpdateInfo({
         version: info.version,
-        notes: info.releaseNotes || 'Novas melhorias disponíveis no repositório.',
+        notes: info.releaseNotes || 'Novas melhorias disponíveis.',
         branch: settings.updateBranch === 'main' ? 'Main' : 'Stable',
         updateType: updateType,
         currentVersion: currentAppVersion
@@ -155,8 +152,6 @@ const App: React.FC = () => {
           toast.success(`Versão v${info.version} disponível no canal ${settings.updateBranch.toUpperCase()}!`, { id: 'update-toast' });
         }
       }
-    } else {
-       console.log(`[APP] [UPDATE_HANDLER] Versão ignorada ou não manual.`);
     }
     
     manualCheckRef.current = false;
@@ -166,17 +161,17 @@ const App: React.FC = () => {
     const electron = (window as any).electron;
     if (electron) {
       electron.on('app-version', (v: string) => {
-        console.log(`[APP] [ELECTRON_EVENT] Versão Local Recebida: ${v}`);
+        console.log(`[APP] [ELECTRON] Versão Local: ${v}`);
         setCurrentAppVersion(v);
       });
       
       electron.on('sync-versions', (v: any) => {
-        console.log(`[APP] [ELECTRON_EVENT] Versões do Repositório Sincronizadas:`, v);
+        console.log(`[APP] [ELECTRON] Sincronização GitHub:`, v);
         setRemoteVersions(v);
       });
 
       const handleUpdateNotAvailable = () => {
-        console.log(`[APP] [ELECTRON_EVENT] Notificado: Nenhuma atualização disponível.`);
+        console.log(`[APP] [ELECTRON] Sincronizado. Nenhuma atualização.`);
         if (manualCheckRef.current) {
           toast.success("Sua instância está sincronizada!", { id: 'update-toast' });
         }
@@ -188,7 +183,7 @@ const App: React.FC = () => {
       electron.on('update-not-available', handleUpdateNotAvailable);
       electron.on('update-error', (err: any) => {
         manualCheckRef.current = false;
-        console.error("[APP] [ELECTRON_EVENT] Erro crítico no processo de atualização:", err);
+        console.error("[APP] [ELECTRON] Erro no update:", err);
       });
       
       electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
@@ -196,7 +191,7 @@ const App: React.FC = () => {
       electron.on('update-ready', () => {
         setUpdateReady(true);
         setDownloadProgress(100);
-        toast.success("Pacote baixado! Pronto para instalar.", { id: 'update-toast' });
+        toast.success("Pronto para instalar!", { id: 'update-toast' });
       });
 
       return () => {
@@ -209,7 +204,7 @@ const App: React.FC = () => {
     }
   }, [handleUpdateDetection]);
 
-  // Monitora mudanças nas versões remotas ou no canal para disparar o aviso automaticamente se necessário
+  // Monitora mudanças nas versões remotas para disparar o aviso automaticamente
   useEffect(() => {
     if (!remoteVersions || currentAppVersion === '...') return;
     
@@ -217,9 +212,9 @@ const App: React.FC = () => {
     
     if (targetRemote === 'Erro' || targetRemote === '---') return;
 
-    const comparison = compareVersions(targetRemote, currentAppVersion, 'Background-Monitor');
+    const comparison = compareVersions(targetRemote, currentAppVersion, 'Monitor');
     
-    console.log(`[APP] [VERSION_MONITOR] Avaliando: Canal ${settings.updateBranch.toUpperCase()} | Local: ${currentAppVersion} | Remoto: ${targetRemote} | Resultado: ${comparison}`);
+    console.log(`[APP] [MONITOR] Canal: ${settings.updateBranch.toUpperCase()} | Local: ${currentAppVersion} | Remoto: ${targetRemote} | Resultado: ${comparison}`);
 
     if (comparison > 0) {
       handleUpdateDetection({ 
@@ -234,9 +229,8 @@ const App: React.FC = () => {
         releaseNotes: `A versão estável do canal (${targetRemote}) é anterior à sua versão instalada (${currentAppVersion}).`
       });
     } else {
-      // Se forem iguais e o modal de update estava aberto (talvez por causa de outro canal), fechamos
       if (updateInfo && !manualCheckRef.current) {
-         console.log(`[APP] [VERSION_MONITOR] Versão sincronizada com o canal. Limpando modal.`);
+         console.log(`[APP] [MONITOR] Versões iguais. Limpando estado.`);
          setUpdateInfo(null);
       }
     }
@@ -246,7 +240,7 @@ const App: React.FC = () => {
     const electron = (window as any).electron;
     if (electron) {
       manualCheckRef.current = true;
-      console.log(`[APP] [UI] Iniciando verificação manual de atualização. Canal: ${settings.updateBranch}`);
+      console.log(`[APP] [UI] Manual check: ${settings.updateBranch}`);
       electron.send('check-update', settings.updateBranch);
     }
   };
@@ -266,7 +260,7 @@ const App: React.FC = () => {
       setDownloadProgress(0); 
       electron.send('start-download');
       if (settings.updateBranch === 'main' || !(window as any).electron.isPackaged) {
-        toast("Download manual: visite o repositório GitHub para baixar a branch main.");
+        toast("Modo Dev/Main: Verifique o repositório GitHub para baixar.");
       }
     }
   };
