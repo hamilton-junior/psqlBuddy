@@ -17,10 +17,7 @@ autoUpdater.logger = console;
 
 /**
  * Utilitário para calcular a string de versão seguindo a lógica do projeto:
- * Major = Count / 1000
- * Minor = (Count % 1000) / 100
- * Patch = Count % 100
- * Retorna SemVer puro para evitar erros de validação do Electron.
+ * Major = Count / 1000, Minor = (Count % 1000) / 100, Patch = Count % 100
  */
 function calculateVersionFromCount(count) {
   const c = parseInt(count, 10) || 0;
@@ -31,11 +28,13 @@ function calculateVersionFromCount(count) {
 }
 
 /**
- * Compara duas strings de versão SemVer simplificada (x.y.z)
+ * Compara duas strings de versão SemVer (x.y.z)
+ * Retorna: 1 (v1 > v2), -1 (v1 < v2), 0 (iguais)
  */
 function compareVersions(v1, v2) {
-  const p1 = v1.split('.').map(n => parseInt(n, 10) || 0);
-  const p2 = v2.split('.').map(n => parseInt(n, 10) || 0);
+  if (!v1 || v1 === '---' || !v2 || v2 === '---') return 0;
+  const p1 = v1.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const p2 = v2.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
   for (let i = 0; i < 3; i++) {
     if (p1[i] > p2[i]) return 1;
     if (p1[i] < p2[i]) return -1;
@@ -50,10 +49,8 @@ async function fetchTotalCommits(repo, branch, headers) {
   try {
     const res = await fetch(`https://api.github.com/repos/${repo}/commits?sha=${branch}&per_page=1`, { headers });
     if (!res.ok) return null;
-    
     const linkHeader = res.headers.get('link');
     if (!linkHeader) return 1;
-
     const match = linkHeader.match(/page=(\d+)>; rel="last"/);
     return match ? parseInt(match[1], 10) : 1;
   } catch (e) {
@@ -62,11 +59,10 @@ async function fetchTotalCommits(repo, branch, headers) {
   }
 }
 
-// Função aprimorada para buscar versões reais do GitHub
+// Busca versões reais do GitHub (Tags para Stable, Commits para Main)
 async function fetchGitHubVersions() {
   const repo = "Hamilton-Junior/psqlBuddy";
   const timestamp = new Date().getTime();
-  console.log(`[APP] [MAIN] Buscando versões no GitHub: ${repo} (cb=${timestamp})`);
   
   try {
     const headers = { 
@@ -75,7 +71,7 @@ async function fetchGitHubVersions() {
       'Cache-Control': 'no-cache'
     };
 
-    // 1. Recuperar Versão Estável
+    // 1. Versão Estável (Highest Tag)
     let stable = '---';
     try {
       const tagsRes = await fetch(`https://api.github.com/repos/${repo}/tags?per_page=30&t=${timestamp}`, { headers });
@@ -85,36 +81,20 @@ async function fetchGitHubVersions() {
           .map(t => t.name.replace(/^v/, ''))
           .filter(v => /^\d+\.\d+\.\d+$/.test(v))
           .sort(compareVersions);
-        
-        if (validVersions.length > 0) {
-          stable = validVersions[validVersions.length - 1];
-        }
+        if (validVersions.length > 0) stable = validVersions[validVersions.length - 1];
       }
-    } catch (e) {
-      console.error("[GITHUB API] Erro ao processar tags para Estável:", e.message);
-    }
+    } catch (e) { console.error("[GITHUB API] Erro tags:", e.message); }
 
-    // 2. Recuperar Versão Main (Development)
+    // 2. Versão Main (Development)
     let main = '---';
     try {
       const commitCount = await fetchTotalCommits(repo, 'main', headers);
-      if (commitCount !== null) {
-        main = calculateVersionFromCount(commitCount);
-      } else {
-        const pkgRes = await fetch(`https://raw.githubusercontent.com/${repo}/main/package.json?t=${timestamp}`);
-        if (pkgRes.ok) {
-          const pkgData = await pkgRes.json();
-          main = pkgData.version || '---';
-        }
-      }
-    } catch (e) {
-      console.error("[GITHUB API] Erro ao processar branch Main:", e.message);
-    }
+      if (commitCount !== null) main = calculateVersionFromCount(commitCount);
+    } catch (e) { console.error("[GITHUB API] Erro main:", e.message); }
 
-    console.log(`[APP] [MAIN] Versões recuperadas - Stable: ${stable}, Main: ${main}`);
     return { stable, main };
   } catch (error) {
-    console.error('[GITHUB API] Falha crítica na conexão:', error.message);
+    console.error('[GITHUB API] Falha na conexão:', error.message);
     return { stable: 'Erro', main: 'Erro' };
   }
 }
@@ -152,14 +132,13 @@ function createWindow() {
   }
 
   mainWindow.webContents.on('did-finish-load', async () => {
-    const currentVersion = app.getVersion();
-    mainWindow.webContents.send('app-version', currentVersion);
+    mainWindow.webContents.send('app-version', app.getVersion());
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
   });
 }
 
-// Eventos do autoUpdater
+// Eventos do autoUpdater (apenas produção)
 autoUpdater.on('update-available', (info) => {
   mainWindow.webContents.send('update-available', info);
 });
@@ -181,19 +160,50 @@ autoUpdater.on('error', (err) => {
 });
 
 // IPC Listeners
-ipcMain.on('check-update', async () => {
-  if (app.isPackaged) {
+ipcMain.on('check-update', async (event, branch) => {
+  console.log(`[APP] [MAIN] Verificação solicitada para canal: ${branch || 'stable'}`);
+  
+  if (app.isPackaged && (branch === 'stable' || !branch)) {
+    // Modo estável em produção usa o autoUpdater nativo
     autoUpdater.checkForUpdates();
   } else {
-    console.log('[APP] [MAIN] Verificação manual em DEV. Recarregando dados do GitHub...');
+    // Modo dev ou canal Main: Simula via API do GitHub
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
-    mainWindow.webContents.send('update-not-available');
+    
+    const current = app.getVersion();
+    const remote = (branch === 'main') ? versions.main : versions.stable;
+    const comparison = compareVersions(remote, current);
+
+    if (comparison > 0) {
+      // Nova versão disponível
+      mainWindow.webContents.send('update-available', { 
+        version: remote, 
+        releaseNotes: branch === 'main' ? 'Novas alterações detectadas na branch de desenvolvimento.' : 'Nova versão estável disponível.',
+        isManual: true 
+      });
+    } else if (comparison < 0) {
+      // Downgrade disponível (ex: usuário trocou de Main para Stable)
+      mainWindow.webContents.send('update-available', { 
+        version: remote, 
+        releaseNotes: `Sua versão atual (${current}) é mais recente que a disponível no canal ${branch}. Deseja retornar para a versão oficial?`,
+        updateType: 'downgrade',
+        isManual: true 
+      });
+    } else {
+      mainWindow.webContents.send('update-not-available');
+    }
   }
 });
 
-ipcMain.on('start-download', () => { autoUpdater.downloadUpdate(); });
-ipcMain.on('install-update', () => { autoUpdater.quitAndInstall(); });
+ipcMain.on('start-download', () => { 
+  if (app.isPackaged) autoUpdater.downloadUpdate(); 
+  else console.log("[APP] [MAIN] Download ignorado em ambiente DEV.");
+});
+
+ipcMain.on('install-update', () => { 
+  if (app.isPackaged) autoUpdater.quitAndInstall(); 
+});
 
 app.whenReady().then(() => { 
   startBackend(); 
