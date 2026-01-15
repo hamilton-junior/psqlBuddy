@@ -31,14 +31,34 @@ function calculateVersionFromCount(count) {
  * Compara duas strings de versão SemVer (x.y.z)
  * Retorna: 1 (v1 > v2), -1 (v1 < v2), 0 (iguais)
  */
-function compareVersions(v1, v2) {
-  if (!v1 || v1 === '---' || !v2 || v2 === '---') return 0;
-  const p1 = v1.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
-  const p2 = v2.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
-  for (let i = 0; i < 3; i++) {
-    if (p1[i] > p2[i]) return 1;
-    if (p1[i] < p2[i]) return -1;
+function compareVersions(v1, v2, context = 'General') {
+  console.log(`[DEBUG:VERSION:${context}] Iniciando comparação: "${v1}" vs "${v2}"`);
+  
+  if (!v1 || v1 === '---' || !v2 || v2 === '---') {
+    console.log(`[DEBUG:VERSION:${context}] Dados insuficientes para comparação.`);
+    return 0;
   }
+  
+  const cleanV1 = v1.replace(/^v/, '');
+  const cleanV2 = v2.replace(/^v/, '');
+  
+  const p1 = cleanV1.split('.').map(n => parseInt(n, 10) || 0);
+  const p2 = cleanV2.split('.').map(n => parseInt(n, 10) || 0);
+  
+  console.log(`[DEBUG:VERSION:${context}] Partes processadas: [${p1.join(',')}] vs [${p2.join(',')}]`);
+
+  for (let i = 0; i < 3; i++) {
+    if (p1[i] > p2[i]) {
+      console.log(`[DEBUG:VERSION:${context}] Resultado: 1 (Upgrade disponível)`);
+      return 1;
+    }
+    if (p1[i] < p2[i]) {
+      console.log(`[DEBUG:VERSION:${context}] Resultado: -1 (Downgrade detectado)`);
+      return -1;
+    }
+  }
+  
+  console.log(`[DEBUG:VERSION:${context}] Resultado: 0 (Versões idênticas)`);
   return 0;
 }
 
@@ -80,7 +100,8 @@ async function fetchGitHubVersions() {
         const validVersions = tags
           .map(t => t.name.replace(/^v/, ''))
           .filter(v => /^\d+\.\d+\.\d+$/.test(v))
-          .sort(compareVersions);
+          .sort((a, b) => compareVersions(a, b, 'GitHub-Tags-Sorter'));
+        
         if (validVersions.length > 0) stable = validVersions[validVersions.length - 1];
       }
     } catch (e) { console.error("[GITHUB API] Erro tags:", e.message); }
@@ -92,6 +113,7 @@ async function fetchGitHubVersions() {
       if (commitCount !== null) main = calculateVersionFromCount(commitCount);
     } catch (e) { console.error("[GITHUB API] Erro main:", e.message); }
 
+    console.log(`[APP] [MAIN] Sincronização GitHub concluída. Stable: ${stable}, Main: ${main}`);
     return { stable, main };
   } catch (error) {
     console.error('[GITHUB API] Falha na conexão:', error.message);
@@ -132,18 +154,27 @@ function createWindow() {
   }
 
   mainWindow.webContents.on('did-finish-load', async () => {
-    mainWindow.webContents.send('app-version', app.getVersion());
+    const currentVer = app.getVersion();
+    mainWindow.webContents.send('app-version', currentVer);
+    console.log(`[APP] [MAIN] Versão local enviada para frontend: ${currentVer}`);
+    
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
   });
 }
 
-// Eventos do autoUpdater (apenas produção)
+// Eventos do autoUpdater (apenas produção para o canal oficial)
 autoUpdater.on('update-available', (info) => {
-  mainWindow.webContents.send('update-available', info);
+  console.log(`[APP] [MAIN] autoUpdater: Nova versão detectada: ${info.version}`);
+  mainWindow.webContents.send('update-available', { 
+    version: info.version, 
+    updateType: 'upgrade',
+    releaseNotes: info.releaseNotes || 'Nova atualização estável disponível via canal oficial.'
+  });
 });
 
 autoUpdater.on('update-not-available', () => {
+  console.log('[APP] [MAIN] autoUpdater: Nenhuma atualização oficial necessária.');
   mainWindow.webContents.send('update-not-available');
 });
 
@@ -156,53 +187,71 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 autoUpdater.on('error', (err) => {
+  console.error('[APP] [MAIN] Erro no autoUpdater:', err.message);
   mainWindow.webContents.send('update-error', { message: err.message });
 });
 
 // IPC Listeners
 ipcMain.on('check-update', async (event, branch) => {
-  console.log(`[APP] [MAIN] Verificação solicitada para canal: ${branch || 'stable'}`);
+  const targetBranch = branch || 'stable';
+  const current = app.getVersion();
+  console.log(`[APP] [MAIN] Verificação manual solicitada. Canal: ${targetBranch}, Versão Local: ${current}`);
   
-  if (app.isPackaged && (branch === 'stable' || !branch)) {
-    // Modo estável em produção usa o autoUpdater nativo
+  if (app.isPackaged && targetBranch === 'stable') {
+    console.log('[APP] [MAIN] Delegando verificação para autoUpdater nativo.');
     autoUpdater.checkForUpdates();
   } else {
-    // Modo dev ou canal Main: Simula via API do GitHub
+    console.log('[APP] [MAIN] Realizando comparação manual via GitHub API.');
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
     
-    const current = app.getVersion();
-    const remote = (branch === 'main') ? versions.main : versions.stable;
-    const comparison = compareVersions(remote, current);
+    const remote = (targetBranch === 'main') ? versions.main : versions.stable;
+    
+    if (remote === 'Erro' || remote === '---') {
+       console.log('[APP] [MAIN] Falha ao obter versão remota. Abortando verificação.');
+       mainWindow.webContents.send('update-not-available');
+       return;
+    }
+
+    const comparison = compareVersions(remote, current, 'Manual-Check-Logic');
 
     if (comparison > 0) {
-      // Nova versão disponível
+      console.log(`[APP] [MAIN] Informando Upgrade: ${remote} > ${current}`);
       mainWindow.webContents.send('update-available', { 
         version: remote, 
-        releaseNotes: branch === 'main' ? 'Novas alterações detectadas na branch de desenvolvimento.' : 'Nova versão estável disponível.',
+        releaseNotes: targetBranch === 'main' ? 'Novas alterações detectadas na branch de desenvolvimento (main).' : 'Nova versão estável disponível no GitHub.',
+        updateType: 'upgrade',
         isManual: true 
       });
     } else if (comparison < 0) {
-      // Downgrade disponível (ex: usuário trocou de Main para Stable)
+      console.log(`[APP] [MAIN] Informando Downgrade: ${remote} < ${current}`);
       mainWindow.webContents.send('update-available', { 
         version: remote, 
-        releaseNotes: `Sua versão atual (${current}) é mais recente que a disponível no canal ${branch}. Deseja retornar para a versão oficial?`,
+        releaseNotes: `A versão oficial do canal ${targetBranch} (${remote}) é anterior à sua versão local (${current}).`,
         updateType: 'downgrade',
         isManual: true 
       });
     } else {
+      console.log('[APP] [MAIN] Versões são idênticas. Nada a fazer.');
       mainWindow.webContents.send('update-not-available');
     }
   }
 });
 
 ipcMain.on('start-download', () => { 
-  if (app.isPackaged) autoUpdater.downloadUpdate(); 
-  else console.log("[APP] [MAIN] Download ignorado em ambiente DEV.");
+  if (app.isPackaged) {
+    console.log('[APP] [MAIN] Iniciando download oficial via autoUpdater.');
+    autoUpdater.downloadUpdate(); 
+  } else {
+    console.log("[APP] [MAIN] Ambiente de desenvolvimento: Download ignorado.");
+  }
 });
 
 ipcMain.on('install-update', () => { 
-  if (app.isPackaged) autoUpdater.quitAndInstall(); 
+  if (app.isPackaged) {
+    console.log('[APP] [MAIN] Solicitando reinicialização para instalação.');
+    autoUpdater.quitAndInstall(); 
+  }
 });
 
 app.whenReady().then(() => { 
