@@ -35,11 +35,13 @@ jobs:
           # Conta o total de commits
           COUNT=$(git rev-list --count HEAD)
           
-          # Lógica 0.1.X
+          # Lógica 0.YY.ZZ com padding de 2 dígitos
           MAJOR=$((COUNT / 1000))
           MINOR=$(((COUNT % 1000) / 100))
           PATCH=$((COUNT % 100))
-          VERSION="$MAJOR.$MINOR.$PATCH"
+          
+          # Use printf para garantir 2 dígitos no minor e patch
+          VERSION=$(printf "%d.%02d.%02d" $MAJOR $MINOR $PATCH)
           
           echo "Calculated Version: v$VERSION"
           
