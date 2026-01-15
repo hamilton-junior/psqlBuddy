@@ -27,6 +27,25 @@ type TabId = 'interface' | 'ai' | 'database' | 'diagnostics';
 declare const __APP_VERSION__: string;
 const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
 
+/**
+ * Utilitário visual para formatar a versão no padrão legível X.0Y.0Z
+ */
+const formatVersionDisplay = (v: string | undefined): string => {
+  if (!v || v === '---') return '...';
+  if (v === 'Erro') return 'Erro';
+  
+  const clean = v.replace(/^v/, '');
+  const parts = clean.split('.');
+  
+  if (parts.length !== 3) return v;
+  
+  const major = parts[0];
+  const minor = parts[1].padStart(2, '0');
+  const patch = parts[2].padStart(2, '0');
+  
+  return `v${major}.${minor}.${patch}`;
+};
+
 export default function SettingsModal({ 
   settings, onSave, onClose, quotaExhausted,
   schema, credentials, simulationData = {}, remoteVersions
@@ -88,15 +107,6 @@ export default function SettingsModal({
     return Math.round((success / total) * 100);
   }, [healthResults]);
 
-  const formatVer = (v: string | undefined) => {
-     if (!v || v === '---') return '...';
-     if (v === 'Erro') return 'Erro';
-     // Se já começa com 'v', retorna como está. Caso contrário, adiciona o prefixo se começar com número.
-     if (v.startsWith('v')) return v;
-     if (/^[0-9]/.test(v)) return 'v' + v;
-     return v;
-  };
-
   const Toggle = ({ checked, onChange, colorClass = "peer-checked:bg-indigo-600" }: { checked: boolean, onChange: (val: boolean) => void, colorClass?: string }) => (
     <label className="relative inline-flex items-center cursor-pointer">
       <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="sr-only peer" />
@@ -142,7 +152,7 @@ export default function SettingsModal({
 
     return (
        <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
-          {formatVer(latest)}
+          {formatVersionDisplay(latest)}
        </div>
     );
   };
@@ -184,7 +194,7 @@ export default function SettingsModal({
                       </div>
                       <div className="flex items-center justify-between text-[11px] font-medium text-slate-500">
                          <span>Sessão:</span>
-                         <span className="text-indigo-500">{formatVer(CURRENT_APP_VERSION)}</span>
+                         <span className="text-indigo-500">{formatVersionDisplay(CURRENT_APP_VERSION)}</span>
                       </div>
                    </div>
                 </div>
@@ -430,7 +440,7 @@ export default function SettingsModal({
                       <div className="grid grid-cols-2 gap-6 mb-8">
                          <div className="bg-slate-50 dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Versão em Execução</span>
-                            <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{formatVer(CURRENT_APP_VERSION)}</div>
+                            <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{formatVersionDisplay(CURRENT_APP_VERSION)}</div>
                             <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-tight flex items-center gap-1">
                                <Info className="w-3 h-3" /> Instância Local
                             </p>
@@ -461,7 +471,7 @@ export default function SettingsModal({
                                `}
                             >
                                <span className="flex items-center gap-2 font-black uppercase"><CheckCircle2 className="w-4 h-4" /> Estável</span>
-                               <span className="text-[9px] opacity-70 font-mono">{formatVer(remoteVersions?.stable)}</span>
+                               <span className="text-[9px] opacity-70 font-mono">{formatVersionDisplay(remoteVersions?.stable)}</span>
                             </button>
                             <button 
                                type="button"
@@ -473,7 +483,7 @@ export default function SettingsModal({
                                `}
                             >
                                <span className="flex items-center gap-2 font-black uppercase"><FlaskConical className="w-4 h-4" /> Main / Dev</span>
-                               <span className="text-[9px] opacity-70 font-mono">{formatVer(remoteVersions?.main)}</span>
+                               <span className="text-[9px] opacity-70 font-mono">{formatVersionDisplay(remoteVersions?.main)}</span>
                             </button>
                          </div>
                          <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700">

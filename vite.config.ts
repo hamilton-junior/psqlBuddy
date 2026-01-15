@@ -23,10 +23,8 @@ export default defineConfig(({ mode }) => {
   const minor = Math.floor((count % 1000) / 100);
   const patch = count % 100;
   
-  // Formatação com padding de 2 dígitos
-  const mi = String(minor).padStart(2, '0');
-  const pa = String(patch).padStart(2, '0');
-  const appVersion = `${major}.${mi}.${pa}`;
+  // Versão técnica compatível com SemVer (sem zeros à esquerda)
+  const appVersion = `${major}.${minor}.${patch}`;
 
   return {
     plugins: [react()],

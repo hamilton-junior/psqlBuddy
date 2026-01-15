@@ -27,6 +27,15 @@ interface SidebarProps {
 declare const __APP_VERSION__: string;
 const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
 
+/**
+ * Formata a versão tecnicamente SemVer para o padrão legível (X.0Y.0Z)
+ */
+const formatVersionDisplay = (v: string): string => {
+  const parts = v.split('.');
+  if (parts.length !== 3) return v;
+  return `${parts[0]}.${parts[1].padStart(2, '0')}.${parts[2].padStart(2, '0')}`;
+};
+
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentStep, onNavigate, schema, hasResults = false, onOpenSettings, 
   onOpenDiagram, onOpenHistory, onOpenShortcuts, onOpenCheatSheet, 
@@ -154,7 +163,7 @@ const Sidebar: React.FC<SidebarProps> = ({
            {!isCollapsed && (
               <div className="px-4 pt-4 flex items-center justify-between mt-2 border-t border-slate-900">
                  <div className="flex items-center gap-2 text-[9px] font-black text-slate-600 uppercase tracking-widest" title="Versão atual do aplicativo">
-                    <Tag className="w-3 h-3 opacity-50" /> v{CURRENT_APP_VERSION}
+                    <Tag className="w-3 h-3 opacity-50" /> {formatVersionDisplay(CURRENT_APP_VERSION)}
                  </div>
                  <button 
                     onClick={() => onNavigate('roadmap')}

@@ -18,20 +18,16 @@ autoUpdater.logger = console;
 /**
  * Utilitário para calcular a string de versão seguindo a lógica do projeto:
  * Major = Count / 1000
- * Minor = (Count % 1000) / 100 (Pad 2)
- * Patch = Count % 100 (Pad 2)
+ * Minor = (Count % 1000) / 100
+ * Patch = Count % 100
+ * Retorna SemVer puro para evitar erros de validação do Electron.
  */
 function calculateVersionFromCount(count) {
   const c = parseInt(count, 10) || 0;
   const major = Math.floor(c / 1000);
   const minor = Math.floor((c % 1000) / 100);
   const patch = c % 100;
-  
-  // Formatação com padding de 2 dígitos para evitar confusão visual
-  const mi = String(minor).padStart(2, '0');
-  const pa = String(patch).padStart(2, '0');
-  
-  return `${major}.${mi}.${pa}`;
+  return `${major}.${minor}.${patch}`;
 }
 
 /**
@@ -49,7 +45,6 @@ function compareVersions(v1, v2) {
 
 /**
  * Recupera o total de commits de uma branch no GitHub.
- * Utiliza o cabeçalho 'link' da API de commits para encontrar o índice da última página.
  */
 async function fetchTotalCommits(repo, branch, headers) {
   try {
@@ -57,7 +52,7 @@ async function fetchTotalCommits(repo, branch, headers) {
     if (!res.ok) return null;
     
     const linkHeader = res.headers.get('link');
-    if (!linkHeader) return 1; // Se não tem link, provavelmente só tem 1 commit
+    if (!linkHeader) return 1;
 
     const match = linkHeader.match(/page=(\d+)>; rel="last"/);
     return match ? parseInt(match[1], 10) : 1;
@@ -80,7 +75,7 @@ async function fetchGitHubVersions() {
       'Cache-Control': 'no-cache'
     };
 
-    // 1. Recuperar Versão Estável (Highest Tag)
+    // 1. Recuperar Versão Estável
     let stable = '---';
     try {
       const tagsRes = await fetch(`https://api.github.com/repos/${repo}/tags?per_page=30&t=${timestamp}`, { headers });
@@ -103,12 +98,9 @@ async function fetchGitHubVersions() {
     let main = '---';
     try {
       const commitCount = await fetchTotalCommits(repo, 'main', headers);
-      
       if (commitCount !== null) {
-        // Se a contagem de commits funcionar, usamos ela para calcular a versão vX.YY.ZZ
         main = calculateVersionFromCount(commitCount);
       } else {
-        // Fallback: busca diretamente a versão no package.json da branch main do GitHub
         const pkgRes = await fetch(`https://raw.githubusercontent.com/${repo}/main/package.json?t=${timestamp}`);
         if (pkgRes.ok) {
           const pkgData = await pkgRes.json();
@@ -162,8 +154,6 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', async () => {
     const currentVersion = app.getVersion();
     mainWindow.webContents.send('app-version', currentVersion);
-    
-    // Busca versões e sincroniza com a UI
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
   });

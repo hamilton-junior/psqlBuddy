@@ -24,6 +24,12 @@ interface SavedConnection {
 declare const __APP_VERSION__: string;
 const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
 
+const formatVersionDisplay = (v: string): string => {
+  const parts = v.split('.');
+  if (parts.length !== 3) return v;
+  return `${parts[0]}.${parts[1].padStart(2, '0')}.${parts[2].padStart(2, '0')}`;
+};
+
 const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, settings }) => {
   const [mode, setMode] = useState<ConnectMode>('real');
   const [loading, setLoading] = useState(false);
@@ -190,7 +196,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         </div>
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full flex items-center gap-2 shadow-sm">
            <Tag className="w-3.5 h-3.5 text-indigo-500" />
-           <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">v{CURRENT_APP_VERSION}</span>
+           <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">{formatVersionDisplay(CURRENT_APP_VERSION)}</span>
         </div>
       </div>
 
