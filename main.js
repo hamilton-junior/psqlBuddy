@@ -18,15 +18,20 @@ autoUpdater.logger = console;
 /**
  * Utilitário para calcular a string de versão seguindo a lógica do projeto:
  * Major = Count / 1000
- * Minor = (Count % 1000) / 100
- * Patch = Count % 100
+ * Minor = (Count % 1000) / 100 (Pad 2)
+ * Patch = Count % 100 (Pad 2)
  */
 function calculateVersionFromCount(count) {
   const c = parseInt(count, 10) || 0;
   const major = Math.floor(c / 1000);
   const minor = Math.floor((c % 1000) / 100);
   const patch = c % 100;
-  return `${major}.${minor}.${patch}`;
+  
+  // Formatação com padding de 2 dígitos para evitar confusão visual
+  const mi = String(minor).padStart(2, '0');
+  const pa = String(patch).padStart(2, '0');
+  
+  return `${major}.${mi}.${pa}`;
 }
 
 /**
@@ -100,7 +105,7 @@ async function fetchGitHubVersions() {
       const commitCount = await fetchTotalCommits(repo, 'main', headers);
       
       if (commitCount !== null) {
-        // Se a contagem de commits funcionar, usamos ela para calcular a versão vX.Y.Z
+        // Se a contagem de commits funcionar, usamos ela para calcular a versão vX.YY.ZZ
         main = calculateVersionFromCount(commitCount);
       } else {
         // Fallback: busca diretamente a versão no package.json da branch main do GitHub
