@@ -6,7 +6,7 @@ import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__dirname); // Ajuste conceitual para root se necessário, ou manter local
+const __dirname = path.dirname(__filename);
 
 let mainWindow;
 let serverProcess;
@@ -125,7 +125,7 @@ async function fetchGitHubVersions() {
 function startBackend() {
   const isDev = !app.isPackaged;
   if (isDev && process.env.SKIP_BACKEND === '1') return;
-  const serverPath = path.join(process.cwd(), 'server.js');
+  const serverPath = path.join(__dirname, 'server.js');
   serverProcess = spawn(process.execPath, [serverPath], {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     stdio: 'inherit'
@@ -133,7 +133,7 @@ function startBackend() {
 }
 
 function createWindow() {
-  const preloadPath = path.join(process.cwd(), 'preload.js');
+  const preloadPath = path.join(__dirname, 'preload.js');
   
   mainWindow = new BrowserWindow({
     width: 1280, height: 850, minWidth: 1000, minHeight: 700,
@@ -151,7 +151,7 @@ function createWindow() {
   if (!app.isPackaged) {
     mainWindow.loadURL('http://127.0.0.1:5173');
   } else {
-    mainWindow.loadFile(path.join(process.cwd(), 'dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
   }
 
   mainWindow.webContents.on('did-finish-load', async () => {
