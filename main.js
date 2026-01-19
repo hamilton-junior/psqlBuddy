@@ -14,7 +14,7 @@ let serverProcess;
 // Configurações do autoUpdater
 autoUpdater.autoDownload = false;
 autoUpdater.allowDowngrade = true; 
-autoUpdater.allowPrerelease = true; // Permite detectar versões marcadas como pre-release no GitHub
+autoUpdater.allowPrerelease = true; 
 autoUpdater.logger = console;
 
 /**
@@ -69,7 +69,6 @@ async function fetchGitHubVersions() {
 
   try {
     let stable = '---';
-    // Nota: Tags mostram o que existe, mas o autoUpdater precisa de uma RELEASE publicada com latest.yml
     const tagsRes = await fetch(`https://api.github.com/repos/${repo}/tags?per_page=30`, { headers });
     if (tagsRes.ok) {
       const tags = await tagsRes.json();
@@ -126,7 +125,7 @@ function createWindow() {
 
 // Eventos autoUpdater
 autoUpdater.on('update-available', (info) => {
-  console.log(`[AUTO-UPDATER] Atualização encontrada: ${info.version}`);
+  console.log(`[AUTO-UPDATER] Atualização disponível: ${info.version}`);
   mainWindow.webContents.send('update-available', { 
     ...info, 
     updateType: compareVersions(info.version, CURRENT_VERSION) > 0 ? 'upgrade' : 'downgrade',
@@ -135,7 +134,6 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', () => {
-  console.log('[AUTO-UPDATER] Nenhuma atualização oficial encontrada via manifesto.');
   mainWindow.webContents.send('update-not-available');
 });
 
@@ -144,35 +142,24 @@ autoUpdater.on('download-progress', (p) => {
 });
 
 autoUpdater.on('update-downloaded', () => {
-  console.log('[AUTO-UPDATER] Download concluído e pronto para instalação.');
   mainWindow.webContents.send('update-ready');
 });
 
 autoUpdater.on('error', (e) => {
-  console.error('[AUTO-UPDATER] Erro no processo:', e.message);
+  console.error('[AUTO-UPDATER] Erro:', e.message);
   mainWindow.webContents.send('update-error', e.message);
 });
 
 ipcMain.on('check-update', async (event, branch) => {
-  console.log(`[UPDATE-LOG] Verificando canal: ${branch} | Local: ${CURRENT_VERSION} | Packaged: ${app.isPackaged}`);
-  
   if (app.isPackaged && branch === 'stable') {
-    // Se estiver empacotado e canal estável, usa o validador oficial
     autoUpdater.checkForUpdates();
   } else {
-    // Modo dev ou canal main: usa detecção manual via API
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
     const remote = branch === 'main' ? versions.main : versions.stable;
     const comp = compareVersions(remote, CURRENT_VERSION);
-    
     if (comp !== 0) {
-      mainWindow.webContents.send('update-available', {
-        version: remote,
-        updateType: comp > 0 ? 'upgrade' : 'downgrade',
-        isManual: true, // Indica que não foi detectado pelo autoUpdater
-        branch
-      });
+      mainWindow.webContents.send('update-available', { version: remote, updateType: comp > 0 ? 'upgrade' : 'downgrade', isManual: true, branch });
     } else {
       mainWindow.webContents.send('update-not-available');
     }
@@ -180,33 +167,24 @@ ipcMain.on('check-update', async (event, branch) => {
 });
 
 ipcMain.on('start-download', (event, branch) => {
-  console.log(`[UPDATE-LOG] Acionando download. Canal: ${branch} | Packaged: ${app.isPackaged}`);
+  console.log(`[DOWNLOAD] Solicitado: ${branch} | Packaged: ${app.isPackaged}`);
   
-  if (branch === 'stable') {
-    if (app.isPackaged) {
-      console.log('[AUTO-UPDATER] Iniciando download interno...');
-      autoUpdater.downloadUpdate();
-    } else {
-      console.log('[UPDATE-LOG] App não empacotado. Redirecionando para Releases (Manual).');
-      shell.openExternal('https://github.com/Hamilton-Junior/psqlBuddy/releases');
-    }
-  } else if (branch === 'main') {
-    console.log('[UPDATE-LOG] Canal WIP. Abrindo link do código fonte.');
-    shell.openExternal('https://github.com/Hamilton-Junior/psqlBuddy/archive/refs/heads/main.zip');
+  if (branch === 'stable' && app.isPackaged) {
+    autoUpdater.downloadUpdate();
+  } else {
+    // Se não está empacotado, o autoUpdater não consegue baixar.
+    // Abrimos o navegador e informamos ao renderer para cancelar o carregamento infinito.
+    const url = branch === 'main' 
+      ? 'https://github.com/Hamilton-Junior/psqlBuddy/archive/refs/heads/main.zip'
+      : 'https://github.com/Hamilton-Junior/psqlBuddy/releases';
+    
+    shell.openExternal(url).then(() => {
+      mainWindow.webContents.send('update-error', "MANUAL_DOWNLOAD_TRIGGERED");
+    });
   }
 });
 
-ipcMain.on('install-update', () => {
-  console.log('[AUTO-UPDATER] Reiniciando para instalar...');
-  autoUpdater.quitAndInstall();
-});
+ipcMain.on('install-update', () => autoUpdater.quitAndInstall());
 
-app.whenReady().then(() => { 
-  startBackend(); 
-  createWindow(); 
-});
-
-app.on('window-all-closed', () => { 
-  if (serverProcess) serverProcess.kill(); 
-  if (process.platform !== 'darwin') app.quit(); 
-});
+app.whenReady().then(() => { startBackend(); createWindow(); });
+app.on('window-all-closed', () => { if (serverProcess) serverProcess.kill(); app.quit(); });

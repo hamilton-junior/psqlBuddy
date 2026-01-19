@@ -104,10 +104,7 @@ const App: React.FC = () => {
     const isManual = manualCheckRef.current || info.isManual;
     const type = info.updateType || (compareVersions(info.version, currentAppVersion) > 0 ? 'upgrade' : 'downgrade');
 
-    console.log(`[UI] Analisando Update: v${info.version} (Tipo: ${type}, Canal: ${settings.updateBranch})`);
-
     if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion) === 0) {
-      console.log(`[UI] Versão local e remota coincidem.`);
       manualCheckRef.current = false;
       return;
     }
@@ -115,7 +112,7 @@ const App: React.FC = () => {
     if (isManual || !ignoredVersions.includes(info.version)) {
       setUpdateInfo({
         version: info.version,
-        notes: info.releaseNotes || 'Novas melhorias de performance e segurança.',
+        notes: info.releaseNotes || 'Novas melhorias.',
         branch: settings.updateBranch === 'main' ? 'Main' : 'Stable',
         updateType: type as 'upgrade' | 'downgrade',
         currentVersion: currentAppVersion,
@@ -132,22 +129,26 @@ const App: React.FC = () => {
       electron.on('sync-versions', (v: any) => setRemoteVersions(v));
       electron.on('update-available', handleUpdateDetection);
       electron.on('update-not-available', () => {
-        if (manualCheckRef.current) toast.success("Sua versão está sincronizada!", { id: 'sync-ok' });
+        if (manualCheckRef.current) toast.success("Sua versão está sincronizada!");
         manualCheckRef.current = false;
         setUpdateInfo(null);
       });
-      electron.on('update-downloading', (p: any) => {
-        console.log(`[UI] Download em curso: ${p.percent}%`);
-        setDownloadProgress(p.percent);
-      });
+      electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
       electron.on('update-ready', () => {
         setUpdateReady(true);
         setDownloadProgress(100);
-        toast.success("Atualização baixada! Pronto para instalar.", { icon: '🚀' });
+        toast.success("Atualização pronta!");
       });
       electron.on('update-error', (msg: string) => {
-        console.error("[UI] Falha no Atualizador:", msg);
-        if (manualCheckRef.current) toast.error("Não foi possível processar a atualização automática.");
+        console.warn("[UI] Status Atualizador:", msg);
+        // Resetamos o progresso se o download foi desviado para o navegador ou deu erro
+        setDownloadProgress(null);
+        if (msg === "MANUAL_DOWNLOAD_TRIGGERED") {
+           toast("Abrindo navegador para download manual...", { icon: '🌐' });
+           setUpdateInfo(null);
+        } else if (manualCheckRef.current) {
+           toast.error("Erro no atualizador automático.");
+        }
         manualCheckRef.current = false;
       });
       return () => electron.removeAllListeners('update-available');
@@ -157,15 +158,8 @@ const App: React.FC = () => {
   const handleStartDownload = () => {
     const electron = (window as any).electron;
     if (electron) { 
-      console.log(`[UI] Solicitando download canal: ${settings.updateBranch}`);
       setDownloadProgress(0); 
       electron.send('start-download', settings.updateBranch);
-      
-      // Se for main, informamos que abrirá no navegador
-      if (settings.updateBranch === 'main') {
-        toast("Baixando pacote manual via GitHub...", { icon: '📦' });
-        setDownloadProgress(100);
-      }
     }
   };
 
