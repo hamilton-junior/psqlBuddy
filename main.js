@@ -31,13 +31,8 @@ function calculateVersionFromCount(count) {
  * Compara duas strings de versão SemVer (x.y.z)
  * Retorna: 1 (v1 > v2), -1 (v1 < v2), 0 (iguais)
  */
-function compareVersions(v1, v2, context = 'General') {
-  console.log(`[DEBUG:VERSION:${context}] Iniciando comparação: "${v1}" vs "${v2}"`);
-  
-  if (!v1 || v1 === '---' || !v2 || v2 === '---') {
-    console.log(`[DEBUG:VERSION:${context}] Dados insuficientes para comparação.`);
-    return 0;
-  }
+function compareVersions(v1, v2) {
+  if (!v1 || v1 === '---' || !v2 || v2 === '---') return 0;
   
   const cleanV1 = v1.replace(/^v/, '');
   const cleanV2 = v2.replace(/^v/, '');
@@ -45,32 +40,26 @@ function compareVersions(v1, v2, context = 'General') {
   const p1 = cleanV1.split('.').map(n => parseInt(n, 10) || 0);
   const p2 = cleanV2.split('.').map(n => parseInt(n, 10) || 0);
   
-  console.log(`[DEBUG:VERSION:${context}] Partes processadas: [${p1.join(',')}] vs [${p2.join(',')}]`);
-
   for (let i = 0; i < 3; i++) {
-    if (p1[i] > p2[i]) {
-      console.log(`[DEBUG:VERSION:${context}] Resultado: 1 (Upgrade disponível)`);
-      return 1;
-    }
-    if (p1[i] < p2[i]) {
-      console.log(`[DEBUG:VERSION:${context}] Resultado: -1 (Downgrade detectado)`);
-      return -1;
-    }
+    if (p1[i] > p2[i]) return 1;
+    if (p1[i] < p2[i]) return -1;
   }
-  
-  console.log(`[DEBUG:VERSION:${context}] Resultado: 0 (Versões idênticas)`);
   return 0;
 }
 
 /**
  * Recupera o total de commits de uma branch no GitHub.
+ * Como a branch WIP não tem release, usamos a contagem de commits como "versão de build".
  */
 async function fetchTotalCommits(repo, branch, headers) {
   try {
     const res = await fetch(`https://api.github.com/repos/${repo}/commits?sha=${branch}&per_page=1`, { headers });
     if (!res.ok) return null;
+    
     const linkHeader = res.headers.get('link');
-    if (!linkHeader) return 1;
+    if (!linkHeader) return 1; // Se não houver link header, provavelmente só tem 1 commit carregado
+    
+    // O GitHub retorna o link da última página no header "link"
     const match = linkHeader.match(/page=(\d+)>; rel="last"/);
     return match ? parseInt(match[1], 10) : 1;
   } catch (e) {
@@ -85,6 +74,7 @@ async function fetchGitHubVersions() {
   const timestamp = new Date().getTime();
   
   try {
+    console.log('[GITHUB API] Sincronizando versões remotas...');
     const headers = { 
       'User-Agent': 'PSQL-Buddy-App',
       'Accept': 'application/vnd.github.v3+json',
@@ -97,26 +87,29 @@ async function fetchGitHubVersions() {
       const tagsRes = await fetch(`https://api.github.com/repos/${repo}/tags?per_page=30&t=${timestamp}`, { headers });
       if (tagsRes.ok) {
         const tags = await tagsRes.json();
+        // Filtra apenas tags que parecem SemVer e pega a maior
         const validVersions = tags
           .map(t => t.name.replace(/^v/, ''))
           .filter(v => /^\d+\.\d+\.\d+$/.test(v))
-          .sort((a, b) => compareVersions(a, b, 'GitHub-Tags-Sorter'));
+          .sort(compareVersions);
         
         if (validVersions.length > 0) stable = validVersions[validVersions.length - 1];
       }
-    } catch (e) { console.error("[GITHUB API] Erro tags:", e.message); }
+    } catch (e) { console.error("[GITHUB API] Erro ao buscar tags:", e.message); }
 
-    // 2. Versão Main (Development)
+    // 2. Versão Main (WIP) - Baseada em Commits
     let main = '---';
     try {
       const commitCount = await fetchTotalCommits(repo, 'main', headers);
-      if (commitCount !== null) main = calculateVersionFromCount(commitCount);
-    } catch (e) { console.error("[GITHUB API] Erro main:", e.message); }
+      if (commitCount !== null) {
+        main = calculateVersionFromCount(commitCount);
+        console.log(`[GITHUB API] WIP calculada via commits (${commitCount}): ${main}`);
+      }
+    } catch (e) { console.error("[GITHUB API] Erro ao calcular WIP:", e.message); }
 
-    console.log(`[APP] [MAIN] Sincronização GitHub concluída. Stable: ${stable}, Main: ${main}`);
     return { stable, main };
   } catch (error) {
-    console.error('[GITHUB API] Falha na conexão:', error.message);
+    console.error('[GITHUB API] Falha crítica na sincronização:', error.message);
     return { stable: 'Erro', main: 'Erro' };
   }
 }
@@ -156,25 +149,22 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', async () => {
     const currentVer = app.getVersion();
     mainWindow.webContents.send('app-version', currentVer);
-    console.log(`[APP] [MAIN] Versão local enviada: ${currentVer}`);
+    console.log(`[APP] Versão local: ${currentVer}`);
     
+    // Busca inicial de versões remotas
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
   });
 }
 
-// Eventos do autoUpdater
+// Eventos do autoUpdater (Apenas produção e canal estável)
 autoUpdater.on('update-available', (info) => {
-  console.log(`[APP] [MAIN] autoUpdater: Nova versão detectada: ${info.version}`);
-  mainWindow.webContents.send('update-available', { 
-    version: info.version, 
-    updateType: 'upgrade',
-    releaseNotes: info.releaseNotes || 'Nova atualização estável disponível via canal oficial.'
-  });
+  console.log('[UPDATE] Atualização oficial via release encontrada.');
+  mainWindow.webContents.send('update-available', { ...info, updateType: 'upgrade' });
 });
 
 autoUpdater.on('update-not-available', () => {
-  console.log('[APP] [MAIN] autoUpdater: Nenhuma atualização necessária.');
+  console.log('[UPDATE] Nenhuma atualização via release encontrada.');
   mainWindow.webContents.send('update-not-available');
 });
 
@@ -187,52 +177,48 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 autoUpdater.on('error', (err) => {
-  console.error('[APP] [MAIN] Erro no autoUpdater:', err.message);
+  console.error('[UPDATE] Erro no autoUpdater:', err.message);
   mainWindow.webContents.send('update-error', { message: err.message });
 });
 
 // IPC Listeners
 ipcMain.on('check-update', async (event, branch) => {
   const targetBranch = branch || 'stable';
-  const current = app.getVersion();
-  console.log(`[APP] [MAIN] Verificação manual solicitada. Canal: ${targetBranch}, Local: ${current}`);
+  console.log(`[UPDATE-ENGINE] Verificação solicitada para canal: ${targetBranch}`);
   
   if (app.isPackaged && targetBranch === 'stable') {
-    console.log('[APP] [MAIN] Usando autoUpdater oficial.');
+    // Se estiver em prod e canal stable, usa o motor oficial (precisa de release/tag)
+    console.log('[UPDATE-ENGINE] Utilizando autoUpdater oficial.');
     autoUpdater.checkForUpdates();
   } else {
-    console.log('[APP] [MAIN] Verificação manual via GitHub API.');
+    // Para WIP ou Dev, usamos comparação manual via API do GitHub (Contagem de commits)
+    console.log('[UPDATE-ENGINE] Utilizando motor de comparação manual (WIP/Commit Count).');
     const versions = await fetchGitHubVersions();
     mainWindow.webContents.send('sync-versions', versions);
     
+    const current = app.getVersion();
     const remote = (targetBranch === 'main') ? versions.main : versions.stable;
     
-    if (remote === 'Erro' || remote === '---') {
-       console.log('[APP] [MAIN] Versão remota indisponível.');
-       mainWindow.webContents.send('update-not-available');
-       return;
-    }
-
-    const comparison = compareVersions(remote, current, 'Manual-Check');
-
-    if (comparison > 0) {
-      console.log(`[APP] [MAIN] Enviando: Upgrade Disponível (${remote} > ${current})`);
+    const result = compareVersions(remote, current);
+    
+    if (result > 0) {
+      console.log(`[UPDATE-ENGINE] UPGRADE: Remota (${remote}) > Local (${current})`);
       mainWindow.webContents.send('update-available', { 
         version: remote, 
-        releaseNotes: targetBranch === 'main' ? 'Novas alterações detectadas na branch main.' : 'Nova versão estável disponível.',
+        releaseNotes: 'Novas alterações commitadas na branch de desenvolvimento.',
         updateType: 'upgrade',
         isManual: true 
       });
-    } else if (comparison < 0) {
-      console.log(`[APP] [MAIN] Enviando: Downgrade Detectado (${remote} < ${current})`);
+    } else if (result < 0) {
+      console.log(`[UPDATE-ENGINE] DOWNGRADE: Remota (${remote}) < Local (${current})`);
       mainWindow.webContents.send('update-available', { 
         version: remote, 
-        releaseNotes: `A versão oficial do canal ${targetBranch} (${remote}) é anterior à sua instalada (${current}).`,
+        releaseNotes: 'A versão remota é anterior à sua versão local.',
         updateType: 'downgrade',
         isManual: true 
       });
     } else {
-      console.log('[APP] [MAIN] Versões idênticas. Enviando update-not-available.');
+      console.log(`[UPDATE-ENGINE] EQUAL: Sincronizado na versão ${current}`);
       mainWindow.webContents.send('update-not-available');
     }
   }
@@ -240,16 +226,14 @@ ipcMain.on('check-update', async (event, branch) => {
 
 ipcMain.on('start-download', () => { 
   if (app.isPackaged) {
-    console.log('[APP] [MAIN] Iniciando download via autoUpdater.');
     autoUpdater.downloadUpdate(); 
   } else {
-    console.log("[APP] [MAIN] Download ignorado em modo desenvolvimento.");
+    console.log("[UPDATE-ENGINE] Download bloqueado em ambiente de desenvolvimento.");
   }
 });
 
 ipcMain.on('install-update', () => { 
   if (app.isPackaged) {
-    console.log('[APP] [MAIN] Solicitando reinicialização para instalação.');
     autoUpdater.quitAndInstall(); 
   }
 });

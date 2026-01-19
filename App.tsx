@@ -39,29 +39,6 @@ const INITIAL_BUILDER_STATE: BuilderState = {
   limit: 100
 };
 
-/**
- * Utilitário de comparação de versões para o frontend
- */
-function compareVersions(v1: string, v2: string, context = 'App') {
-  console.log(`[DEBUG:VERSION:${context}] Comparando: "${v1}" vs "${v2}"`);
-  
-  if (!v1 || v1 === '---' || !v2 || v2 === '---') {
-    return 0;
-  }
-  
-  const cleanV1 = v1.replace(/^v/, '');
-  const cleanV2 = v2.replace(/^v/, '');
-  
-  const p1 = cleanV1.split('.').map(n => parseInt(n, 10) || 0);
-  const p2 = cleanV2.split('.').map(n => parseInt(n, 10) || 0);
-  
-  for (let i = 0; i < 3; i++) {
-    if (p1[i] > p2[i]) return 1;
-    if (p1[i] < p2[i]) return -1;
-  }
-  return 0;
-}
-
 const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<AppStep>('connection');
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
@@ -100,7 +77,7 @@ const App: React.FC = () => {
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
   
   // Update States
-  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade', currentVersion?: string} | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade'} | null>(null);
   const [remoteVersions, setRemoteVersions] = useState<{stable: string, main: string} | null>(null);
   const [currentAppVersion, setCurrentAppVersion] = useState<string>('...');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
@@ -117,81 +94,73 @@ const App: React.FC = () => {
     localStorage.setItem('psqlBuddy-dashboard', JSON.stringify(dashboardItems));
   }, [dashboardItems]);
 
-  // Função para processar aviso de atualização vindo do autoUpdater ou verificação manual
   const handleUpdateDetection = useCallback((info: any) => {
+    console.log(`[UPDATE] Detecção disparada: v${info.version}, Tipo: ${info.updateType}`);
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
     const isManual = manualCheckRef.current || info.isManual;
-    
-    const updateType = info.updateType || 'upgrade';
+    manualCheckRef.current = false;
 
-    console.log(`[APP] [UPDATE_HANDLER] v${info.version}, Tipo: ${updateType}, Manual: ${isManual}`);
-
-    // Guarda final contra versões idênticas
-    if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion, 'UI-Guard') === 0) {
-      console.log(`[APP] [UPDATE_HANDLER] Versões idênticas em UI Guard. Cancelando.`);
-      setUpdateInfo(null);
-      manualCheckRef.current = false;
-      return;
-    }
-
-    // Só exibe se for manual ou se não estiver na lista de ignorados
     if (isManual || !ignoredVersions.includes(info.version)) {
-      console.log(`[APP] [UPDATE_HANDLER] Exibindo modal para v${info.version}`);
       setUpdateInfo({
         version: info.version,
         notes: info.releaseNotes || 'Novas melhorias disponíveis.',
-        branch: settings.updateBranch === 'main' ? 'Main' : 'Stable',
-        updateType: updateType,
-        currentVersion: currentAppVersion
+        branch: settings.updateBranch === 'main' ? 'Main/WIP' : 'Stable',
+        updateType: info.updateType || 'upgrade'
       });
       
       if (isManual) {
-        if (updateType === 'downgrade') {
-          toast("A versão oficial do canal é anterior à instalada.", { icon: '⚠️', id: 'update-toast' });
+        if (info.updateType === 'downgrade') {
+          toast("A versão oficial é anterior à sua atual.", { icon: '⚠️' });
         } else {
-          toast.success(`Versão v${info.version} disponível no canal ${settings.updateBranch.toUpperCase()}!`, { id: 'update-toast' });
+          toast.success(`Versão v${info.version} encontrada!`);
         }
       }
+    } else {
+      console.log(`[UPDATE] Versão v${info.version} ignorada pelo usuário anteriormente.`);
     }
-    
-    manualCheckRef.current = false;
-  }, [settings.updateBranch, currentAppVersion]);
+  }, [settings.updateBranch]);
 
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
+      console.log("[ELECTRON-BRIDGE] Inicializando escuta de eventos...");
+      
       electron.on('app-version', (v: string) => {
-        console.log(`[APP] [ELECTRON] Versão Local: ${v}`);
+        console.log(`[ELECTRON-BRIDGE] Versão local: ${v}`);
         setCurrentAppVersion(v);
       });
       
       electron.on('sync-versions', (v: any) => {
-        console.log(`[APP] [ELECTRON] Sincronização GitHub:`, v);
+        console.log("[ELECTRON-BRIDGE] Versões sincronizadas do GitHub:", v);
         setRemoteVersions(v);
       });
 
-      const handleUpdateNotAvailable = () => {
-        console.log(`[APP] [ELECTRON] Sincronizado. Nenhuma atualização.`);
+      electron.on('update-available', handleUpdateDetection);
+
+      electron.on('update-not-available', () => {
+        console.log("[ELECTRON-BRIDGE] Sistema já está atualizado.");
         if (manualCheckRef.current) {
-          toast.success("Sua instância está sincronizada!", { id: 'update-toast' });
+          toast.success("Você já está na última versão!");
         }
         manualCheckRef.current = false;
         setUpdateInfo(null);
-      };
-
-      electron.on('update-available', handleUpdateDetection);
-      electron.on('update-not-available', handleUpdateNotAvailable);
-      electron.on('update-error', (err: any) => {
-        manualCheckRef.current = false;
-        console.error("[APP] [ELECTRON] Erro no update:", err);
       });
-      
-      electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
-      
+
+      electron.on('update-downloading', (p: any) => {
+        console.log(`[ELECTRON-BRIDGE] Progresso: ${p.percent.toFixed(2)}%`);
+        setDownloadProgress(p.percent);
+      });
+
       electron.on('update-ready', () => {
+        console.log("[ELECTRON-BRIDGE] Download concluído. Pronto para instalar.");
         setUpdateReady(true);
         setDownloadProgress(100);
-        toast.success("Pronto para instalar!", { id: 'update-toast' });
+      });
+
+      electron.on('update-error', (err: any) => {
+        console.error("[ELECTRON-BRIDGE] Erro no processo de atualização:", err);
+        manualCheckRef.current = false;
+        toast.error("Falha ao buscar atualização.");
       });
 
       return () => {
@@ -204,43 +173,11 @@ const App: React.FC = () => {
     }
   }, [handleUpdateDetection]);
 
-  // Monitora mudanças nas versões remotas para disparar o aviso automaticamente
-  useEffect(() => {
-    if (!remoteVersions || currentAppVersion === '...') return;
-    
-    const targetRemote = settings.updateBranch === 'main' ? remoteVersions.main : remoteVersions.stable;
-    
-    if (targetRemote === 'Erro' || targetRemote === '---') return;
-
-    const comparison = compareVersions(targetRemote, currentAppVersion, 'Monitor');
-    
-    console.log(`[APP] [MONITOR] Canal: ${settings.updateBranch.toUpperCase()} | Local: ${currentAppVersion} | Remoto: ${targetRemote} | Resultado: ${comparison}`);
-
-    if (comparison > 0) {
-      handleUpdateDetection({ 
-        version: targetRemote, 
-        updateType: 'upgrade',
-        releaseNotes: `Uma nova versão (${targetRemote}) foi encontrada no canal ${settings.updateBranch.toUpperCase()}.` 
-      });
-    } else if (comparison < 0) {
-      handleUpdateDetection({
-        version: targetRemote,
-        updateType: 'downgrade',
-        releaseNotes: `A versão estável do canal (${targetRemote}) é anterior à sua versão instalada (${currentAppVersion}).`
-      });
-    } else {
-      if (updateInfo && !manualCheckRef.current) {
-         console.log(`[APP] [MONITOR] Versões iguais. Limpando estado.`);
-         setUpdateInfo(null);
-      }
-    }
-  }, [remoteVersions, settings.updateBranch, currentAppVersion, handleUpdateDetection]);
-
   const handleCheckUpdate = () => {
     const electron = (window as any).electron;
     if (electron) {
       manualCheckRef.current = true;
-      console.log(`[APP] [UI] Manual check: ${settings.updateBranch}`);
+      console.log(`[UI] Solicitando verificação manual para o canal: ${settings.updateBranch}`);
       electron.send('check-update', settings.updateBranch);
     }
   };
@@ -257,17 +194,18 @@ const App: React.FC = () => {
   const handleStartDownload = () => {
     const electron = (window as any).electron;
     if (electron) { 
+      console.log("[UI] Iniciando download...");
       setDownloadProgress(0); 
-      electron.send('start-download');
-      if (settings.updateBranch === 'main' || !(window as any).electron.isPackaged) {
-        toast("Modo Dev/Main: Verifique o repositório GitHub para baixar.");
-      }
+      electron.send('start-download'); 
     }
   };
 
   const handleInstallUpdate = () => {
     const electron = (window as any).electron;
-    if (electron) electron.send('install-update');
+    if (electron) {
+      console.log("[UI] Solicitando instalação e reinicialização...");
+      electron.send('install-update');
+    }
   };
 
   const handleSchemaLoaded = (loadedSchema: DatabaseSchema, creds: DbCredentials) => {
