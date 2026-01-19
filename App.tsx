@@ -86,7 +86,7 @@ const App: React.FC = () => {
   const [showSqlExtractor, setShowSqlExtractor] = useState(false);
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
   
-  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade', currentVersion?: string} | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade', currentVersion?: string, isManual?: boolean} | null>(null);
   const [remoteVersions, setRemoteVersions] = useState<{stable: string, main: string} | null>(null);
   const [currentAppVersion, setCurrentAppVersion] = useState<string>('...');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
@@ -104,9 +104,10 @@ const App: React.FC = () => {
     const isManual = manualCheckRef.current || info.isManual;
     const type = info.updateType || (compareVersions(info.version, currentAppVersion) > 0 ? 'upgrade' : 'downgrade');
 
-    console.log(`[UI] Update Detectado: v${info.version} (${type}) no canal ${settings.updateBranch}`);
+    console.log(`[UI] Analisando Update: v${info.version} (Tipo: ${type}, Canal: ${settings.updateBranch})`);
 
     if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion) === 0) {
+      console.log(`[UI] Versão local e remota coincidem.`);
       manualCheckRef.current = false;
       return;
     }
@@ -114,10 +115,11 @@ const App: React.FC = () => {
     if (isManual || !ignoredVersions.includes(info.version)) {
       setUpdateInfo({
         version: info.version,
-        notes: info.releaseNotes || 'Novas melhorias.',
+        notes: info.releaseNotes || 'Novas melhorias de performance e segurança.',
         branch: settings.updateBranch === 'main' ? 'Main' : 'Stable',
         updateType: type as 'upgrade' | 'downgrade',
-        currentVersion: currentAppVersion
+        currentVersion: currentAppVersion,
+        isManual: !!info.isManual
       });
     }
     manualCheckRef.current = false;
@@ -126,25 +128,26 @@ const App: React.FC = () => {
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
-      electron.on('app-version', (v: string) => {
-        console.log("[UI] Versão local sincronizada:", v);
-        setCurrentAppVersion(v);
-      });
+      electron.on('app-version', (v: string) => setCurrentAppVersion(v));
       electron.on('sync-versions', (v: any) => setRemoteVersions(v));
       electron.on('update-available', handleUpdateDetection);
       electron.on('update-not-available', () => {
-        if (manualCheckRef.current) toast.success("Sistema sincronizado!");
+        if (manualCheckRef.current) toast.success("Sua versão está sincronizada!", { id: 'sync-ok' });
         manualCheckRef.current = false;
         setUpdateInfo(null);
       });
-      electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
+      electron.on('update-downloading', (p: any) => {
+        console.log(`[UI] Download em curso: ${p.percent}%`);
+        setDownloadProgress(p.percent);
+      });
       electron.on('update-ready', () => {
         setUpdateReady(true);
         setDownloadProgress(100);
-        toast.success("Atualização pronta!");
+        toast.success("Atualização baixada! Pronto para instalar.", { icon: '🚀' });
       });
-      electron.on('update-error', (e: any) => {
-        console.error("[UI] Erro update:", e);
+      electron.on('update-error', (msg: string) => {
+        console.error("[UI] Falha no Atualizador:", msg);
+        if (manualCheckRef.current) toast.error("Não foi possível processar a atualização automática.");
         manualCheckRef.current = false;
       });
       return () => electron.removeAllListeners('update-available');
@@ -154,10 +157,13 @@ const App: React.FC = () => {
   const handleStartDownload = () => {
     const electron = (window as any).electron;
     if (electron) { 
+      console.log(`[UI] Solicitando download canal: ${settings.updateBranch}`);
       setDownloadProgress(0); 
       electron.send('start-download', settings.updateBranch);
+      
+      // Se for main, informamos que abrirá no navegador
       if (settings.updateBranch === 'main') {
-        toast("Iniciando download do ZIP...");
+        toast("Baixando pacote manual via GitHub...", { icon: '📦' });
         setDownloadProgress(100);
       }
     }
