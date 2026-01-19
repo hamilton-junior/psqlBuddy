@@ -39,6 +39,18 @@ const INITIAL_BUILDER_STATE: BuilderState = {
   limit: 100
 };
 
+function compareVersions(v1: string, v2: string, context = 'App') {
+  console.log(`[DEBUG:VERSION:${context}] Comparando: "${v1}" vs "${v2}"`);
+  if (!v1 || v1 === '---' || !v2 || v2 === '---') return 0;
+  const p1 = v1.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const p2 = v2.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if (p1[i] > p2[i]) return 1;
+    if (p1[i] < p2[i]) return -1;
+  }
+  return 0;
+}
+
 const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<AppStep>('connection');
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
@@ -64,7 +76,6 @@ const App: React.FC = () => {
     } catch { return []; }
   });
 
-  // Modal Visibility States
   const [showSettings, setShowSettings] = useState(false);
   const [showDiagram, setShowDiagram] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -76,8 +87,7 @@ const App: React.FC = () => {
   const [showSqlExtractor, setShowSqlExtractor] = useState(false);
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
   
-  // Update States
-  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade'} | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade', currentVersion?: string} | null>(null);
   const [remoteVersions, setRemoteVersions] = useState<{stable: string, main: string} | null>(null);
   const [currentAppVersion, setCurrentAppVersion] = useState<string>('...');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
@@ -90,121 +100,80 @@ const App: React.FC = () => {
     localStorage.setItem('psqlBuddy-settings', JSON.stringify(settings));
   }, [settings.theme]);
 
-  useEffect(() => {
-    localStorage.setItem('psqlBuddy-dashboard', JSON.stringify(dashboardItems));
-  }, [dashboardItems]);
-
   const handleUpdateDetection = useCallback((info: any) => {
-    console.log(`[UPDATE] Detecção disparada: v${info.version}, Tipo: ${info.updateType}`);
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
     const isManual = manualCheckRef.current || info.isManual;
-    manualCheckRef.current = false;
+    const type = info.updateType || 'upgrade';
+
+    console.log(`[UI] [UPDATE_HANDLER] Recebido: v${info.version}, Tipo: ${type}, Canal: ${settings.updateBranch}`);
+
+    if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion, 'UI-Guard') === 0) {
+      console.log(`[UI] [UPDATE_HANDLER] Versões idênticas. Ignorando.`);
+      setUpdateInfo(null);
+      manualCheckRef.current = false;
+      return;
+    }
 
     if (isManual || !ignoredVersions.includes(info.version)) {
       setUpdateInfo({
         version: info.version,
-        notes: info.releaseNotes || 'Novas melhorias disponíveis.',
-        branch: settings.updateBranch === 'main' ? 'Main/WIP' : 'Stable',
-        updateType: info.updateType || 'upgrade'
+        notes: info.releaseNotes || 'Novas melhorias.',
+        branch: settings.updateBranch === 'main' ? 'Main' : 'Stable',
+        updateType: type,
+        currentVersion: currentAppVersion
       });
-      
-      if (isManual) {
-        if (info.updateType === 'downgrade') {
-          toast("A versão oficial é anterior à sua atual.", { icon: '⚠️' });
-        } else {
-          toast.success(`Versão v${info.version} encontrada!`);
-        }
-      }
-    } else {
-      console.log(`[UPDATE] Versão v${info.version} ignorada pelo usuário anteriormente.`);
+      if (isManual) toast.success(`Versão v${info.version} detectada no canal ${settings.updateBranch.toUpperCase()}!`);
     }
-  }, [settings.updateBranch]);
+    manualCheckRef.current = false;
+  }, [settings.updateBranch, currentAppVersion]);
 
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
-      console.log("[ELECTRON-BRIDGE] Inicializando escuta de eventos...");
-      
-      electron.on('app-version', (v: string) => {
-        console.log(`[ELECTRON-BRIDGE] Versão local: ${v}`);
-        setCurrentAppVersion(v);
-      });
-      
-      electron.on('sync-versions', (v: any) => {
-        console.log("[ELECTRON-BRIDGE] Versões sincronizadas do GitHub:", v);
-        setRemoteVersions(v);
-      });
-
+      electron.on('app-version', (v: string) => setCurrentAppVersion(v));
+      electron.on('sync-versions', (v: any) => setRemoteVersions(v));
       electron.on('update-available', handleUpdateDetection);
-
       electron.on('update-not-available', () => {
-        console.log("[ELECTRON-BRIDGE] Sistema já está atualizado.");
-        if (manualCheckRef.current) {
-          toast.success("Você já está na última versão!");
-        }
+        if (manualCheckRef.current) toast.success("Sua instância está sincronizada!");
         manualCheckRef.current = false;
         setUpdateInfo(null);
       });
-
-      electron.on('update-downloading', (p: any) => {
-        console.log(`[ELECTRON-BRIDGE] Progresso: ${p.percent.toFixed(2)}%`);
-        setDownloadProgress(p.percent);
+      electron.on('update-error', (err: any) => {
+        console.error("[UI] Erro update:", err);
+        manualCheckRef.current = false;
       });
-
+      electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
       electron.on('update-ready', () => {
-        console.log("[ELECTRON-BRIDGE] Download concluído. Pronto para instalar.");
         setUpdateReady(true);
         setDownloadProgress(100);
+        toast.success("Pronto para instalar!", { id: 'ready-toast' });
       });
-
-      electron.on('update-error', (err: any) => {
-        console.error("[ELECTRON-BRIDGE] Erro no processo de atualização:", err);
-        manualCheckRef.current = false;
-        toast.error("Falha ao buscar atualização.");
-      });
-
-      return () => {
-         electron.removeAllListeners('update-available');
-         electron.removeAllListeners('update-not-available');
-         electron.removeAllListeners('sync-versions');
-         electron.removeAllListeners('update-ready');
-         electron.removeAllListeners('update-error');
-      }
+      return () => electron.removeAllListeners('update-available');
     }
   }, [handleUpdateDetection]);
 
-  const handleCheckUpdate = () => {
-    const electron = (window as any).electron;
-    if (electron) {
-      manualCheckRef.current = true;
-      console.log(`[UI] Solicitando verificação manual para o canal: ${settings.updateBranch}`);
-      electron.send('check-update', settings.updateBranch);
-    }
-  };
+  useEffect(() => {
+    if (!remoteVersions || currentAppVersion === '...') return;
+    const targetRemote = settings.updateBranch === 'main' ? remoteVersions.main : remoteVersions.stable;
+    if (targetRemote === 'Erro' || targetRemote === '---') return;
 
-  const handleIgnoreUpdate = (version: string) => {
-    const ignored = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
-    if (!ignored.includes(version)) {
-      ignored.push(version);
-      localStorage.setItem('psqlBuddy-ignored-versions', JSON.stringify(ignored));
+    const comp = compareVersions(targetRemote, currentAppVersion, 'AutoMonitor');
+    if (comp !== 0) {
+      handleUpdateDetection({ version: targetRemote, updateType: comp > 0 ? 'upgrade' : 'downgrade' });
     }
-    setUpdateInfo(null);
-  };
+  }, [remoteVersions, settings.updateBranch, currentAppVersion, handleUpdateDetection]);
 
   const handleStartDownload = () => {
     const electron = (window as any).electron;
     if (electron) { 
-      console.log("[UI] Iniciando download...");
+      console.log(`[UI] [ACTION] Iniciando download no canal: ${settings.updateBranch}`);
       setDownloadProgress(0); 
-      electron.send('start-download'); 
-    }
-  };
-
-  const handleInstallUpdate = () => {
-    const electron = (window as any).electron;
-    if (electron) {
-      console.log("[UI] Solicitando instalação e reinicialização...");
-      electron.send('install-update');
+      electron.send('start-download', settings.updateBranch);
+      
+      if (settings.updateBranch === 'main') {
+        toast("Iniciando download do ZIP da branch Main...");
+        setDownloadProgress(100); // Para UI de WIP, simulamos progresso completo pois abre no browser
+      }
     }
   };
 
@@ -224,11 +193,8 @@ const App: React.FC = () => {
         : generateLocalSql(schema, builderState);
       setQueryResult(result);
       setCurrentStep('preview');
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao gerar SQL");
-    } finally {
-      setIsGenerating(false);
-    }
+    } catch (error: any) { toast.error(error.message || "Erro SQL"); }
+    finally { setIsGenerating(false); }
   };
 
   const handleExecuteQuery = async (sqlOverride?: string) => {
@@ -242,39 +208,21 @@ const App: React.FC = () => {
           : await executeQueryReal(credentials, sqlToRun);
        setExecutionResult(data);
        setCurrentStep('results');
-    } catch (error: any) {
-       toast.error(error.message || "Erro na execução");
-    } finally {
-       setIsExecuting(false);
-    }
-  };
-
-  const handleRunSqlExternal = (sql: string) => {
-    setQueryResult({ sql, explanation: 'Carregado de ferramenta externa.', tips: [] });
-    setCurrentStep('preview');
+    } catch (error: any) { toast.error(error.message || "Erro execução"); }
+    finally { setIsExecuting(false); }
   };
 
   return (
     <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors duration-500">
       <Toaster position="top-right" />
-      
       <Sidebar 
-        currentStep={currentStep} 
-        onNavigate={setCurrentStep} 
-        schema={schema} 
-        hasResults={executionResult.length > 0}
-        onOpenSettings={() => setShowSettings(true)} 
-        onOpenDiagram={() => setShowDiagram(true)}
-        onOpenHistory={() => setShowHistory(true)}
-        onOpenShortcuts={() => setShowShortcuts(true)}
-        onOpenCheatSheet={() => setShowCheatSheet(true)}
-        onOpenVirtualRelations={() => setShowVirtualRelations(true)}
-        onOpenLogAnalyzer={() => setShowLogAnalyzer(true)}
-        onOpenTemplates={() => setShowTemplates(true)}
-        onOpenSqlExtractor={() => setShowSqlExtractor(true)}
-        onCheckUpdate={handleCheckUpdate}
+        currentStep={currentStep} onNavigate={setCurrentStep} schema={schema} hasResults={executionResult.length > 0}
+        onOpenSettings={() => setShowSettings(true)} onOpenDiagram={() => setShowDiagram(true)}
+        onOpenHistory={() => setShowHistory(true)} onOpenShortcuts={() => setShowShortcuts(true)}
+        onOpenCheatSheet={() => setShowCheatSheet(true)} onOpenVirtualRelations={() => setShowVirtualRelations(true)}
+        onOpenLogAnalyzer={() => setShowLogAnalyzer(true)} onOpenTemplates={() => setShowTemplates(true)}
+        onOpenSqlExtractor={() => setShowSqlExtractor(true)} onCheckUpdate={() => { manualCheckRef.current = true; (window as any).electron.send('check-update', settings.updateBranch); }}
       />
-
       <main className="flex-1 overflow-hidden relative flex flex-col">
         <div className="flex-1 p-6 overflow-hidden h-full">
            {currentStep === 'connection' && <ConnectionStep onSchemaLoaded={handleSchemaLoaded} settings={settings} />}
@@ -288,75 +236,20 @@ const App: React.FC = () => {
               <ResultsStep data={executionResult} sql={queryResult?.sql || ''} onBackToBuilder={() => setCurrentStep('builder')} onNewConnection={() => setCurrentStep('connection')} settings={settings} onShowToast={(m) => toast(m)} credentials={credentials} schema={schema || undefined} />
            )}
            {currentStep === 'datadiff' && schema && <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />}
-           {currentStep === 'dashboard' && (
-              <DashboardStep 
-                items={dashboardItems} 
-                onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} 
-                onClearAll={() => setDashboardItems([])} 
-              />
-           )}
+           {currentStep === 'dashboard' && <DashboardStep items={dashboardItems} onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} onClearAll={() => setDashboardItems([])} />}
            {currentStep === 'roadmap' && <Rocket className="w-8 h-8 text-indigo-600 animate-bounce" />}
         </div>
       </main>
-
-      {showSettings && (
-        <SettingsModal 
-          settings={settings} 
-          onSave={setSettings} 
-          onClose={() => setShowSettings(false)} 
-          simulationData={simulationData} 
-          schema={schema} 
-          credentials={credentials}
-          remoteVersions={remoteVersions}
-        />
-      )}
-      
-      {showDiagram && schema && (
-        <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} credentials={credentials} />
-      )}
-      
-      {showHistory && (
-        <HistoryModal onClose={() => setShowHistory(false)} onLoadQuery={handleRunSqlExternal} />
-      )}
-      
+      {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} remoteVersions={remoteVersions} />}
+      {showDiagram && schema && <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} credentials={credentials} />}
+      {showHistory && <HistoryModal onClose={() => setShowHistory(false)} onLoadQuery={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} />}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
-      
       {showCheatSheet && <SqlCheatSheetModal onClose={() => setShowCheatSheet(false)} />}
-      
-      {showVirtualRelations && schema && (
-        <VirtualRelationsModal 
-           schema={schema} 
-           existingRelations={virtualRelations} 
-           onAddRelation={(r) => setVirtualRelations(prev => [...prev, r])}
-           onRemoveRelation={(id) => setVirtualRelations(prev => prev.filter(r => r.id !== id))}
-           onClose={() => setShowVirtualRelations(false)}
-           credentials={credentials}
-        />
-      )}
-      
-      {showLogAnalyzer && schema && (
-        <LogAnalyzerModal schema={schema} onClose={() => setShowLogAnalyzer(false)} onRunSql={handleRunSqlExternal} />
-      )}
-      
-      {showTemplates && (
-        <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={handleRunSqlExternal} />
-      )}
-      
-      {showSqlExtractor && (
-        <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={handleRunSqlExternal} settings={settings} />
-      )}
-      
-      {updateInfo && (
-        <UpdateModal 
-          updateInfo={updateInfo} 
-          downloadProgress={downloadProgress} 
-          isReady={updateReady} 
-          onClose={() => setUpdateInfo(null)} 
-          onStartDownload={handleStartDownload}
-          onInstall={handleInstallUpdate} 
-          onIgnore={() => handleIgnoreUpdate(updateInfo.version)}
-        />
-      )}
+      {showVirtualRelations && schema && <VirtualRelationsModal schema={schema} existingRelations={virtualRelations} onAddRelation={r => setVirtualRelations(p => [...p, r])} onRemoveRelation={id => setVirtualRelations(p => p.filter(r => r.id !== id))} onClose={() => setShowVirtualRelations(false)} credentials={credentials} />}
+      {showLogAnalyzer && schema && <LogAnalyzerModal schema={schema} onClose={() => setShowLogAnalyzer(false)} onRunSql={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} />}
+      {showTemplates && <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} />}
+      {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} settings={settings} />}
+      {updateInfo && <UpdateModal updateInfo={updateInfo} downloadProgress={downloadProgress} isReady={updateReady} onClose={() => setUpdateInfo(null)} onStartDownload={handleStartDownload} onInstall={() => (window as any).electron.send('install-update')} onIgnore={() => { const ign = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]'); ign.push(updateInfo.version); localStorage.setItem('psqlBuddy-ignored-versions', JSON.stringify(ign)); setUpdateInfo(null); }} />}
     </div>
   );
 };
