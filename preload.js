@@ -1,9 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-console.log("[PRELOAD] Script carregado com sucesso. Expondo API 'electron' no escopo global.");
+console.log("[PRELOAD] Sistema de IPC Inicializado.");
 
 contextBridge.exposeInMainWorld('electron', {
-  getVersion: () => process.env.npm_package_version || '0.1.10',
   send: (channel, data) => {
     let validChannels = ['check-update', 'install-update', 'start-download'];
     if (validChannels.includes(channel)) {
@@ -25,17 +24,6 @@ contextBridge.exposeInMainWorld('electron', {
     }
   },
   removeAllListeners: (channel) => {
-    let validChannels = [
-      'update-available', 
-      'update-not-available', 
-      'update-downloading', 
-      'update-ready', 
-      'sync-versions', 
-      'update-error',
-      'app-version'
-    ];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.removeAllListeners(channel);
-    }
+    ipcRenderer.removeAllListeners(channel);
   }
 });

@@ -39,9 +39,8 @@ const INITIAL_BUILDER_STATE: BuilderState = {
   limit: 100
 };
 
-function compareVersions(v1: string, v2: string, context = 'App') {
-  console.log(`[DEBUG:VERSION:${context}] Comparando: "${v1}" vs "${v2}"`);
-  if (!v1 || v1 === '---' || !v2 || v2 === '---') return 0;
+function compareVersions(v1: string, v2: string) {
+  if (!v1 || v1 === '...' || !v2 || v2 === '...') return 0;
   const p1 = v1.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
   const p2 = v2.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
   for (let i = 0; i < 3; i++) {
@@ -103,13 +102,11 @@ const App: React.FC = () => {
   const handleUpdateDetection = useCallback((info: any) => {
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
     const isManual = manualCheckRef.current || info.isManual;
-    const type = info.updateType || 'upgrade';
+    const type = info.updateType || (compareVersions(info.version, currentAppVersion) > 0 ? 'upgrade' : 'downgrade');
 
-    console.log(`[UI] [UPDATE_HANDLER] Recebido: v${info.version}, Tipo: ${type}, Canal: ${settings.updateBranch}`);
+    console.log(`[UI] Update Detectado: v${info.version} (${type}) no canal ${settings.updateBranch}`);
 
-    if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion, 'UI-Guard') === 0) {
-      console.log(`[UI] [UPDATE_HANDLER] Versões idênticas. Ignorando.`);
-      setUpdateInfo(null);
+    if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion) === 0) {
       manualCheckRef.current = false;
       return;
     }
@@ -119,10 +116,9 @@ const App: React.FC = () => {
         version: info.version,
         notes: info.releaseNotes || 'Novas melhorias.',
         branch: settings.updateBranch === 'main' ? 'Main' : 'Stable',
-        updateType: type,
+        updateType: type as 'upgrade' | 'downgrade',
         currentVersion: currentAppVersion
       });
-      if (isManual) toast.success(`Versão v${info.version} detectada no canal ${settings.updateBranch.toUpperCase()}!`);
     }
     manualCheckRef.current = false;
   }, [settings.updateBranch, currentAppVersion]);
@@ -130,49 +126,39 @@ const App: React.FC = () => {
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
-      electron.on('app-version', (v: string) => setCurrentAppVersion(v));
+      electron.on('app-version', (v: string) => {
+        console.log("[UI] Versão local sincronizada:", v);
+        setCurrentAppVersion(v);
+      });
       electron.on('sync-versions', (v: any) => setRemoteVersions(v));
       electron.on('update-available', handleUpdateDetection);
       electron.on('update-not-available', () => {
-        if (manualCheckRef.current) toast.success("Sua instância está sincronizada!");
+        if (manualCheckRef.current) toast.success("Sistema sincronizado!");
         manualCheckRef.current = false;
         setUpdateInfo(null);
-      });
-      electron.on('update-error', (err: any) => {
-        console.error("[UI] Erro update:", err);
-        manualCheckRef.current = false;
       });
       electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
       electron.on('update-ready', () => {
         setUpdateReady(true);
         setDownloadProgress(100);
-        toast.success("Pronto para instalar!", { id: 'ready-toast' });
+        toast.success("Atualização pronta!");
+      });
+      electron.on('update-error', (e: any) => {
+        console.error("[UI] Erro update:", e);
+        manualCheckRef.current = false;
       });
       return () => electron.removeAllListeners('update-available');
     }
   }, [handleUpdateDetection]);
 
-  useEffect(() => {
-    if (!remoteVersions || currentAppVersion === '...') return;
-    const targetRemote = settings.updateBranch === 'main' ? remoteVersions.main : remoteVersions.stable;
-    if (targetRemote === 'Erro' || targetRemote === '---') return;
-
-    const comp = compareVersions(targetRemote, currentAppVersion, 'AutoMonitor');
-    if (comp !== 0) {
-      handleUpdateDetection({ version: targetRemote, updateType: comp > 0 ? 'upgrade' : 'downgrade' });
-    }
-  }, [remoteVersions, settings.updateBranch, currentAppVersion, handleUpdateDetection]);
-
   const handleStartDownload = () => {
     const electron = (window as any).electron;
     if (electron) { 
-      console.log(`[UI] [ACTION] Iniciando download no canal: ${settings.updateBranch}`);
       setDownloadProgress(0); 
       electron.send('start-download', settings.updateBranch);
-      
       if (settings.updateBranch === 'main') {
-        toast("Iniciando download do ZIP da branch Main...");
-        setDownloadProgress(100); // Para UI de WIP, simulamos progresso completo pois abre no browser
+        toast("Iniciando download do ZIP...");
+        setDownloadProgress(100);
       }
     }
   };
