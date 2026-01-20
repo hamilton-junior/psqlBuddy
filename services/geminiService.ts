@@ -1,6 +1,12 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseSchema, QueryResult, ValidationResult, BuilderState, AggregateFunction, Operator, JoinType, OptimizationAnalysis, VirtualRelation } from "../types";
+
+// Log para depuração de ambiente
+if (!process.env.API_KEY) {
+  console.error("[GEMINI] Erro Crítico: A VITE_API_KEY não foi detectada pelo Vite. Verifique seu arquivo .env");
+} else {
+  console.log("[GEMINI] API Key detectada com sucesso.");
+}
 
 // Initialize the AI client using the API key from environment variables.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -191,7 +197,7 @@ export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Pr
     Atue como um DBA PostgreSQL.
     ${schemaContext}
     Consulta SQL: "${sql}"
-    Retorne JSON com validação de colunas e sintaxe. IMPORTANTE: Operadores LIKE/ILIKE em colunas BIGINT/INT exigem cast da coluna para ::text.
+    Retorne JSON with validação de colunas e sintaxe. IMPORTANTE: Operadores LIKE/ILIKE em colunas BIGINT/INT exigem cast da coluna para ::text.
   `;
 
   try {
