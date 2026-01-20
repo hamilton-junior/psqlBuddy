@@ -16,16 +16,16 @@
     "dev:all": "concurrently -n \"VITE,SERVER,APP\" -c \"blue,green,magenta\" \"npm run dev\" \"npm run server\" \"cross-env SKIP_BACKEND=1 npm run electron\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "dist": "node -e \"const {execSync}=require('child_process'); const c=parseInt(execSync('git rev-list --count HEAD').toString().trim()); const major=Math.floor(c/1000); const minor=Math.floor((c%1000)/100); const patch=c%100; const v=major+'.'+minor+'.'+patch; const b=execSync('git rev-parse --abbrev-ref HEAD').toString().trim(); console.log('--- BUILD INFO ---'); console.log('Version:', v); console.log('Branch:', b); console.log('------------------'); execSync('npm run build', {stdio:'inherit'}); const builderCmd='electron-builder --publish always -c.extraMetadata.version='+v+' -c.nsis.artifactName=\\\"PSQL Buddy Setup '+v+'-'+b+'.exe\\\"'; execSync(builderCmd, {stdio:'inherit'})\""
+    "dist": "node -e \"const {execSync}=require('child_process'); const fs=require('fs'); if(!process.env.GH_TOKEN && fs.existsSync('.env')){ const env=fs.readFileSync('.env','utf8'); const match=env.match(/^GH_TOKEN=(.*)$/m); if(match) process.env.GH_TOKEN=match[1].trim(); } const c=parseInt(execSync('git rev-list --count HEAD').toString().trim()); const major=Math.floor(c/1000); const minor=Math.floor((c%1000)/100); const patch=c%100; const v=major+'.'+minor+'.'+patch; const b=execSync('git rev-parse --abbrev-ref HEAD').toString().trim(); console.log('--- BUILD INFO ---'); console.log('Version:', v); console.log('Branch:', b); if(!process.env.GH_TOKEN) console.warn('AVISO: GH_TOKEN não encontrado. O upload para o GitHub pode falhar.'); console.log('------------------'); execSync('npm run build', {stdio:'inherit'}); const builderCmd='electron-builder --publish always -c.extraMetadata.version='+v+' -c.nsis.artifactName=\\\"PSQL Buddy Setup '+v+'-'+b+'.exe\\\"'; execSync(builderCmd, {stdio:'inherit', env: process.env})\""
   },
   "dependencies": {
     "@google/genai": "1.35.0",
     "@monaco-editor/react": "4.7.0",
     "cors": "2.8.5",
     "electron-updater": "^6.1.7",
-    "express": "^5.2.1",
+    "express": "5.0.1",
     "html2canvas": "1.4.1",
-    "jspdf": "^4.0.0",
+    "jspdf": "2.5.2",
     "lucide-react": "0.475.0",
     "pg": "8.13.1",
     "react": "19.0.0",
@@ -41,12 +41,12 @@
     "autoprefixer": "10.4.20",
     "concurrently": "9.1.2",
     "cross-env": "7.0.3",
-    "electron": "^40.0.0",
-    "electron-builder": "^26.5.0",
+    "electron": "34.0.0",
+    "electron-builder": "26.0.0",
     "postcss": "8.5.1",
     "tailwindcss": "4.0.0",
     "typescript": "5.7.3",
-    "vite": "^6.4.1"
+    "vite": "6.0.7"
   },
   "build": {
     "appId": "com.psqlbuddy.app",
@@ -78,7 +78,7 @@
       "target": "nsis"
     },
     "nsis": {
-      "oneClick": false,
+      "oneOneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

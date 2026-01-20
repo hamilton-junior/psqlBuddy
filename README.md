@@ -18,12 +18,20 @@ This project is a Visual PostgreSQL Query Builder powered by Google Gemini AI.
 
 ## Setup API Key
 
-Create a `.env` file in the root directory and add your Google Gemini API key:
+Create a `.env` file in the root directory and add your keys:
 
 ```env
-VITE_API_KEY=your_actual_api_key_here
+VITE_API_KEY=your_actual_gemini_api_key_here
+GH_TOKEN=your_github_personal_access_token_here
 ```
-*Note: You may need to update the `geminiService.ts` to use `import.meta.env.VITE_API_KEY` instead of `process.env.API_KEY` if running via Vite locally, or configure your bundler to replace `process.env.API_KEY`.*
+
+## How to generate GH_TOKEN for Local Release
+
+To run `npm run dist` locally, you need a GitHub Personal Access Token:
+1. Go to **GitHub Settings** > **Developer Settings** > **Personal access tokens** > **Tokens (classic)**.
+2. Click **Generate new token (classic)**.
+3. Select the `repo` scope (full control of private repositories).
+4. Copy the generated token and paste it into your `.env` file as `GH_TOKEN=...`.
 
 ## Running Locally
 
@@ -33,7 +41,10 @@ Start the development server:
 npm run dev
 ```
 
-Open your browser to the URL shown (usually `http://localhost:5173`).
+Build and Package (Distribution):
+```bash
+npm run dist
+```
 
 ## Project Structure
 
