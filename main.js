@@ -1,9 +1,9 @@
 
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, utilityProcess } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { spawn, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow;
-let serverProcess;
+let serverChild;
 
 // Configurações do Atualizador
 autoUpdater.autoDownload = false;
@@ -48,45 +48,57 @@ function compareVersions(v1, v2) {
   return 0;
 }
 
+/**
+ * Inicializa o backend usando UtilityProcess (Electron 22+)
+ * É mais seguro e lida melhor com módulos nativos e caminhos ASAR.
+ */
 function startBackend() {
-  console.log("[MAIN] Tentando iniciar o servidor backend...");
+  console.log("[MAIN] Iniciando Backend Service...");
   
   if (process.env.SKIP_BACKEND === '1') {
-    console.log("[MAIN] Backend externo detectado (SKIP_BACKEND).");
+    console.log("[MAIN] SKIP_BACKEND ativo. Ignorando.");
     return;
   }
 
-  // No build (packaged), o server.js fica em resources/app.asar.unpacked/server.js
+  // Caminho do servidor
   const serverPath = app.isPackaged 
     ? path.join(process.resourcesPath, 'app.asar.unpacked', 'server.js')
     : path.join(__dirname, 'server.js');
 
-  console.log(`[MAIN] Caminho resolvido do servidor: ${serverPath}`);
+  console.log(`[MAIN] Resolvendo backend em: ${serverPath}`);
 
   if (!fs.existsSync(serverPath)) {
-    console.error(`[MAIN] ERRO: Arquivo do servidor não encontrado em: ${serverPath}`);
-    return;
+    console.error(`[MAIN] ERRO CRÍTICO: server.js não existe em ${serverPath}`);
+    // Tenta fallback para dentro do ASAR se for packaged (apenas para debug)
+    const asarPath = path.join(__dirname, 'server.js');
+    if (app.isPackaged && !fs.existsSync(serverPath) && fs.existsSync(asarPath)) {
+        console.warn("[MAIN] Fallback para caminho interno do ASAR detectado.");
+    } else {
+        return;
+    }
   }
 
-  // Iniciamos o servidor usando o próprio executável do Electron em modo node
-  // Isso garante que as dependências do node_modules sejam encontradas corretamente
-  serverProcess = spawn(process.execPath, [serverPath], {
-    env: { 
-      ...process.env, 
-      ELECTRON_RUN_AS_NODE: '1',
-      PORT: '3000',
-      HOST: '127.0.0.1'
-    },
-    stdio: 'inherit'
-  });
+  try {
+    // Usamos UtilityProcess para garantir isolamento e carregamento correto de dependências
+    serverChild = utilityProcess.fork(serverPath, [], {
+        env: { 
+            ...process.env,
+            PORT: '3000',
+            HOST: '127.0.0.1'
+        },
+        stdio: 'inherit'
+    });
 
-  serverProcess.on('error', (err) => {
-    console.error('[MAIN] Falha crítica ao fazer spawn do servidor:', err);
-  });
+    serverChild.on('spawn', () => {
+        console.log("[MAIN] Backend Process (Utility) spawnado com sucesso na porta 3000.");
+    });
 
-  serverProcess.on('exit', (code) => {
-    console.log(`[MAIN] Processo do servidor encerrado com código: ${code}`);
-  });
+    serverChild.on('exit', (code) => {
+        console.warn(`[MAIN] Backend Process encerrou inesperadamente com código ${code}`);
+    });
+  } catch (err) {
+    console.error("[MAIN] Falha ao executar fork do backend:", err);
+  }
 }
 
 function createWindow() {
@@ -108,7 +120,7 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
   }
 
-  mainWindow.webContents.on('did-finish-load', async () => {
+  mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.send('app-version', CURRENT_VERSION);
     fetchGitHubVersions().then(versions => {
       mainWindow.webContents.send('sync-versions', versions);
@@ -122,15 +134,11 @@ async function fetchGitHubVersions() {
   try {
     let stable = '---';
     let main = '---';
-    
-    // Pegar tags
     const tagsRes = await fetch(`https://api.github.com/repos/${repo}/tags`, { headers });
     if (tagsRes.ok) {
       const tags = await tagsRes.json();
       if (tags.length > 0) stable = tags[0].name.replace(/^v/, '');
     }
-    
-    // Pegar contagem de commits na main
     const commitsRes = await fetch(`https://api.github.com/repos/${repo}/commits?sha=main&per_page=1`, { headers });
     if (commitsRes.ok) {
        const link = commitsRes.headers.get('link');
@@ -144,7 +152,6 @@ async function fetchGitHubVersions() {
     }
     return { stable, main };
   } catch (e) { 
-    console.error("[MAIN] Erro ao buscar versões remotas:", e);
     return { stable: 'Erro', main: 'Erro' }; 
   }
 }
@@ -155,37 +162,39 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { 
-  if (serverProcess) serverProcess.kill();
+  if (serverChild) serverChild.kill();
   if (process.platform !== 'darwin') app.quit();
 });
 
 ipcMain.on('check-update', async (event, branch) => {
-  console.log(`[MAIN] Checagem manual de atualização solicitada: ${branch}`);
+  console.log(`[MAIN] Buscando atualização para branch: ${branch}`);
   
-  // Primeiro, buscamos as versões manualmente para comparar
   const versions = await fetchGitHubVersions();
   const remoteVersion = branch === 'main' ? versions.main : versions.stable;
-  
   const comparison = compareVersions(remoteVersion, CURRENT_VERSION);
 
   if (comparison === 0) {
-    console.log("[MAIN] Mesma versão detectada.");
     mainWindow.webContents.send('update-not-available');
     return;
   }
 
   const updateType = comparison < 0 ? 'downgrade' : 'upgrade';
-  console.log(`[MAIN] Diferença detectada: Remota=${remoteVersion} Local=${CURRENT_VERSION} (${updateType})`);
+  console.log(`[MAIN] Alteração detectada: v${CURRENT_VERSION} -> v${remoteVersion} (${updateType})`);
 
   if (app.isPackaged && branch === 'stable') {
-    // Se for estável e pacote buildado, deixamos o autoUpdater tomar o controle,
-    // mas avisamos a UI sobre o tipo (especialmente downgrade)
+    // Força o autoUpdater a checar. allowDowngrade=true permite que ele ache a versão inferior
     autoUpdater.checkForUpdates().catch(err => {
-      console.error("[MAIN] Erro no autoUpdater:", err);
-      mainWindow.webContents.send('update-error', "Falha ao consultar servidor de atualizações.");
+      console.error("[MAIN] Erro autoUpdater:", err);
+      // Se falhar o auto-check, enviamos o evento manualmente para a UI exibir o modal
+      mainWindow.webContents.send('update-available', { 
+        version: remoteVersion, 
+        branch, 
+        updateType,
+        isManual: true 
+      });
     });
   } else {
-    // Para branch main ou dev, apenas avisamos a UI
+    // Para branch main ou dev, sempre via manual event
     mainWindow.webContents.send('update-available', { 
       version: remoteVersion, 
       branch, 
@@ -198,7 +207,6 @@ ipcMain.on('check-update', async (event, branch) => {
 autoUpdater.on('update-available', (info) => {
   const comparison = compareVersions(info.version, CURRENT_VERSION);
   const updateType = comparison < 0 ? 'downgrade' : 'upgrade';
-  
   mainWindow.webContents.send('update-available', { 
     version: info.version, 
     releaseNotes: info.releaseNotes,
@@ -215,8 +223,8 @@ autoUpdater.on('error', (err) => {
   mainWindow.webContents.send('update-error', err.message);
 });
 
-autoUpdater.on('download-progress', (progressObj) => {
-  mainWindow.webContents.send('update-downloading', progressObj);
+autoUpdater.on('download-progress', (p) => {
+  mainWindow.webContents.send('update-downloading', p);
 });
 
 autoUpdater.on('update-downloaded', () => {

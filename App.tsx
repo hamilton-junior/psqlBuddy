@@ -100,17 +100,22 @@ const App: React.FC = () => {
   }, [settings.theme]);
 
   const handleUpdateDetection = useCallback((info: any) => {
-    console.log("[UI] Detecção de atualização recebida:", info);
+    console.log("[UI] Evento de atualização recebido:", info);
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
     const isManual = manualCheckRef.current || info.isManual;
     
-    // Calculamos o tipo caso o backend não tenha enviado explicitamente
     const type = info.updateType || (compareVersions(info.version, currentAppVersion) < 0 ? 'downgrade' : 'upgrade');
+
+    if (type === 'downgrade') {
+        toast("Aviso: Downgrade disponível", { icon: '⚠️' });
+    } else {
+        toast("Nova atualização encontrada!", { icon: '✨' });
+    }
 
     if (isManual || !ignoredVersions.includes(info.version)) {
       setUpdateInfo({
         version: info.version,
-        notes: info.releaseNotes || (type === 'downgrade' ? 'Uma versão anterior está disponível no canal. Deseja realizar a reversão?' : 'Novas melhorias e correções disponíveis.'),
+        notes: info.releaseNotes || (type === 'downgrade' ? 'Uma versão anterior foi solicitada ou está disponível para restauração.' : 'Novas melhorias e correções disponíveis.'),
         branch: info.branch || (settings.updateBranch === 'main' ? 'Main' : 'Stable'),
         updateType: type as 'upgrade' | 'downgrade',
         currentVersion: currentAppVersion,
@@ -124,7 +129,7 @@ const App: React.FC = () => {
     const electron = (window as any).electron;
     if (electron) {
       electron.on('app-version', (v: string) => {
-        console.log("[UI] Versão local confirmada:", v);
+        console.log("[UI] Versão local:", v);
         setCurrentAppVersion(v);
       });
       
@@ -133,8 +138,8 @@ const App: React.FC = () => {
       electron.on('update-available', handleUpdateDetection);
       
       electron.on('update-not-available', () => {
-        console.log("[UI] Nenhuma atualização necessária.");
-        if (manualCheckRef.current) toast.success("Você já está na versão ideal!");
+        console.log("[UI] Nenhuma mudança de versão necessária.");
+        if (manualCheckRef.current) toast.success("Você já está na versão sincronizada!");
         manualCheckRef.current = false;
         setUpdateInfo(null);
       });
@@ -144,12 +149,12 @@ const App: React.FC = () => {
       electron.on('update-ready', () => {
         setUpdateReady(true);
         setDownloadProgress(100);
-        toast.success("Download concluído!");
+        toast.success("Download pronto!");
       });
       
       electron.on('update-error', (msg: string) => {
-        console.error("[UI] Erro no atualizador:", msg);
-        if (manualCheckRef.current) toast.error("Não foi possível verificar atualizações.");
+        console.error("[UI] Erro Atualizador:", msg);
+        if (manualCheckRef.current) toast.error("Falha ao verificar alterações.");
         manualCheckRef.current = false;
         setDownloadProgress(null);
       });
@@ -163,7 +168,7 @@ const App: React.FC = () => {
     if (electron) { 
       setDownloadProgress(0); 
       electron.send('start-download');
-      toast.loading("Iniciando transferência...", { duration: 2000 });
+      toast.loading("Iniciando transferência...");
     }
   };
 
