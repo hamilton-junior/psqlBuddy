@@ -1,7 +1,7 @@
 
 import { DatabaseSchema, DbCredentials, ExplainNode, IntersectionResult } from "../types";
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'http://127.0.0.1:3000/api';
 
 /**
  * Log auxiliar para rastreamento de requisições
@@ -32,7 +32,7 @@ export const connectToDatabase = async (creds: DbCredentials): Promise<DatabaseS
   } catch (error: any) {
     logger('Connect', 'Erro crítico de conexão', error.message);
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      throw new Error("Cannot reach backend server (localhost:3000). Run 'npm run server' in a separate terminal.");
+      throw new Error("Não foi possível alcançar o serviço de dados (Backend). Verifique se o app tem permissão de rede local.");
     }
     throw error;
   }
@@ -61,7 +61,7 @@ export const executeQueryReal = async (creds: DbCredentials, sql: string): Promi
   } catch (error: any) {
     logger('Execute', 'Erro de rede ou servidor', error.message);
     if (error.message.includes('Failed to fetch')) {
-      throw new Error("Backend server is unreachable.");
+      throw new Error("Serviço de execução SQL indisponível.");
     }
     throw error;
   }

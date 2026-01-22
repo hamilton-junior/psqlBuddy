@@ -54,34 +54,36 @@ function startBackend() {
     return;
   }
 
-  // Define o caminho do server.js
-  // Em produção, arquivos marcados no asarUnpack ficam em app.asar.unpacked
+  // Caminho do server.js em produção vs desenvolvimento
   const serverPath = app.isPackaged 
-    ? path.join(app.getAppPath(), '..', 'app.asar.unpacked', 'server.js')
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'server.js')
     : path.join(__dirname, 'server.js');
 
   console.log(`[MAIN] Tentando iniciar backend em: ${serverPath}`);
 
   if (!fs.existsSync(serverPath)) {
-    console.error(`[MAIN] Erro: Arquivo do servidor não encontrado em ${serverPath}`);
+    console.error(`[MAIN] Erro Crítico: Arquivo do servidor não encontrado em ${serverPath}`);
+    // Fallback caso a estrutura mude em builds asar específicos
     return;
   }
 
+  // Usamos o próprio binário do Electron para rodar o node script para garantir compatibilidade
   serverProcess = spawn(process.execPath, [serverPath], {
     env: { 
       ...process.env, 
       ELECTRON_RUN_AS_NODE: '1',
-      PORT: '3000'
+      PORT: '3000',
+      HOST: '127.0.0.1'
     },
     stdio: 'inherit'
   });
 
   serverProcess.on('error', (err) => {
-    console.error('[MAIN] Falha ao iniciar processo do servidor:', err);
+    console.error('[MAIN] Falha catastrófica ao iniciar backend:', err);
   });
 
-  serverProcess.on('exit', (code) => {
-    console.log(`[MAIN] Servidor encerrou com código ${code}`);
+  serverProcess.on('exit', (code, signal) => {
+    console.log(`[MAIN] Backend encerrou. Code: ${code}, Signal: ${signal}`);
   });
 }
 
@@ -106,7 +108,6 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', async () => {
     mainWindow.webContents.send('app-version', CURRENT_VERSION);
-    // Silent version check
     fetchGitHubVersions().then(versions => {
       mainWindow.webContents.send('sync-versions', versions);
     }).catch(() => {});
@@ -145,11 +146,16 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { 
-  if (serverProcess) serverProcess.kill(); 
-  app.quit(); 
+  if (serverProcess) {
+    console.log("[MAIN] Encerrando backend...");
+    serverProcess.kill();
+  }
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
-// IPC handlers for updates...
+// IPC handlers for updates
 ipcMain.on('check-update', async (event, branch) => {
   if (app.isPackaged && branch === 'stable') {
     autoUpdater.checkForUpdates();
@@ -162,4 +168,9 @@ ipcMain.on('check-update', async (event, branch) => {
       mainWindow.webContents.send('update-not-available');
     }
   }
+});
+
+ipcMain.on('refresh-remote-versions', async () => {
+    const versions = await fetchGitHubVersions();
+    if (mainWindow) mainWindow.webContents.send('sync-versions', versions);
 });

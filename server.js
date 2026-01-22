@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 const { Client, types } = pg;
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = '127.0.0.1'; // Forçamos 127.0.0.1 para evitar problemas de resolução de nome local
 
 // ESM helpers for __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -191,6 +192,6 @@ app.post('/api/execute', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  serverLog('STARTUP', '-', `Servidor API rodando na porta ${PORT}`);
+app.listen(PORT, HOST, () => {
+  serverLog('STARTUP', '-', `Servidor API rodando em http://${HOST}:${PORT}`);
 });

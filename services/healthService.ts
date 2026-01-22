@@ -52,7 +52,7 @@ export const runFullHealthCheck = async (
   try {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), 1500);
-    await fetch('http://localhost:3000', { mode: 'no-cors', signal: controller.signal });
+    await fetch('http://127.0.0.1:3000', { mode: 'no-cors', signal: controller.signal });
     clearTimeout(id);
     results[1].status = 'success';
     results[1].message = 'Servidor Node.js respondendo.';
