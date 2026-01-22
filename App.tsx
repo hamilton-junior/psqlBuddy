@@ -4,7 +4,6 @@ import {
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
   AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem
 } from './types';
-import { Rocket } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import ConnectionStep from '@/components/steps/ConnectionStep';
 import BuilderStep from '@/components/steps/BuilderStep';
@@ -101,10 +100,10 @@ const App: React.FC = () => {
   }, [settings.theme]);
 
   const handleUpdateDetection = useCallback((info: any) => {
+    console.log("[UI] Info de atualização recebida:", info);
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
     const isManual = manualCheckRef.current || info.isManual;
     
-    // Se o backend já enviou o tipo, usamos ele. Senão, calculamos.
     const type = info.updateType || (compareVersions(info.version, currentAppVersion) < 0 ? 'downgrade' : 'upgrade');
 
     if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion) === 0) {
@@ -129,7 +128,10 @@ const App: React.FC = () => {
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
-      electron.on('app-version', (v: string) => setCurrentAppVersion(v));
+      electron.on('app-version', (v: string) => {
+        console.log("[UI] Versão atual confirmada pelo Main:", v);
+        setCurrentAppVersion(v);
+      });
       electron.on('sync-versions', (v: any) => setRemoteVersions(v));
       electron.on('update-available', handleUpdateDetection);
       electron.on('update-not-available', () => {
@@ -150,19 +152,20 @@ const App: React.FC = () => {
            toast("Abrindo navegador para download manual...", { icon: '🌐' });
            setUpdateInfo(null);
         } else if (manualCheckRef.current) {
-           toast.error("Erro no atualizador automático.");
+           toast.error(msg || "Erro no atualizador.");
         }
         manualCheckRef.current = false;
       });
-      return () => electron.removeAllListeners('update-available');
     }
   }, [handleUpdateDetection]);
 
   const handleStartDownload = () => {
     const electron = (window as any).electron;
     if (electron) { 
+      console.log("[UI] Solicitando início de download ao Main...");
       setDownloadProgress(0); 
       electron.send('start-download', settings.updateBranch);
+      toast("Iniciando transferência...", { icon: '⏳' });
     }
   };
 
@@ -197,7 +200,10 @@ const App: React.FC = () => {
           : await executeQueryReal(credentials, sqlToRun);
        setExecutionResult(data);
        setCurrentStep('results');
-    } catch (error: any) { toast.error(error.message || "Erro execução"); }
+    } catch (error: any) { 
+      console.error("[UI] Erro na execução:", error);
+      toast.error(error.message || "Erro execução"); 
+    }
     finally { setIsExecuting(false); }
   };
 

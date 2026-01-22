@@ -2,7 +2,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import https from 'https';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import pkg from 'electron-updater';
@@ -14,6 +13,7 @@ const __dirname = path.dirname(__filename);
 let mainWindow;
 let serverProcess;
 
+// Configurações críticas do Atualizador
 autoUpdater.autoDownload = false;
 autoUpdater.allowDowngrade = true; 
 autoUpdater.allowPrerelease = true; 
@@ -49,17 +49,21 @@ function compareVersions(v1, v2) {
 }
 
 function startBackend() {
+  console.log("[MAIN] Iniciando tentativa de spawn do Backend...");
   if (process.env.SKIP_BACKEND === '1') {
-    console.log("[MAIN] Backend externo detectado. Ignorando inicialização.");
+    console.log("[MAIN] SKIP_BACKEND detectado. Abortando spawn.");
     return;
   }
 
+  // Caminho resiliente para o servidor
   const serverPath = app.isPackaged 
     ? path.join(process.resourcesPath, 'app.asar.unpacked', 'server.js')
     : path.join(__dirname, 'server.js');
 
+  console.log(`[MAIN] Caminho do servidor: ${serverPath}`);
+
   if (!fs.existsSync(serverPath)) {
-    console.error(`[MAIN] Erro Crítico: Arquivo do servidor não encontrado em ${serverPath}`);
+    console.error(`[MAIN] ERRO FATAL: server.js não localizado em ${serverPath}`);
     return;
   }
 
@@ -74,7 +78,11 @@ function startBackend() {
   });
 
   serverProcess.on('error', (err) => {
-    console.error('[MAIN] Falha catastrófica ao iniciar backend:', err);
+    console.error('[MAIN] Falha ao iniciar processo do servidor:', err);
+  });
+
+  serverProcess.on('exit', (code) => {
+    console.log(`[MAIN] Backend encerrou com código ${code}`);
   });
 }
 
@@ -98,6 +106,7 @@ function createWindow() {
   }
 
   mainWindow.webContents.on('did-finish-load', async () => {
+    console.log("[MAIN] Janela carregada. Enviando versão atual:", CURRENT_VERSION);
     mainWindow.webContents.send('app-version', CURRENT_VERSION);
     fetchGitHubVersions().then(versions => {
       mainWindow.webContents.send('sync-versions', versions);
@@ -142,7 +151,7 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.on('check-update', async (event, branch) => {
-  console.log(`[MAIN] Checando atualizações para o canal: ${branch}`);
+  console.log(`[MAIN] Solicitando check-update para: ${branch}`);
   
   if (app.isPackaged && branch === 'stable') {
     autoUpdater.checkForUpdates();
@@ -153,7 +162,7 @@ ipcMain.on('check-update', async (event, branch) => {
     
     if (comparison !== 0) {
       const updateType = comparison < 0 ? 'downgrade' : 'upgrade';
-      console.log(`[MAIN] Mudança de versão detectada: ${CURRENT_VERSION} -> ${remote} (${updateType})`);
+      console.log(`[MAIN] Versão remota ${remote} é um ${updateType} em relação a ${CURRENT_VERSION}`);
       mainWindow.webContents.send('update-available', { 
         version: remote, 
         branch, 
@@ -163,6 +172,21 @@ ipcMain.on('check-update', async (event, branch) => {
     } else {
       mainWindow.webContents.send('update-not-available');
     }
+  }
+});
+
+ipcMain.on('start-download', (event, branch) => {
+  console.log(`[MAIN] Início de download solicitado para branch: ${branch}`);
+  if (app.isPackaged && branch === 'stable') {
+    autoUpdater.downloadUpdate().catch(err => {
+      console.error("[MAIN] Erro ao iniciar download do autoUpdater:", err);
+      mainWindow.webContents.send('update-error', "Falha ao iniciar download automático.");
+    });
+  } else {
+    // Se for branch main ou dev, redirecionamos para o repositório para download manual do código
+    console.log("[MAIN] Redirecionando para download manual (Branch experimental)");
+    shell.openExternal("https://github.com/Hamilton-Junior/psqlBuddy/archive/refs/heads/main.zip");
+    mainWindow.webContents.send('update-error', "MANUAL_DOWNLOAD_TRIGGERED");
   }
 });
 
@@ -191,10 +215,6 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 autoUpdater.on('update-downloaded', () => {
   mainWindow.webContents.send('update-ready');
-});
-
-ipcMain.on('start-download', () => {
-  autoUpdater.downloadUpdate();
 });
 
 ipcMain.on('install-update', () => {
