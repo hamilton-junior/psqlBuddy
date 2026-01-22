@@ -1,0 +1,162 @@
+
+{
+  "categories": [
+    {
+      "title": "Inteligência & Consultoria DBA",
+      "icon": "Bot",
+      "items": [
+        {
+          "title": "Auto-Indexador Sugestivo",
+          "desc": "Análise de query via IA para sugerir comandos 'CREATE INDEX' baseados no uso de WHERE/JOIN.",
+          "status": "Planejado",
+          "implementationPlan": [
+            "Técnica: A IA analisa o plano de execução (EXPLAIN) em busca de 'Sequential Scans' em tabelas grandes.",
+            "Comportamento: Botão 'Otimizar' sugere índices específicos para as colunas filtradas.",
+            "UI: Painel lateral com código SQL pronto e botão 'Executar Agora'.",
+            "Segurança: Validação de existência prévia de índices para evitar duplicidade."
+          ]
+        },
+        {
+          "title": "Tradução de Dialetos",
+          "desc": "Converter queries de MySQL, SQL Server ou Oracle para sintaxe otimizada do PostgreSQL.",
+          "status": "Em Discussão",
+          "implementationPlan": [
+            "Técnica: Prompt Engineering especializado em tradução de sintaxe SQL (Top-K, Window Functions, etc).",
+            "UI: Modal de entrada 'From/To' com seleção do dialeto de origem.",
+            "Visual: Diff visual entre a query original e a convertida para Postgres.",
+            "Diferencial: Sugestão automática de substituição de funções proprietárias por equivalentes nativos."
+          ]
+        },
+        {
+          "title": "Gerador de Documentação",
+          "desc": "Criação de arquivos Markdown/PDF documentando todo o Schema (IA infere o contexto de negócio).",
+          "status": "Em Discussão",
+          "implementationPlan": [
+            "Técnica: Extração recursiva de comentários de tabelas e metadados de relacionamentos.",
+            "Inteligência: IA descreve o 'Propósito de Negócio' de cada tabela baseada no nome e dados.",
+            "Exportação: Suporte a Mermaid.js para inclusão de diagramas ER automáticos.",
+            "Comportamento: Geração em background para schemas com mais de 500 tabelas."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "UX & Visualização Avançada",
+      "icon": "Eye",
+      "items": [
+        {
+          "title": "Fixar Colunas (Column Pinning)",
+          "desc": "Congele colunas identificadoras à esquerda para manter o contexto enquanto navega horizontalmente em tabelas largas.",
+          "status": "Em Desenvolvimento",
+          "implementationPlan": [
+            "UI: Ícone de 'Pin' sutil em cada cabeçalho de coluna da VirtualTable que alterna entre estado fixo/solto.",
+            "Comportamento: Empilhamento inteligente. Ao fixar múltiplas colunas, elas se organizam da esquerda para a direita automaticamente.",
+            "Visual: Sombra interna (shadow-xl) e borda de destaque na última coluna fixada para criar separação visual clara da área de scroll.",
+            "Técnica: Implementação via CSS 'sticky' com 'left' dinâmico calculado pela soma das larguras (getBoundingClientRect) das colunas fixadas precedentes.",
+            "Persistência: Estado salvo via LocalStorage indexado pelo nome da tabela e do schema."
+          ]
+        },
+        {
+          "title": "Builder Visual 'Canvas'",
+          "desc": "Arraste e solte tabelas em uma área central para montar relacionamentos e queries visualmente.",
+          "status": "Em Pesquisa",
+          "implementationPlan": [
+            "Técnica: Integração com bibliotecas de grafos (ex: React Flow) para renderização performática de nós.",
+            "UI: Área de trabalho infinita com mini-mapa de navegação.",
+            "Comportamento: Conexão automática ao aproximar colunas com nomes idênticos.",
+            "Sync: Mudanças no Canvas refletem instantaneamente no estado do Query Builder clássico."
+          ]
+        },
+        {
+          "title": "Heatmap de Resultados",
+          "desc": "Coloração condicional automática para identificar anomalias e padrões nos resultados da tabela.",
+          "status": "Sugestão",
+          "implementationPlan": [
+            "Lógica: Cálculo estatístico local (Min, Max, Média) por coluna numérica.",
+            "Visual: Gradientes de cores (Verde para valores baixos, Vermelho para altos) aplicados no fundo da célula.",
+            "UI: Toggle rápido no cabeçalho da coluna para ativar/desativar o modo heatmap.",
+            "Performance: Virtualização garante que o heatmap não trave em tabelas com milhares de linhas."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Produtividade & DevTools",
+      "icon": "Zap",
+      "items": [
+        {
+          "title": "Command Palette (Ctrl+P)",
+          "desc": "Barra de comando global estilo VS Code para navegar instantaneamente entre tabelas e ferramentas.",
+          "status": "Planejado",
+          "implementationPlan": [
+            "UI: Modal flutuante centralizado com busca difusa (Fuzzy Search).",
+            "Integração: Atalhos para abrir 'Mapa do Schema', 'Histórico' ou focar em uma tabela específica pelo nome.",
+            "Comportamento: Histórico de comandos recentes exibido ao abrir sem busca.",
+            "Acessibilidade: Suporte total a navegação via teclado (Setas + Enter)."
+          ]
+        },
+        {
+          "title": "Sandbox de Fuzzing",
+          "desc": "Exportar schema real mas gerar 10.000 linhas de dados fictícios para testes de carga seguros.",
+          "status": "Em Discussão",
+          "implementationPlan": [
+            "Técnica: Mapeamento de tipos Postgres para geradores aleatórios contextuais (Nomes, Emails, Valores Monetários).",
+            "Comportamento: Opção de inserir dados simulados em tabelas reais ou gerar arquivo SQL de 'Seed'.",
+            "Segurança: Garantia de não-utilização de dados reais (Anonimização total).",
+            "Diferencial: Preservação de integridade referencial (FKs simuladas)."
+          ]
+        },
+        {
+          "title": "Versionamento de Queries",
+          "desc": "Histórico Git interno para salvar versões de templates SQL e restaurar alterações antigas.",
+          "status": "Planejado",
+          "implementationPlan": [
+            "Persistência: Uso de IndexedDB para armazenar commits locais com comentários.",
+            "Visual: Ferramenta de Diff integrada para comparar o que mudou entre a Versão 1 e Versão 2.",
+            "UI: Timeline vertical na lateral do Editor SQL.",
+            "Funcionalidade: Branching experimental para testar grandes refatorações de queries complexas."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Performance & Relatórios",
+      "icon": "Terminal",
+      "items": [
+        {
+          "title": "Multitasking de Resultados",
+          "desc": "Abas na tela de Results para manter múltiplas queries rodando simultaneamente.",
+          "status": "Planejado",
+          "implementationPlan": [
+            "UI: Sistema de abas dinâmicas estilo navegador no topo do ResultsStep.",
+            "Técnica: Cada aba possui seu próprio Worker de execução e cache de resultados.",
+            "Comportamento: Possibilidade de 'Renomear Aba' para organizar auditorias longas.",
+            "Recurso: 'Pin Tab' para impedir o fechamento acidental de resultados importantes."
+          ]
+        },
+        {
+          "title": "Drill-Down Breadcrumbs",
+          "desc": "Caminho de navegação (Clientes > Pedidos > Itens) para não se perder em auditorias profundas.",
+          "status": "Sugestão",
+          "implementationPlan": [
+            "Lógica: Rastreamento do stack de modais de Drill-down abertos.",
+            "UI: Trilha de migalhas interativa que permite voltar para qualquer nível da auditoria.",
+            "Persistência: Cache temporário dos filtros aplicados em cada nível do Breadcrumb.",
+            "Visual: Animação de transição suave ao entrar em novos níveis de dados."
+          ]
+        },
+        {
+          "title": "Report Builder",
+          "desc": "Interface para exportar dashboards e tabelas em relatórios formatados compartilháveis.",
+          "status": "Em Discussão",
+          "implementationPlan": [
+            "UI: Drag-and-drop de elementos do Dashboard para um canvas de folha A4.",
+            "Exportação: Geração de PDF via jspdf com cabeçalho personalizado e logomarca.",
+            "Comportamento: Agendamento simulado (Local) para geração periódica de relatórios.",
+            "Técnica: Captura de alta resolução de gráficos Recharts via Canvas."
+          ]
+        }
+      ]
+    }
+  ]
+}
