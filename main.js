@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 let mainWindow;
 let serverProcess;
 
-// Configurações críticas do Atualizador
+// Configurações do Atualizador
 autoUpdater.autoDownload = false;
 autoUpdater.allowDowngrade = true; 
 autoUpdater.allowPrerelease = true; 
@@ -49,24 +49,27 @@ function compareVersions(v1, v2) {
 }
 
 function startBackend() {
-  console.log("[MAIN] Iniciando tentativa de spawn do Backend...");
+  console.log("[MAIN] Tentando iniciar o servidor backend...");
+  
   if (process.env.SKIP_BACKEND === '1') {
-    console.log("[MAIN] SKIP_BACKEND detectado. Abortando spawn.");
+    console.log("[MAIN] Backend externo detectado (SKIP_BACKEND).");
     return;
   }
 
-  // Caminho resiliente para o servidor
+  // No build (packaged), o server.js fica em resources/app.asar.unpacked/server.js
   const serverPath = app.isPackaged 
     ? path.join(process.resourcesPath, 'app.asar.unpacked', 'server.js')
     : path.join(__dirname, 'server.js');
 
-  console.log(`[MAIN] Caminho do servidor: ${serverPath}`);
+  console.log(`[MAIN] Caminho resolvido do servidor: ${serverPath}`);
 
   if (!fs.existsSync(serverPath)) {
-    console.error(`[MAIN] ERRO FATAL: server.js não localizado em ${serverPath}`);
+    console.error(`[MAIN] ERRO: Arquivo do servidor não encontrado em: ${serverPath}`);
     return;
   }
 
+  // Iniciamos o servidor usando o próprio executável do Electron em modo node
+  // Isso garante que as dependências do node_modules sejam encontradas corretamente
   serverProcess = spawn(process.execPath, [serverPath], {
     env: { 
       ...process.env, 
@@ -78,11 +81,11 @@ function startBackend() {
   });
 
   serverProcess.on('error', (err) => {
-    console.error('[MAIN] Falha ao iniciar processo do servidor:', err);
+    console.error('[MAIN] Falha crítica ao fazer spawn do servidor:', err);
   });
 
   serverProcess.on('exit', (code) => {
-    console.log(`[MAIN] Backend encerrou com código ${code}`);
+    console.log(`[MAIN] Processo do servidor encerrado com código: ${code}`);
   });
 }
 
@@ -106,7 +109,6 @@ function createWindow() {
   }
 
   mainWindow.webContents.on('did-finish-load', async () => {
-    console.log("[MAIN] Janela carregada. Enviando versão atual:", CURRENT_VERSION);
     mainWindow.webContents.send('app-version', CURRENT_VERSION);
     fetchGitHubVersions().then(versions => {
       mainWindow.webContents.send('sync-versions', versions);
@@ -120,11 +122,15 @@ async function fetchGitHubVersions() {
   try {
     let stable = '---';
     let main = '---';
+    
+    // Pegar tags
     const tagsRes = await fetch(`https://api.github.com/repos/${repo}/tags`, { headers });
     if (tagsRes.ok) {
       const tags = await tagsRes.json();
       if (tags.length > 0) stable = tags[0].name.replace(/^v/, '');
     }
+    
+    // Pegar contagem de commits na main
     const commitsRes = await fetch(`https://api.github.com/repos/${repo}/commits?sha=main&per_page=1`, { headers });
     if (commitsRes.ok) {
        const link = commitsRes.headers.get('link');
@@ -137,7 +143,10 @@ async function fetchGitHubVersions() {
        }
     }
     return { stable, main };
-  } catch (e) { return { stable: 'Erro', main: 'Erro' }; }
+  } catch (e) { 
+    console.error("[MAIN] Erro ao buscar versões remotas:", e);
+    return { stable: 'Erro', main: 'Erro' }; 
+  }
 }
 
 app.whenReady().then(() => { 
@@ -151,53 +160,45 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.on('check-update', async (event, branch) => {
-  console.log(`[MAIN] Solicitando check-update para: ${branch}`);
+  console.log(`[MAIN] Checagem manual de atualização solicitada: ${branch}`);
   
-  if (app.isPackaged && branch === 'stable') {
-    autoUpdater.checkForUpdates();
-  } else {
-    const versions = await fetchGitHubVersions();
-    const remote = branch === 'main' ? versions.main : versions.stable;
-    const comparison = compareVersions(remote, CURRENT_VERSION);
-    
-    if (comparison !== 0) {
-      const updateType = comparison < 0 ? 'downgrade' : 'upgrade';
-      console.log(`[MAIN] Versão remota ${remote} é um ${updateType} em relação a ${CURRENT_VERSION}`);
-      mainWindow.webContents.send('update-available', { 
-        version: remote, 
-        branch, 
-        updateType,
-        isManual: true 
-      });
-    } else {
-      mainWindow.webContents.send('update-not-available');
-    }
-  }
-});
+  // Primeiro, buscamos as versões manualmente para comparar
+  const versions = await fetchGitHubVersions();
+  const remoteVersion = branch === 'main' ? versions.main : versions.stable;
+  
+  const comparison = compareVersions(remoteVersion, CURRENT_VERSION);
 
-ipcMain.on('start-download', (event, branch) => {
-  console.log(`[MAIN] Início de download solicitado para branch: ${branch}`);
+  if (comparison === 0) {
+    console.log("[MAIN] Mesma versão detectada.");
+    mainWindow.webContents.send('update-not-available');
+    return;
+  }
+
+  const updateType = comparison < 0 ? 'downgrade' : 'upgrade';
+  console.log(`[MAIN] Diferença detectada: Remota=${remoteVersion} Local=${CURRENT_VERSION} (${updateType})`);
+
   if (app.isPackaged && branch === 'stable') {
-    autoUpdater.downloadUpdate().catch(err => {
-      console.error("[MAIN] Erro ao iniciar download do autoUpdater:", err);
-      mainWindow.webContents.send('update-error', "Falha ao iniciar download automático.");
+    // Se for estável e pacote buildado, deixamos o autoUpdater tomar o controle,
+    // mas avisamos a UI sobre o tipo (especialmente downgrade)
+    autoUpdater.checkForUpdates().catch(err => {
+      console.error("[MAIN] Erro no autoUpdater:", err);
+      mainWindow.webContents.send('update-error', "Falha ao consultar servidor de atualizações.");
     });
   } else {
-    // Se for branch main ou dev, redirecionamos para o repositório para download manual do código
-    console.log("[MAIN] Redirecionando para download manual (Branch experimental)");
-    shell.openExternal("https://github.com/Hamilton-Junior/psqlBuddy/archive/refs/heads/main.zip");
-    mainWindow.webContents.send('update-error', "MANUAL_DOWNLOAD_TRIGGERED");
+    // Para branch main ou dev, apenas avisamos a UI
+    mainWindow.webContents.send('update-available', { 
+      version: remoteVersion, 
+      branch, 
+      updateType,
+      isManual: true 
+    });
   }
-});
-
-ipcMain.on('refresh-remote-versions', async () => {
-    const versions = await fetchGitHubVersions();
-    if (mainWindow) mainWindow.webContents.send('sync-versions', versions);
 });
 
 autoUpdater.on('update-available', (info) => {
   const comparison = compareVersions(info.version, CURRENT_VERSION);
   const updateType = comparison < 0 ? 'downgrade' : 'upgrade';
+  
   mainWindow.webContents.send('update-available', { 
     version: info.version, 
     releaseNotes: info.releaseNotes,
@@ -209,6 +210,11 @@ autoUpdater.on('update-not-available', () => {
   mainWindow.webContents.send('update-not-available');
 });
 
+autoUpdater.on('error', (err) => {
+  console.error("[MAIN] Erro no atualizador:", err);
+  mainWindow.webContents.send('update-error', err.message);
+});
+
 autoUpdater.on('download-progress', (progressObj) => {
   mainWindow.webContents.send('update-downloading', progressObj);
 });
@@ -217,6 +223,15 @@ autoUpdater.on('update-downloaded', () => {
   mainWindow.webContents.send('update-ready');
 });
 
+ipcMain.on('start-download', () => {
+  autoUpdater.downloadUpdate();
+});
+
 ipcMain.on('install-update', () => {
   autoUpdater.quitAndInstall();
+});
+
+ipcMain.on('refresh-remote-versions', async () => {
+    const versions = await fetchGitHubVersions();
+    if (mainWindow) mainWindow.webContents.send('sync-versions', versions);
 });

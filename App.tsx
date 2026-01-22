@@ -100,22 +100,17 @@ const App: React.FC = () => {
   }, [settings.theme]);
 
   const handleUpdateDetection = useCallback((info: any) => {
-    console.log("[UI] Info de atualização recebida:", info);
+    console.log("[UI] Detecção de atualização recebida:", info);
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
     const isManual = manualCheckRef.current || info.isManual;
     
+    // Calculamos o tipo caso o backend não tenha enviado explicitamente
     const type = info.updateType || (compareVersions(info.version, currentAppVersion) < 0 ? 'downgrade' : 'upgrade');
-
-    if (currentAppVersion !== '...' && compareVersions(info.version, currentAppVersion) === 0) {
-      console.log("[APP] Mesma versão detectada. Ignorando aviso.");
-      manualCheckRef.current = false;
-      return;
-    }
 
     if (isManual || !ignoredVersions.includes(info.version)) {
       setUpdateInfo({
         version: info.version,
-        notes: info.releaseNotes || (type === 'downgrade' ? 'Versão de recuperação disponível.' : 'Novas melhorias e correções.'),
+        notes: info.releaseNotes || (type === 'downgrade' ? 'Uma versão anterior está disponível no canal. Deseja realizar a reversão?' : 'Novas melhorias e correções disponíveis.'),
         branch: info.branch || (settings.updateBranch === 'main' ? 'Main' : 'Stable'),
         updateType: type as 'upgrade' | 'downgrade',
         currentVersion: currentAppVersion,
@@ -129,43 +124,46 @@ const App: React.FC = () => {
     const electron = (window as any).electron;
     if (electron) {
       electron.on('app-version', (v: string) => {
-        console.log("[UI] Versão atual confirmada pelo Main:", v);
+        console.log("[UI] Versão local confirmada:", v);
         setCurrentAppVersion(v);
       });
+      
       electron.on('sync-versions', (v: any) => setRemoteVersions(v));
+      
       electron.on('update-available', handleUpdateDetection);
+      
       electron.on('update-not-available', () => {
-        if (manualCheckRef.current) toast.success("Sua versão está sincronizada!");
+        console.log("[UI] Nenhuma atualização necessária.");
+        if (manualCheckRef.current) toast.success("Você já está na versão ideal!");
         manualCheckRef.current = false;
         setUpdateInfo(null);
       });
+      
       electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
+      
       electron.on('update-ready', () => {
         setUpdateReady(true);
         setDownloadProgress(100);
-        toast.success("Atualização pronta!");
+        toast.success("Download concluído!");
       });
+      
       electron.on('update-error', (msg: string) => {
-        console.warn("[UI] Status Atualizador:", msg);
-        setDownloadProgress(null);
-        if (msg === "MANUAL_DOWNLOAD_TRIGGERED") {
-           toast("Abrindo navegador para download manual...", { icon: '🌐' });
-           setUpdateInfo(null);
-        } else if (manualCheckRef.current) {
-           toast.error(msg || "Erro no atualizador.");
-        }
+        console.error("[UI] Erro no atualizador:", msg);
+        if (manualCheckRef.current) toast.error("Não foi possível verificar atualizações.");
         manualCheckRef.current = false;
+        setDownloadProgress(null);
       });
+      
+      return () => electron.removeAllListeners('update-available');
     }
   }, [handleUpdateDetection]);
 
   const handleStartDownload = () => {
     const electron = (window as any).electron;
     if (electron) { 
-      console.log("[UI] Solicitando início de download ao Main...");
       setDownloadProgress(0); 
-      electron.send('start-download', settings.updateBranch);
-      toast("Iniciando transferência...", { icon: '⏳' });
+      electron.send('start-download');
+      toast.loading("Iniciando transferência...", { duration: 2000 });
     }
   };
 
@@ -185,7 +183,10 @@ const App: React.FC = () => {
         : generateLocalSql(schema, builderState);
       setQueryResult(result);
       setCurrentStep('preview');
-    } catch (error: any) { toast.error(error.message || "Erro SQL"); }
+    } catch (error: any) { 
+      console.error("[UI] Erro na geração:", error);
+      toast.error(error.message || "Erro ao gerar SQL"); 
+    }
     finally { setIsGenerating(false); }
   };
 
@@ -202,7 +203,7 @@ const App: React.FC = () => {
        setCurrentStep('results');
     } catch (error: any) { 
       console.error("[UI] Erro na execução:", error);
-      toast.error(error.message || "Erro execução"); 
+      toast.error(error.message || "Falha na execução"); 
     }
     finally { setIsExecuting(false); }
   };
