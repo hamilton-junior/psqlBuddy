@@ -5,7 +5,9 @@ import {
   LayoutGrid, Share2, ShieldCheck, Github, 
   Sparkles, MousePointer2, Thermometer, Map,
   Palette, History, FileText, Terminal,
-  ChevronDown, ChevronUp, Pin, Code2, Layers
+  ChevronDown, ChevronUp, Pin, Code2, Layers,
+  Table, Cpu, FileCode, Search, ShieldAlert,
+  BarChart, GitBranch, ListMusic
 } from 'lucide-react';
 
 // Safely get the version from Vite define or fallback
@@ -23,7 +25,7 @@ const RoadmapStep: React.FC = () => {
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
   const toggleItem = (title: string) => {
-    console.log(`[ROADMAP] Usuário interagiu com o item: ${title}`);
+    console.log(`[ROADMAP] Consultando detalhes técnicos de: ${title}`);
     setExpandedItem(expandedItem === title ? null : title);
   };
 
@@ -35,17 +37,35 @@ const RoadmapStep: React.FC = () => {
         { 
           title: "Auto-Indexador Sugestivo", 
           desc: "Análise de query via IA para sugerir comandos 'CREATE INDEX' baseados no uso de WHERE/JOIN.",
-          status: "Planejado"
+          status: "Planejado",
+          implementationPlan: [
+            "Técnica: A IA analisa o plano de execução (EXPLAIN) em busca de 'Sequential Scans' em tabelas grandes.",
+            "Comportamento: Botão 'Otimizar' sugere índices específicos para as colunas filtradas.",
+            "UI: Painel lateral com código SQL pronto e botão 'Executar Agora'.",
+            "Segurança: Validação de existência prévia de índices para evitar duplicidade."
+          ]
         },
         { 
           title: "Tradução de Dialetos", 
           desc: "Converter queries de MySQL, SQL Server ou Oracle para sintaxe otimizada do PostgreSQL.",
-          status: "Em Discussão"
+          status: "Em Discussão",
+          implementationPlan: [
+            "Técnica: Prompt Engineering especializado em tradução de sintaxe SQL (Top-K, Window Functions, etc).",
+            "UI: Modal de entrada 'From/To' com seleção do dialeto de origem.",
+            "Visual: Diff visual entre a query original e a convertida para Postgres.",
+            "Diferencial: Sugestão automática de substituição de funções proprietárias por equivalentes nativos."
+          ]
         },
         { 
           title: "Gerador de Documentação", 
           desc: "Criação de arquivos Markdown/PDF documentando todo o Schema (IA infere o contexto de negócio).",
-          status: "Em Discussão"
+          status: "Em Discussão",
+          implementationPlan: [
+            "Técnica: Extração recursiva de comentários de tabelas e metadados de relacionamentos.",
+            "Inteligência: IA descreve o 'Propósito de Negócio' de cada tabela baseada no nome e dados.",
+            "Exportação: Suporte a Mermaid.js para inclusão de diagramas ER automáticos.",
+            "Comportamento: Geração em background para schemas com mais de 500 tabelas."
+          ]
         }
       ]
     },
@@ -62,18 +82,30 @@ const RoadmapStep: React.FC = () => {
             "Comportamento: Empilhamento inteligente. Ao fixar múltiplas colunas, elas se organizam da esquerda para a direita automaticamente.",
             "Visual: Sombra interna (shadow-xl) e borda de destaque na última coluna fixada para criar separação visual clara da área de scroll.",
             "Técnica: Implementação via CSS 'sticky' com 'left' dinâmico calculado pela soma das larguras (getBoundingClientRect) das colunas fixadas precedentes.",
-            "Persistência: Estado salvo via LocalStorage indexado pelo nome da tabela e do schema, permitindo que a visualização seja mantida em sessões futuras."
+            "Persistência: Estado salvo via LocalStorage indexado pelo nome da tabela e do schema."
           ]
         },
         { 
           title: "Builder Visual 'Canvas'", 
           desc: "Arraste e solte tabelas em uma área central para montar relacionamentos e queries visualmente.",
-          status: "Em Pesquisa"
+          status: "Em Pesquisa",
+          implementationPlan: [
+            "Técnica: Integração com bibliotecas de grafos (ex: React Flow) para renderização performática de nós.",
+            "UI: Área de trabalho infinita com mini-mapa de navegação.",
+            "Comportamento: Conexão automática ao aproximar colunas com nomes idênticos.",
+            "Sync: Mudanças no Canvas refletem instantaneamente no estado do Query Builder clássico."
+          ]
         },
         { 
           title: "Heatmap de Resultados", 
           desc: "Coloração condicional automática para identificar anomalias e padrões nos resultados da tabela.",
-          status: "Sugestão"
+          status: "Sugestão",
+          implementationPlan: [
+            "Lógica: Cálculo estatístico local (Min, Max, Média) por coluna numérica.",
+            "Visual: Gradientes de cores (Verde para valores baixos, Vermelho para altos) aplicados no fundo da célula.",
+            "UI: Toggle rápido no cabeçalho da coluna para ativar/desativar o modo heatmap.",
+            "Performance: Virtualização garante que o heatmap não trave em tabelas com milhares de linhas."
+          ]
         }
       ]
     },
@@ -84,17 +116,35 @@ const RoadmapStep: React.FC = () => {
         { 
           title: "Command Palette (Ctrl+P)", 
           desc: "Barra de comando global estilo VS Code para navegar instantaneamente entre tabelas e ferramentas.",
-          status: "Planejado"
+          status: "Planejado",
+          implementationPlan: [
+            "UI: Modal flutuante centralizado com busca difusa (Fuzzy Search).",
+            "Integração: Atalhos para abrir 'Mapa do Schema', 'Histórico' ou focar em uma tabela específica pelo nome.",
+            "Comportamento: Histórico de comandos recentes exibido ao abrir sem busca.",
+            "Acessibilidade: Suporte total a navegação via teclado (Setas + Enter)."
+          ]
         },
         { 
           title: "Sandbox de Fuzzing", 
           desc: "Exportar schema real mas gerar 10.000 linhas de dados fictícios para testes de carga seguros.",
-          status: "Em Discussão"
+          status: "Em Discussão",
+          implementationPlan: [
+            "Técnica: Mapeamento de tipos Postgres para geradores aleatórios contextuais (Nomes, Emails, Valores Monetários).",
+            "Comportamento: Opção de inserir dados simulados em tabelas reais ou gerar arquivo SQL de 'Seed'.",
+            "Segurança: Garantia de não-utilização de dados reais (Anonimização total).",
+            "Diferencial: Preservação de integridade referencial (FKs simuladas)."
+          ]
         },
         { 
           title: "Versionamento de Queries", 
           desc: "Histórico Git interno para salvar versões de templates SQL e restaurar alterações antigas.",
-          status: "Planejado"
+          status: "Planejado",
+          implementationPlan: [
+            "Persistência: Uso de IndexedDB para armazenar commits locais com comentários.",
+            "Visual: Ferramenta de Diff integrada para comparar o que mudou entre a Versão 1 e Versão 2.",
+            "UI: Timeline vertical na lateral do Editor SQL.",
+            "Funcionalidade: Branching experimental para testar grandes refatorações de queries complexas."
+          ]
         }
       ]
     },
@@ -105,17 +155,35 @@ const RoadmapStep: React.FC = () => {
         { 
           title: "Multitasking de Resultados", 
           desc: "Abas na tela de Results para manter múltiplas queries rodando simultaneamente.",
-          status: "Planejado"
+          status: "Planejado",
+          implementationPlan: [
+            "UI: Sistema de abas dinâmicas estilo navegador no topo do ResultsStep.",
+            "Técnica: Cada aba possui seu próprio Worker de execução e cache de resultados.",
+            "Comportamento: Possibilidade de 'Renomear Aba' para organizar auditorias longas.",
+            "Recurso: 'Pin Tab' para impedir o fechamento acidental de resultados importantes."
+          ]
         },
         { 
           title: "Drill-Down Breadcrumbs", 
           desc: "Caminho de navegação (Clientes > Pedidos > Itens) para não se perder em auditorias profundas.",
-          status: "Sugestão"
+          status: "Sugestão",
+          implementationPlan: [
+            "Lógica: Rastreamento do stack de modais de Drill-down abertos.",
+            "UI: Trilha de migalhas interativa que permite voltar para qualquer nível da auditoria.",
+            "Persistência: Cache temporário dos filtros aplicados em cada nível do Breadcrumb.",
+            "Visual: Animação de transição suave ao entrar em novos níveis de dados."
+          ]
         },
         { 
           title: "Report Builder", 
           desc: "Interface para exportar dashboards e tabelas em relatórios formatados compartilháveis.",
-          status: "Em Discussão"
+          status: "Em Discussão",
+          implementationPlan: [
+            "UI: Drag-and-drop de elementos do Dashboard para um canvas de folha A4.",
+            "Exportação: Geração de PDF via jspdf com cabeçalho personalizado e logomarca.",
+            "Comportamento: Agendamento simulado (Local) para geração periódica de relatórios.",
+            "Técnica: Captura de alta resolução de gráficos Recharts via Canvas."
+          ]
         }
       ]
     }
@@ -130,7 +198,7 @@ const RoadmapStep: React.FC = () => {
             Roadmap do Produto
           </h2>
           <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">
-            Acompanhe o que está por vir para transformar o <span className="font-bold text-indigo-600">PSQL Buddy</span> em uma ferramenta Enterprise.
+            Acompanhe a visão técnica para transformar o <span className="font-bold text-indigo-600">PSQL Buddy</span> em uma ferramenta Enterprise.
           </p>
         </div>
         
@@ -195,7 +263,7 @@ const RoadmapStep: React.FC = () => {
                            {isExpanded && item.implementationPlan && (
                               <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700 space-y-4 animate-in fade-in slide-in-from-top-1 duration-300">
                                  <div className="flex items-center gap-2 text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em]">
-                                    <Code2 className="w-4 h-4" /> Plano de Implementação
+                                    <Code2 className="w-4 h-4" /> Visão de Implementação
                                  </div>
                                  <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-4 space-y-3">
                                     {item.implementationPlan.map((step, sIdx) => (
@@ -205,16 +273,12 @@ const RoadmapStep: React.FC = () => {
                                        </div>
                                     ))}
                                  </div>
-                                 <div className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                                    <Layers className="w-3.5 h-3.5" />
-                                    <span>Esta funcionalidade aproximará o PSQL Buddy de um Data Grid profissional (Excel/Airtable).</span>
-                                 </div>
                               </div>
                            )}
                            
                            {!isExpanded && (
                               <div className="mt-4 pt-4 border-t border-slate-50 dark:border-slate-700/50 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                 <span className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">Clique para ver detalhes</span>
+                                 <span className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">Clique para ver detalhes técnicos</span>
                                  <button className="text-[10px] font-black uppercase text-indigo-500 hover:underline flex items-center gap-1">
                                     Votar Sugestão <Sparkles className="w-3 h-3" />
                                  </button>
