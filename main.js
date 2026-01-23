@@ -52,46 +52,49 @@ function compareVersions(v1, v2) {
  * Inicializa o backend garantindo a prioridade de IPv4 e captura de logs.
  */
 function startBackend() {
-  console.log("[MAIN] Iniciando Backend Service (Force IPv4)...");
+  console.log("[MAIN] Iniciando Backend Service...");
   
   if (process.env.SKIP_BACKEND === '1') {
     console.log("[MAIN] SKIP_BACKEND ativo.");
     return;
   }
 
-  const serverPath = app.isPackaged 
-    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'server.js')
-    : path.join(__dirname, 'server.js');
+  // Em produção, o server.js está no mesmo nível do main.js dentro do asar.
+  // UtilityProcess consegue ler arquivos de dentro do ASAR sem problemas se passarmos o caminho absoluto.
+  const serverPath = path.join(__dirname, 'server.js');
 
-  console.log(`[MAIN] Caminho do servidor: ${serverPath}`);
-
-  if (!fs.existsSync(serverPath)) {
-    console.error(`[MAIN] ERRO: server.js não localizado em ${serverPath}`);
-    return;
-  }
+  console.log(`[MAIN] Resolvendo backend em: ${serverPath}`);
 
   try {
+    // Redirecionamos os logs ('pipe') para que possamos ver erros de inicialização no terminal principal
     serverChild = utilityProcess.fork(serverPath, [], {
         env: { 
             ...process.env,
             PORT: '3000',
             HOST: '127.0.0.1',
-            // Força o Node a resolver localhost como IPv4 primeiro
             NODE_OPTIONS: '--dns-result-order=ipv4first'
         },
-        stdio: 'inherit'
+        stdio: 'pipe'
+    });
+
+    serverChild.stdout.on('data', (data) => {
+        console.log(`[BACKEND-STDOUT]: ${data.toString().trim()}`);
+    });
+
+    serverChild.stderr.on('data', (data) => {
+        console.error(`[BACKEND-STDERR]: ${data.toString().trim()}`);
     });
 
     serverChild.on('spawn', () => {
-        console.log("[MAIN] Processo do Backend spawnado com sucesso na porta 3000.");
+        console.log("[MAIN] Processo do Backend (UtilityProcess) iniciado com sucesso.");
     });
 
     serverChild.on('exit', (code) => {
-        console.warn(`[MAIN] O processo do Backend encerrou (Código: ${code})`);
+        console.warn(`[MAIN] O processo do Backend encerrou com código: ${code}`);
         serverChild = null;
     });
   } catch (err) {
-    console.error("[MAIN] Falha crítica ao iniciar backend:", err);
+    console.error("[MAIN] Falha crítica ao disparar utilityProcess do backend:", err);
   }
 }
 
@@ -206,6 +209,7 @@ autoUpdater.on('update-not-available', () => {
 });
 
 autoUpdater.on('error', (err) => {
+  console.error("[MAIN] Erro no atualizador:", err);
   mainWindow.webContents.send('update-error', err.message);
 });
 
