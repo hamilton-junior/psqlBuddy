@@ -22,7 +22,7 @@ interface SavedConnection {
 }
 
 declare const __APP_VERSION__: string;
-const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
+const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'd.e.v';
 
 const formatVersionDisplay = (v: string): string => {
   const parts = v.split('.');
