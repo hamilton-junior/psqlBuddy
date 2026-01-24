@@ -157,7 +157,11 @@ async function fetchGitHubVersions() {
           const match = link.match(/&page=(\d+)>; rel="last"/);
           if (match) {
              totalCommits = parseInt(match[1]);
-             bleedingEdge = `0.0.${totalCommits}`;
+             // Lógica padrão: major.minor.patch baseado no número total de commits
+             const major = Math.floor(totalCommits / 1000);
+             const minor = Math.floor((totalCommits % 1000) / 100);
+             const patch = totalCommits % 100;
+             bleedingEdge = `${major}.${minor}.${patch}`;
           }
        } else {
           const single = await commitsRes.json();

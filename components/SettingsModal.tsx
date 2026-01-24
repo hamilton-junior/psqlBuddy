@@ -32,19 +32,15 @@ const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSI
 
 /**
  * Utilitário visual para formatar a versão.
- * Se for Bleeding Edge (0.0.X), mantém o formato simplificado.
- * Se for release estável, usa o padrão X.0Y.0Z.
+ * Aplica o padrão vX.0Y.0Z para todas as versões para consistência visual.
  */
 const formatVersionDisplay = (v: string | undefined): string => {
   if (!v || v === '---') return '...';
   if (v === 'Erro') return 'Erro';
   
   const clean = v.replace(/^v/, '');
-  
-  // Se for versão de commits (0.0.X)
-  if (clean.startsWith('0.0.')) return `v${clean}`;
-
   const parts = clean.split('.');
+  
   if (parts.length !== 3) return v;
   
   const major = parts[0];
@@ -220,8 +216,8 @@ export default function SettingsModal({
                          <span className={isConnected ? 'text-emerald-500' : 'text-amber-500'}>{isConnected ? 'Ativo' : 'Pendente'}</span>
                       </div>
                       <div className="flex items-center justify-between text-[11px] font-medium text-slate-500">
-                         <span>Build:</span>
-                         <span className="text-indigo-500 font-mono">#{CURRENT_APP_VERSION.split('.').pop()}</span>
+                         <span>Versão:</span>
+                         <span className="text-indigo-500 font-mono font-bold">{formatVersionDisplay(CURRENT_APP_VERSION)}</span>
                       </div>
                    </div>
                 </div>
@@ -606,7 +602,7 @@ export default function SettingsModal({
                             <div className="mb-4 flex flex-col gap-1 border-b border-slate-800 pb-4">
                                <div className="flex justify-between items-center text-slate-400">
                                   <span>ID da Build Local:</span>
-                                  <span className="text-white font-black">{CURRENT_APP_VERSION}</span>
+                                  <span className="text-white font-black">{formatVersionDisplay(CURRENT_APP_VERSION)}</span>
                                </div>
                                <div className="flex justify-between items-center text-slate-400">
                                   <span>Ambiente Electron:</span>
