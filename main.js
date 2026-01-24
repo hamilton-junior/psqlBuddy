@@ -166,8 +166,11 @@ async function fetchGitHubVersions() {
        } else {
           const single = await commitsRes.json();
           if (Array.isArray(single)) {
-             totalCommits = 1;
-             bleedingEdge = `0.0.1`;
+             totalCommits = single.length;
+             const major = Math.floor(totalCommits / 1000);
+             const minor = Math.floor((totalCommits % 1000) / 100);
+             const patch = totalCommits % 100;
+             bleedingEdge = `${major}.${minor}.${patch}`;
           }
        }
     }
