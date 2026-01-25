@@ -46,7 +46,6 @@ app.post('/api/connect', async (req, res) => {
   let { host, port, user, password, database } = req.body;
   const start = Date.now();
   
-  // Normalização de Host para IPv4
   if (host === 'localhost') host = '127.0.0.1';
 
   serverLog('POST', '/api/connect', `Tentativa: ${user}@${host}:${port}/${database}`);
@@ -68,7 +67,6 @@ app.post('/api/connect', async (req, res) => {
     await client.connect();
     await setupSession(client);
     
-    // Busca tabelas e metadados
     const tablesQuery = `
       SELECT 
         table_schema, 
@@ -162,32 +160,80 @@ app.post('/api/connect', async (req, res) => {
 app.post('/api/execute', async (req, res) => {
   let { credentials, sql } = req.body;
   const start = Date.now();
-  
-  if (!credentials || !sql) {
-    return res.status(400).json({ error: 'Missing credentials or SQL' });
-  }
-
+  if (!credentials || !sql) return res.status(400).json({ error: 'Missing credentials or SQL' });
   if (credentials.host === 'localhost') credentials.host = '127.0.0.1';
-
-  serverLog('POST', '/api/execute', `Executando no banco ${credentials.database}`);
   const client = new Client(credentials);
-
   try {
     await client.connect();
     await setupSession(client);
-    
     const result = await client.query(sql);
     const duration = Date.now() - start;
-    
-    if (Array.isArray(result)) {
-        serverLog('POST', '/api/execute', `Sucesso (Multi) em ${duration}ms.`);
-        res.json(result[result.length - 1].rows);
-    } else {
-        serverLog('POST', '/api/execute', `Sucesso em ${duration}ms. ${result.rowCount} linhas.`);
-        res.json(result.rows);
-    }
+    if (Array.isArray(result)) res.json(result[result.length - 1].rows);
+    else res.json(result.rows);
   } catch (err) {
-    serverLog('POST', '/api/execute', 'ERRO de execução', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    try { await client.end(); } catch (e) {}
+  }
+});
+
+// NOVA ROTA: Telemetria do Servidor
+app.post('/api/server-stats', async (req, res) => {
+  const { credentials } = req.body;
+  if (!credentials) return res.status(400).json({ error: 'Missing credentials' });
+  if (credentials.host === 'localhost') credentials.host = '127.0.0.1';
+  const client = new Client(credentials);
+  try {
+    await client.connect();
+    
+    // 1. Estatísticas Gerais
+    const statsQuery = `
+      SELECT 
+        (SELECT numbackends FROM pg_stat_database WHERE datname = $1) as connections,
+        pg_size_pretty(pg_database_size($1)) as db_size,
+        (SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as active_queries,
+        (SELECT COALESCE(max(now() - query_start), '0s'::interval) FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as max_duration,
+        xact_commit, xact_rollback,
+        round(100.0 * blks_hit / NULLIF(blks_read + blks_hit, 0), 2) as cache_hit_rate
+      FROM pg_stat_database 
+      WHERE datname = $1;
+    `;
+    const statsRes = await client.query(statsQuery, [credentials.database]);
+
+    // 2. Processos Ativos
+    const processesQuery = `
+      SELECT 
+        pid, usename as user, client_addr as client,
+        now() - query_start as duration,
+        extract(epoch from (now() - query_start)) * 1000 as duration_ms,
+        state, query, wait_event_type as wait_event
+      FROM pg_stat_activity 
+      WHERE datname = $1 AND pid <> pg_backend_pid()
+      ORDER BY duration DESC;
+    `;
+    const procRes = await client.query(processesQuery, [credentials.database]);
+
+    res.json({
+      summary: statsRes.rows[0],
+      processes: procRes.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    try { await client.end(); } catch (e) {}
+  }
+});
+
+// NOVA ROTA: Encerrar Processo (Kill PID)
+app.post('/api/terminate-process', async (req, res) => {
+  const { credentials, pid } = req.body;
+  if (!credentials || !pid) return res.status(400).json({ error: 'Missing credentials or PID' });
+  const client = new Client(credentials);
+  try {
+    await client.connect();
+    await client.query('SELECT pg_terminate_backend($1)', [pid]);
+    res.json({ success: true, message: `Processo ${pid} encerrado.` });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   } finally {
     try { await client.end(); } catch (e) {}

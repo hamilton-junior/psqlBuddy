@@ -5,7 +5,7 @@ import {
   Database, Layers, Terminal, Table, Server, ArrowRight, Settings, 
   ChevronLeft, ChevronRight, Map, History, GitCompare, Link, 
   FileSearch, FileText, Scissors, BookOpen, Rocket, Tag, 
-  CloudDownload, Keyboard, Zap, LayoutGrid, Github
+  CloudDownload, Keyboard, Zap, LayoutGrid, Github, HeartPulse
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,9 +28,6 @@ interface SidebarProps {
 declare const __APP_VERSION__: string;
 const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'd.e.v';
 
-/**
- * Formata a versão tecnicamente SemVer para o padrão legível (X.0Y.0Z)
- */
 const formatVersionDisplay = (v: string): string => {
   const parts = v.split('.');
   if (parts.length !== 3) return v;
@@ -104,7 +101,6 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <div className={`p-6 shrink-0 flex flex-col h-full ${isCollapsed ? 'px-2 items-center' : ''}`}>
         
-        {/* Logo Section */}
         <div className={`flex items-center gap-3 mb-10 px-2 ${isCollapsed ? 'justify-center px-0' : ''}`}>
           <div className="p-2.5 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-600/20 shrink-0">
             <Database className="w-6 h-6 text-white" />
@@ -117,7 +113,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* Scrollable Navigation */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar pr-1 -mr-1 space-y-1">
           {navItem('connection', 'Conexão', <Server className="w-5 h-5" />)}
           {navItem('builder', 'Construtor', <Layers className="w-5 h-5" />, !schema)}
@@ -127,6 +122,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="my-6 border-t border-slate-900 opacity-50"></div>
           
           {navItem('datadiff', 'Comparador', <GitCompare className="w-5 h-5" />, !schema)}
+          {navItem('serverhealth', 'Saúde do Banco', <HeartPulse className="w-5 h-5" />, !schema)}
 
           {schema && (
             <div className="pt-6 space-y-1">
@@ -145,7 +141,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* Footer */}
         <div className="mt-auto pt-6 space-y-1">
           <button 
             onClick={onOpenCheatSheet}

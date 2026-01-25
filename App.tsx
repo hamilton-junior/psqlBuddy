@@ -12,6 +12,7 @@ import ResultsStep from '@/components/steps/ResultsStep';
 import DataDiffStep from '@/components/steps/DataDiffStep';
 import DashboardStep from '@/components/steps/DashboardStep';
 import RoadmapStep from '@/components/steps/RoadmapStep';
+import ServerHealthStep from '@/components/steps/ServerHealthStep';
 import SettingsModal from '@/components/SettingsModal';
 import SchemaDiagramModal from '@/components/SchemaDiagramModal';
 import HistoryModal from '@/components/HistoryModal';
@@ -87,7 +88,6 @@ const App: React.FC = () => {
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
   
   const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade', currentVersion?: string, isManual?: boolean} | null>(null);
-  // Fix: Corrected type definition for remoteVersions to match expected prop in SettingsModal and actual response from main process
   const [remoteVersions, setRemoteVersions] = useState<{ stable: string; wip: string; bleedingEdge: string; totalCommits?: number } | null>(null);
   const [currentAppVersion, setCurrentAppVersion] = useState<string>('...');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
@@ -101,18 +101,11 @@ const App: React.FC = () => {
   }, [settings.theme]);
 
   const handleUpdateDetection = useCallback((info: any) => {
-    console.log("[UI] Evento de atualização recebido:", info);
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
     const isManual = manualCheckRef.current || info.isManual;
-    
     const type = info.updateType || (compareVersions(info.version, currentAppVersion) < 0 ? 'downgrade' : 'upgrade');
-
-    if (type === 'downgrade') {
-        toast("Aviso: Downgrade disponível", { icon: '⚠️' });
-    } else {
-        toast("Nova atualização encontrada!", { icon: '✨' });
-    }
-
+    if (type === 'downgrade') toast("Aviso: Downgrade disponível", { icon: '⚠️' });
+    else toast("Nova atualização encontrada!", { icon: '✨' });
     if (isManual || !ignoredVersions.includes(info.version)) {
       setUpdateInfo({
         version: info.version,
@@ -129,40 +122,26 @@ const App: React.FC = () => {
   useEffect(() => {
     const electron = (window as any).electron;
     if (electron) {
-      electron.on('app-version', (v: string) => {
-        console.log("[UI] Versão local:", v);
-        setCurrentAppVersion(v);
-      });
-      
+      electron.on('app-version', (v: string) => setCurrentAppVersion(v));
       electron.on('sync-versions', (v: any) => setRemoteVersions(v));
-      
       electron.on('update-available', handleUpdateDetection);
-      
       electron.on('update-not-available', () => {
-        console.log("[UI] Nenhuma mudança de versão necessária.");
         if (manualCheckRef.current) toast.success("Você já está na versão sincronizada!");
         manualCheckRef.current = false;
         setUpdateInfo(null);
       });
-      
       electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
-      
       electron.on('update-ready', () => {
         setUpdateReady(true);
         setDownloadProgress(100);
         toast.success("Download pronto!");
       });
-      
       electron.on('update-error', (msg: string) => {
-        console.error("[UI] Erro Atualizador:", msg);
         if (manualCheckRef.current) toast.error("Falha ao verificar alterações.");
         manualCheckRef.current = false;
         setDownloadProgress(null);
       });
-      
       return () => electron.removeAllListeners('update-available');
-    } else {
-      console.warn("[UI] Objeto 'electron' não encontrado. Recursos nativos desativados.");
     }
   }, [handleUpdateDetection]);
 
@@ -172,8 +151,6 @@ const App: React.FC = () => {
       setDownloadProgress(0); 
       electron.send('start-download');
       toast.loading("Iniciando transferência...");
-    } else {
-      toast.error("Atualização automática indisponível no navegador.");
     }
   };
 
@@ -194,7 +171,6 @@ const App: React.FC = () => {
       setQueryResult(result);
       setCurrentStep('preview');
     } catch (error: any) { 
-      console.error("[UI] Erro na geração:", error);
       toast.error(error.message || "Erro ao gerar SQL"); 
     }
     finally { setIsGenerating(false); }
@@ -212,7 +188,6 @@ const App: React.FC = () => {
        setExecutionResult(data);
        setCurrentStep('results');
     } catch (error: any) { 
-      console.error("[UI] Erro na execução:", error);
       toast.error(error.message || "Falha na execução"); 
     }
     finally { setIsExecuting(false); }
@@ -233,8 +208,6 @@ const App: React.FC = () => {
           if (electron) {
             manualCheckRef.current = true; 
             electron.send('check-update', settings.updateBranch); 
-          } else {
-            toast.error("Funcionalidade disponível apenas no App Desktop.");
           }
         }}
       />
@@ -252,6 +225,7 @@ const App: React.FC = () => {
            )}
            {currentStep === 'datadiff' && schema && <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />}
            {currentStep === 'dashboard' && <DashboardStep items={dashboardItems} onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} onClearAll={() => setDashboardItems([])} />}
+           {currentStep === 'serverhealth' && <ServerHealthStep credentials={credentials} />}
            {currentStep === 'roadmap' && <RoadmapStep />}
         </div>
       </main>

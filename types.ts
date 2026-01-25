@@ -28,6 +28,27 @@ export interface DbCredentials {
   database: string;
 }
 
+export interface ServerStats {
+  connections: number;
+  dbSize: string;
+  activeQueries: number;
+  maxQueryDuration: string;
+  transactionsCommit: number;
+  transactionsRollback: number;
+  cacheHitRate: string;
+}
+
+export interface ActiveProcess {
+  pid: number;
+  user: string;
+  clientAddr: string;
+  duration: string;
+  durationMs: number;
+  state: string;
+  query: string;
+  waitEvent: string;
+}
+
 export interface IntersectionResult {
   count: number;
   sample: any[];
@@ -63,7 +84,7 @@ export interface QueryResult {
   optimization?: OptimizationAnalysis;
 }
 
-export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'roadmap';
+export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'serverhealth' | 'roadmap';
 
 export type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'ILIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL';
 export type JoinType = 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
