@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Settings, Save, X, Bot, Zap, 
@@ -651,11 +650,13 @@ export default function SettingsModal({
                                </div>
                                <div className="flex justify-between items-center text-slate-400">
                                   <span>Ambiente Electron:</span>
-                                  <span className="text-indigo-400">v{window?.process?.versions?.electron || 'N/A'}</span>
+                                  {/* Fix: Property 'process' does not exist on type 'Window'. Accessing versions via exposed electron object. */}
+                                  <span className="text-indigo-400">v{(window as any).electron?.versions?.electron || 'N/A'}</span>
                                </div>
                                <div className="flex justify-between items-center text-slate-400">
                                   <span>Kernel Node:</span>
-                                  <span className="text-emerald-400">v{window?.process?.versions?.node || 'N/A'}</span>
+                                  {/* Fix: Property 'process' does not exist on type 'Window'. Accessing versions via exposed electron object. */}
+                                  <span className="text-emerald-400">v{(window as any).electron?.versions?.node || 'N/A'}</span>
                                </div>
                             </div>
                             {stressLogs.length === 0 ? (

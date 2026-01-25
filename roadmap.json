@@ -6,6 +6,17 @@
       "icon": "Bot",
       "items": [
         {
+          "title": "Monitor de Saúde em Tempo Real (Live Stats)",
+          "desc": "Telemetria do servidor Postgres: consumo de memória, conexões ativas e detecção de queries travadas (Long Running Queries).",
+          "status": "Planejado",
+          "implementationPlan": [
+            "Técnica: Consultas periódicas à view pg_stat_activity e pg_stat_database.",
+            "UI: Dashboard de métricas em tempo real com gráficos de linha para carga do servidor.",
+            "Alerta: Notificação visual quando uma query ultrapassa o limite de tempo configurado.",
+            "DBA Tool: Botão para 'Terminar Processo' (PID) diretamente da interface."
+          ]
+        },
+        {
           "title": "Auto-Indexador Sugestivo",
           "desc": "Análise de query via IA para sugerir comandos 'CREATE INDEX' baseados no uso de WHERE/JOIN.",
           "status": "Planejado",
@@ -26,28 +37,6 @@
             "UI: Barra de busca inteligente no topo do SchemaViewer.",
             "IA: Uso de modelos Gemini para interpretar sinônimos e contextos de negócio."
           ]
-        },
-        {
-          "title": "Tradução de Dialetos",
-          "desc": "Converter queries de MySQL, SQL Server ou Oracle para sintaxe otimizada do PostgreSQL.",
-          "status": "Em Discussão",
-          "implementationPlan": [
-            "Técnica: Prompt Engineering especializado em tradução de sintaxe SQL (Top-K, Window Functions, etc).",
-            "UI: Modal de entrada 'From/To' com seleção do dialeto de origem.",
-            "Visual: Diff visual entre a query original e a convertida para Postgres.",
-            "Diferencial: Sugestão automática de substituição de funções proprietárias por equivalentes nativos."
-          ]
-        },
-        {
-          "title": "Gerador de Documentação",
-          "desc": "Criação de arquivos Markdown/PDF documentando todo o Schema (IA infere o contexto de negócio).",
-          "status": "Em Discussão",
-          "implementationPlan": [
-            "Técnica: Extração recursiva de comentários de tabelas e metadados de relacionamentos.",
-            "Inteligência: IA descreve o 'Propósito de Negócio' de cada tabela baseada no nome e dados.",
-            "Exportação: Suporte a Mermaid.js para inclusão de diagramas ER automáticos.",
-            "Comportamento: Geração em background para schemas com mais de 500 tabelas."
-          ]
         }
       ]
     },
@@ -56,14 +45,25 @@
       "icon": "Eye",
       "items": [
         {
-          "title": "Visual Explain Timeline",
-          "desc": "Transforme o EXPLAIN ANALYZE em um gráfico de Gantt visual, mostrando os gargalos de tempo da query.",
+          "title": "Visual Explain Timeline (Gantt)",
+          "desc": "Transforme o EXPLAIN ANALYZE em um gráfico de Gantt visual, mostrando cronologicamente onde cada Join ou Scan gastou tempo.",
           "status": "Planejado",
           "implementationPlan": [
             "Lógica: Parsing do JSON retornado pelo PostgreSQL EXPLAIN (ANALYZE, FORMAT JSON).",
-            "Gráfico: Timeline horizontal mostrando o custo de 'Startup' vs 'Total' de cada nó.",
-            "Highlight: Identificação visual de nós que consomem mais de 50% do tempo total.",
+            "Gráfico: Timeline horizontal comparando tempo de execução vs tempo de planejamento.",
+            "Highlight: Identificação visual de 'Hotspots' onde o banco está perdendo mais milissegundos.",
             "UI: Integração com a aba de Performance no ResultsStep."
+          ]
+        },
+        {
+          "title": "Edição em Massa (Bulk Edit)",
+          "desc": "Manipulação de dados estilo planilha (arrastar valor para baixo) com geração de script de transação única para o banco.",
+          "status": "Planejado",
+          "implementationPlan": [
+            "UI: Adição de 'Drag Handle' nas células da VirtualTable para propagação de valores.",
+            "Recurso: 'Localizar e Substituir' em colunas inteiras da amostragem de resultados.",
+            "Segurança: Todas as alterações são agrupadas em um bloco BEGIN/COMMIT automático.",
+            "Diferencial: Preview do impacto (número de linhas afetadas) antes da confirmação."
           ]
         },
         {
@@ -71,33 +71,10 @@
           "desc": "Congele colunas identificadoras à esquerda para manter o contexto enquanto navega horizontalmente em tabelas largas.",
           "status": "Em Desenvolvimento",
           "implementationPlan": [
-            "UI: Ícone de 'Pin' sutil em cada cabeçalho de coluna da VirtualTable que alterna entre estado fixo/solto.",
-            "Comportamento: Empilhamento inteligente. Ao fixar múltiplas colunas, elas se organizam da esquerda para a direita automaticamente.",
-            "Visual: Sombra interna (shadow-xl) e borda de destaque na última coluna fixada para criar separação visual clara da área de scroll.",
-            "Técnica: Implementação via CSS 'sticky' com 'left' dinâmico calculado pela soma das larguras (getBoundingClientRect) das colunas fixadas precedentes.",
-            "Persistência: Estado salvo via LocalStorage indexado pelo nome da tabela e do schema."
-          ]
-        },
-        {
-          "title": "Builder Visual 'Canvas'",
-          "desc": "Arraste e solte tabelas em uma área central para montar relacionamentos e queries visualmente.",
-          "status": "Em Pesquisa",
-          "implementationPlan": [
-            "Técnica: Integração com bibliotecas de grafos (ex: React Flow) para renderização performática de nós.",
-            "UI: Área de trabalho infinita com mini-mapa de navegação.",
-            "Comportamento: Conexão automática ao aproximar colunas com nomes idênticos.",
-            "Sync: Mudanças no Canvas refletem instantaneamente no estado do Query Builder clássico."
-          ]
-        },
-        {
-          "title": "Heatmap de Resultados",
-          "desc": "Coloração condicional automática para identificar anomalias e padrões nos resultados da tabela.",
-          "status": "Sugestão",
-          "implementationPlan": [
-            "Lógica: Cálculo estatístico local (Min, Max, Média) por coluna numérica.",
-            "Visual: Gradientes de cores (Verde para valores baixos, Vermelho para altos) aplicados no fundo da célula.",
-            "UI: Toggle rápido no cabeçalho da coluna para ativar/desativar o modo heatmap.",
-            "Performance: Virtualização garante que o heatmap não trave em tabelas com milhares de linhas."
+            "UI: Ícone de 'Pin' sutil em cada cabeçalho de coluna da VirtualTable.",
+            "Comportamento: Empilhamento inteligente via CSS 'sticky' com 'left' dinâmico.",
+            "Visual: Sombra interna e borda de destaque na última coluna fixada.",
+            "Persistência: Estado salvo via LocalStorage indexado pelo nome da tabela."
           ]
         }
       ]
@@ -107,14 +84,24 @@
       "icon": "Zap",
       "items": [
         {
+          "title": "Biblioteca de Trechos (Snippets)",
+          "desc": "Repositório de fragmentos de código SQL favoritos (ex: filtros de data complexos) para inserção rápida no editor.",
+          "status": "Planejado",
+          "implementationPlan": [
+            "UI: Novo painel lateral no Editor Monaco com lista de categorias de SQL.",
+            "Integração: Inserção de texto na posição atual do cursor (range insertion).",
+            "IA: Sugestão de snippets baseada nas tabelas que o usuário mais utiliza.",
+            "Favoritos: Sistema de 'estrela' para os trechos mais usados no dia a dia."
+          ]
+        },
+        {
           "title": "Multi-Query Scratchpad",
           "desc": "Abas de rascunho rápido para testar snippets SQL sem perder a query principal do builder.",
           "status": "Planejado",
           "implementationPlan": [
             "UI: Lateral expansível com abas numeradas de 'Scratchpad'.",
             "Recurso: Cada aba mantém seu próprio estado de editor Monaco.",
-            "Funcionalidade: 'Promover para Builder' permite levar o código do rascunho para o fluxo principal.",
-            "Persistência: Salva automaticamente os rascunhos em tempo real."
+            "Funcionalidade: 'Promover para Builder' permite levar o código do rascunho para o fluxo principal."
           ]
         },
         {
@@ -124,30 +111,7 @@
           "implementationPlan": [
             "IA: Prompt especializado em higienização de strings e regex Postgres.",
             "Preview: Exibição 'Antes vs Depois' em uma amostra de 5 linhas antes de executar.",
-            "Segurança: Geração obrigatória de transação com BEGIN/ROLLBACK sugerido.",
-            "Contexto: IA reconhece tipos de dados (Datas, Moedas, Documentos) para aplicar a melhor regra."
-          ]
-        },
-        {
-          "title": "Command Palette (Ctrl+P)",
-          "desc": "Barra de comando global estilo VS Code para navegar instantaneamente entre tabelas e ferramentas.",
-          "status": "Planejado",
-          "implementationPlan": [
-            "UI: Modal flutuante centralizado com busca difusa (Fuzzy Search).",
-            "Integração: Atalhos para abrir 'Mapa do Schema', 'Histórico' ou focar em uma tabela específica pelo nome.",
-            "Comportamento: Histórico de comandos recentes exibido ao abrir sem busca.",
-            "Acessibilidade: Suporte total a navegação via teclado (Setas + Enter)."
-          ]
-        },
-        {
-          "title": "Sandbox de Fuzzing",
-          "desc": "Exportar schema real mas gerar 10.000 linhas de dados fictícios para testes de carga seguros.",
-          "status": "Em Discussão",
-          "implementationPlan": [
-            "Técnica: Mapeamento de tipos Postgres para geradores aleatórios contextuais (Nomes, Emails, Valores Monetários).",
-            "Comportamento: Opção de inserir dados simulados em tabelas reais ou gerar arquivo SQL de 'Seed'.",
-            "Segurança: Garantia de não-utilização de dados reais (Anonimização total).",
-            "Diferencial: Preservação de integridade referencial (FKs simuladas)."
+            "Segurança: Geração obrigatória de transação com BEGIN/ROLLBACK sugerido."
           ]
         }
       ]
@@ -157,86 +121,24 @@
       "icon": "Layers",
       "items": [
         {
+          "title": "Máscaras de Dados e Privacidade (LGPD)",
+          "desc": "Toggle para 'Anonimizar Amostra', mascarando nomes, emails e documentos antes de enviar para análise de IA ou exportação.",
+          "status": "Planejado",
+          "implementationPlan": [
+            "Técnica: Motor local de substituição via Regex para padrões comuns (PII).",
+            "Segurança: Dados sensíveis nunca saem do cliente original se o modo estiver ativo.",
+            "IA: A IA recebe apenas os metadados e dados anonimizados para sugerir lógicas sem violar privacidade.",
+            "Exportação: Suporte a CSV/JSON anonimizado para relatórios compartilháveis."
+          ]
+        },
+        {
           "title": "DML Safety Lock",
           "desc": "Trava inteligente que detecta UPDATE/DELETE sem WHERE e exige confirmação dupla.",
           "status": "Planejado",
           "implementationPlan": [
             "Lógica: Analisador sintático (Parser) identifica comandos destrutivos sem cláusula de filtro.",
             "UI: Banner de alerta vermelho 'Critical Risk' impedindo o botão de execução imediata.",
-            "Savepoint: Opção automática de criar um ponto de restauração antes de rodar o comando.",
-            "Proteção: Bloqueio opcional de comandos TRUNCATE ou DROP em ambientes marcados como 'Produção'."
-          ]
-        },
-        {
-          "title": "Schema Diff & Sync",
-          "desc": "Compare dois bancos (ex: Local vs Stage) e gere o script de migração para sincronizar as tabelas.",
-          "status": "Em Discussão",
-          "implementationPlan": [
-            "Técnica: Comparação de metadados das tabelas de sistema (pg_catalog).",
-            "Geração: Criação de scripts ALTER TABLE automáticos para colunas faltantes ou tipos alterados.",
-            "UI: Tabela comparativa lado-a-lado destacando diferenças de colunas, constraints e índices.",
-            "Diferencial: Suporte a migração seletiva (escolha quais tabelas sincronizar)."
-          ]
-        },
-        {
-          "title": "Shared Workspaces (Bundles)",
-          "desc": "Exporte todo o contexto do projeto (Schema + Vínculos Virtuais + Templates) em um único arquivo.",
-          "status": "Em Discussão",
-          "implementationPlan": [
-            "Formato: Arquivo .psqlbuddy contendo configurações e metadados criptografados.",
-            "Colaboração: Permite que colegas importem o workspace e tenham o mesmo contexto de auditoria instantaneamente.",
-            "Segurança: Opcional de 'Remover Credenciais' ao exportar para compartilhamento público.",
-            "Recurso: Snapshot de histórico de queries importantes incluído no bundle."
-          ]
-        }
-      ]
-    },
-    {
-      "title": "Performance & Relatórios",
-      "icon": "Terminal",
-      "items": [
-        {
-          "title": "Data Quality Dashboard",
-          "desc": "Perfilagem automática: detecte % de nulos, outliers e cardinalidade de colunas.",
-          "status": "Planejado",
-          "implementationPlan": [
-            "Técnica: Queries estatísticas leves rodando em background (ou sob demanda).",
-            "Visual: Mini-cards com histogramas de distribuição de dados por coluna.",
-            "Alerta: Notificação automática de 'Data Drift' ou inconsistências de tipo em colunas genéricas.",
-            "UI: Nova aba 'Qualidade' no painel de Resultados."
-          ]
-        },
-        {
-          "title": "Multitasking de Resultados",
-          "desc": "Abas na tela de Results para manter múltiplas queries rodando simultaneamente.",
-          "status": "Planejado",
-          "implementationPlan": [
-            "UI: Sistema de abas dinâmicas estilo navegador no topo do ResultsStep.",
-            "Técnica: Cada aba possui seu próprio Worker de execução e cache de resultados.",
-            "Comportamento: Possibilidade de 'Renomear Aba' para organizar auditorias longas.",
-            "Recurso: 'Pin Tab' para impedir o fechamento acidental de resultados importantes."
-          ]
-        },
-        {
-          "title": "Drill-Down Breadcrumbs",
-          "desc": "Caminho de navegação (Clientes > Pedidos > Itens) para não se perder em auditorias profundas.",
-          "status": "Sugestão",
-          "implementationPlan": [
-            "Lógica: Rastreamento do stack de modais de Drill-down abertos.",
-            "UI: Trilha de migalhas interativa que permite voltar para qualquer nível da auditoria.",
-            "Persistência: Cache temporário dos filtros aplicados em cada nível do Breadcrumb.",
-            "Visual: Animação de transição suave ao entrar em novos níveis de dados."
-          ]
-        },
-        {
-          "title": "Report Builder",
-          "desc": "Interface para exportar dashboards e tabelas em relatórios formatados compartilháveis.",
-          "status": "Em Discussão",
-          "implementationPlan": [
-            "UI: Drag-and-drop de elementos do Dashboard para um canvas de folha A4.",
-            "Exportação: Geração de PDF via jspdf com cabeçalho personalizado e logomarca.",
-            "Comportamento: Agendamento simulado (Local) para geração periódica de relatórios.",
-            "Técnica: Captura de alta resolução de gráficos Recharts via Canvas."
+            "Protection: Bloqueio opcional de comandos TRUNCATE ou DROP em produção."
           ]
         }
       ]
