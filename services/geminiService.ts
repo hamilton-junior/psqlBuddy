@@ -2,14 +2,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseSchema, QueryResult, BuilderState, ServerStats, ActiveProcess } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const cleanJsonString = (str: string): string => {
   if (!str) return "[]";
   return str.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
 };
 
 export const getHealthDiagnosis = async (stats: ServerStats, processes: ActiveProcess[]): Promise<string> => {
+  // Always initialize GoogleGenAI with the API key from process.env right before making a call.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     Como um DBA Sênior PostgreSQL, analise a telemetria atual do servidor:
     

@@ -66,18 +66,18 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
     }
   }, [queryResult.sql]);
 
-  // ANALISADOR DE SEGURANÇA DML
+  // ANALISADOR DE SEGURANÇA DML (Restaurado e Refinado)
   const safetyError = useMemo(() => {
      const sql = editedSql.trim().toUpperCase();
      if (!sql) return null;
 
-     // 1. Bloqueio Estrito de TRUNCATE/DROP
+     // 1. Bloqueio Estrito de TRUNCATE/DROP (Se configurado nas settings)
      if (settings?.blockDestructiveCommands) {
         if (/\b(TRUNCATE|DROP)\b/.test(sql)) {
            return {
               type: 'BLOCK',
               message: 'Comandos de destruição (TRUNCATE/DROP) estão bloqueados por governança do sistema.',
-              icon: <Lock className="w-5 h-5" />
+              icon: <Lock className="w-5 h-5 text-red-500" />
            };
         }
      }
@@ -92,7 +92,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
            return {
               type: 'RISK',
               message: `RISCO CRÍTICO: Detectado ${isUpdate ? 'UPDATE' : 'DELETE'} sem cláusula WHERE. Isso afetará TODAS as linhas da tabela.`,
-              icon: <ShieldAlert className="w-5 h-5" />
+              icon: <ShieldAlert className="w-6 h-6 text-rose-500" />
            };
         }
      }
@@ -213,13 +213,14 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
            </div>
         </div>
 
+        {/* ALERTA DE SEGURANÇA (Restaurado) */}
         {safetyError ? (
            <div className={`rounded-xl border overflow-hidden transition-all shrink-0 animate-pulse ${safetyError.type === 'BLOCK' ? 'bg-red-950/40 border-red-500' : 'bg-rose-950/40 border-rose-500'}`}>
               <div className="p-4 flex items-center justify-between gap-4">
                  <div className="flex items-start gap-3 flex-1">
-                    <div className="text-red-500 mt-0.5">{safetyError.icon}</div>
+                    <div className="mt-0.5">{safetyError.icon}</div>
                     <div className="flex-1">
-                       <h4 className="font-black text-xs text-red-400 uppercase tracking-widest mb-1">DML Safety Lock</h4>
+                       <h4 className="font-black text-xs text-red-400 uppercase tracking-widest mb-1">Trava de Segurança (DML)</h4>
                        <p className="text-sm font-medium text-white leading-snug">{safetyError.message}</p>
                     </div>
                  </div>
@@ -228,7 +229,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
                        onClick={() => setIsSafetyUnlocked(true)}
                        className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg shadow-lg flex items-center gap-2 whitespace-nowrap transition-all"
                     >
-                       <Unlock className="w-3.5 h-3.5" /> Forçar Desbloqueio
+                       <Unlock className="w-3.5 h-3.5" /> Desbloquear Execução
                     </button>
                  )}
               </div>

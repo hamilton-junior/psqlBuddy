@@ -6,6 +6,26 @@
       "icon": "Bot",
       "items": [
         {
+          "title": "IA SQL Architect (NLP to SQL)",
+          "desc": "Tradução de linguagem natural em queries complexas e performáticas utilizando modelos Gemini 3 Flash/Pro.",
+          "status": "Finalizado",
+          "implementationPlan": [
+            "Motor de inferência baseado no contexto do schema real.",
+            "Validação sintática automática pós-geração.",
+            "Explicação didática da lógica aplicada."
+          ]
+        },
+        {
+          "title": "Monitor de Saúde em Tempo Real (Live Stats)",
+          "desc": "Telemetria do servidor: TPS, Cache Hit Rate, detecção de locks, queries zumbis (idle in transaction) e inchaço de tabelas (bloat).",
+          "status": "Finalizado",
+          "implementationPlan": [
+            "Técnica: Consultas periódicas às views pg_stat_activity e pg_stat_database.",
+            "Recurso: Detector de bloqueios (Blocking Tree) e encerramento forçado de PIDs.",
+            "IA: Botão 'Analisar com Gemini' para diagnósticos humanos baseados na telemetria."
+          ]
+        },
+        {
           "title": "Exportação de Snapshot de Diagnóstico",
           "desc": "Gerador de relatórios técnicos em PDF/JSON contendo métricas, locks e plano de saúde do banco para compartilhamento com equipes de infra.",
           "status": "Planejado",
@@ -13,17 +33,6 @@
             "UI: Botão de exportação no topo da tela de Saúde.",
             "Técnica: Captura do estado atual do componente e formatação via jspdf/html2canvas.",
             "Recurso: Possibilidade de anexar queries lentas detectadas no período."
-          ]
-        },
-        {
-          "title": "Monitor de Saúde em Tempo Real (Live Stats)",
-          "desc": "Telemetria do servidor Postgres: consumo de memória, conexões ativas e detecção de queries travadas (Long Running Queries).",
-          "status": "Finalizado",
-          "implementationPlan": [
-            "Técnica: Consultas periódicas à view pg_stat_activity e pg_stat_database.",
-            "UI: Dashboard de métricas em tempo real com gráficos de linha para carga do servidor.",
-            "Alerta: Notificação visual quando uma query ultrapassa o limite de tempo configurado.",
-            "DBA Tool: Botão para 'Terminar Processo' (PID) diretamente da interface."
           ]
         }
       ]
@@ -33,9 +42,50 @@
       "icon": "Eye",
       "items": [
         {
+          "title": "Mapa Interativo do Schema",
+          "desc": "Canvas infinito para visualização de tabelas, relacionamentos FK e validação de interseção de dados entre colunas.",
+          "status": "Finalizado",
+          "implementationPlan": [
+            "Layout automático baseado em densidade de conexões.",
+            "Busca global de campos e tabelas com zoom dinâmico.",
+            "Validador de interseção real para criação de FKs virtuais."
+          ]
+        },
+        {
           "title": "Visual Explain Timeline (Gantt)",
-          "desc": "Transforme o EXPLAIN ANALYZE em um gráfico de Gantt visual, mostrando cronologicamente onde cada Join ou Scan gastou tempo.",
-          "status": "Planejado"
+          "desc": "Transformação do EXPLAIN ANALYZE em um gráfico de Gantt visual, mostrando cronologicamente onde cada Join ou Scan gastou tempo.",
+          "status": "Planejado",
+          "implementationPlan": [
+            "Parsing de planos de execução JSON do PostgreSQL.",
+            "Destaque visual de gargalos de I/O e CPU por nó.",
+            "Comparação visual entre dois planos de execução."
+          ]
+        },
+        {
+          "title": "Natural Language to Charts",
+          "desc": "IA que analisa os resultados da query e sugere o melhor gráfico para visualização dos dados automaticamente.",
+          "status": "Finalizado"
+        }
+      ]
+    },
+    {
+      "title": "Engenharia & Produtividade",
+      "icon": "Zap",
+      "items": [
+        {
+          "title": "Data Diff & Auditoria",
+          "desc": "Ferramenta para comparar registros entre tabelas ou instâncias, identificando divergências em segundos.",
+          "status": "Finalizado"
+        },
+        {
+          "title": "Log Analyzer & SQL Extractor",
+          "desc": "Extrator de comandos SQL de arquivos de log sujos e diagnóstico de erros via IA para proposição de correções.",
+          "status": "Finalizado"
+        },
+        {
+          "title": "Suporte Multi-Banco (MySQL/SQLite)",
+          "desc": "Expansão do motor de drivers para suportar outros dialetos SQL comuns no ecossistema dev.",
+          "status": "Em Discussão"
         }
       ]
     }

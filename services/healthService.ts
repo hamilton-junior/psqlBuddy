@@ -4,8 +4,6 @@ import { SAMPLE_SCHEMA, BuilderState, DatabaseSchema, DbCredentials } from "../t
 import { executeOfflineQuery, initializeSimulation, SimulationData } from "./simulationService";
 import { executeQueryReal } from "./dbService";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export interface HealthStatus {
   id: string;
   name: string;
@@ -29,6 +27,8 @@ export const runFullHealthCheck = async (
   credentials?: DbCredentials | null,
   schema?: DatabaseSchema | null
 ): Promise<HealthStatus[]> => {
+  // Always initialize GoogleGenAI with the API key from process.env right before making a call.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const results: HealthStatus[] = [
     { id: 'gemini', name: 'Gemini AI API', status: 'pending' },
     { id: 'backend', name: 'Servidor Backend Local', status: 'pending' },

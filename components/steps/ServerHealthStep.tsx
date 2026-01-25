@@ -194,7 +194,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                <div className="p-3 bg-white dark:bg-indigo-900 rounded-2xl shadow-sm"><Sparkles className="w-6 h-6 text-indigo-600" /></div>
                <div className="flex-1">
                   <h4 className="font-black text-indigo-900 dark:text-indigo-200 text-sm uppercase tracking-widest mb-3">Parecer Técnico IA</h4>
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-indigo-100 whitespace-pre-wrap font-medium leading-relaxed">
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-indigo-100 whitespace-pre-wrap font-medium leading-relaxed font-mono">
                      {aiDiagnosis}
                   </div>
                </div>
@@ -229,9 +229,9 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                   historyKey="cache"
                />
                <StatCard 
-                  title="Transactions/S" 
-                  value={stats?.tps || '---'} 
-                  sub="Total de Commits"
+                  title="Total Transações" 
+                  value={stats?.transactionsCommit ? stats.transactionsCommit.toLocaleString() : '---'} 
+                  sub="Commits realizados"
                   icon={BarChart3}
                   colorClass="bg-amber-50 text-amber-600 dark:bg-amber-900/30"
                   historyKey="tps"
@@ -247,7 +247,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 min-h-0">
-               {/* Painel de Processos */}
+               {/* Painel de Processos (Restaurado com Destaque para Zumbis e Bloqueios) */}
                <div className="lg:col-span-2 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-sm overflow-hidden">
                   <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center shrink-0">
                      <div className="flex items-center gap-3">
@@ -350,7 +350,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                               </div>
                               <div className="flex items-center gap-4">
                                  <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min((parseInt(tbl.totalSize) / 500) * 100, 100)}%` }}></div>
+                                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min((parseInt(tbl.totalSize) || 0) / 10, 100)}%` }}></div>
                                  </div>
                                  <span className="text-[9px] font-bold text-slate-400 shrink-0">{tbl.estimatedRows.toLocaleString()} rows</span>
                               </div>

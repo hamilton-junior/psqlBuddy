@@ -105,10 +105,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   updateBranch: 'stable'
 };
 
+// Fix line 102: Added validation property to QueryResult interface to fix PreviewStep TS error
 export interface QueryResult {
   sql: string;
   explanation: string;
   tips?: string[];
+  validation?: {
+    isValid: boolean;
+    error?: string;
+    correctedSql?: string;
+  };
 }
 
 // Missing Types for Builder and other components
@@ -180,11 +186,12 @@ export enum MessageRole {
   ASSISTANT = 'assistant'
 }
 
+// Fix line 186: Simplified ChatMessage queryResult type as QueryResult now includes validation
 export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
-  queryResult?: QueryResult & { validation?: { isValid: boolean; error?: string; correctedSql?: string } };
+  queryResult?: QueryResult;
   mockData?: any[];
 }
 
