@@ -42,7 +42,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
     if (isManual) setLoading(true);
     try {
       const data = await getServerHealth(credentials);
-      const cacheVal = parseFloat(data.summary.cacheHitRate.replace('%', '')) || 0;
+      const cacheVal = parseFloat((data.summary.cacheHitRate || '0').replace('%', '')) || 0;
       
       setStats(data.summary);
       setProcesses(data.processes);
@@ -95,9 +95,9 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
 
   const filteredProcesses = useMemo(() => {
     return processes.filter(p => 
-       p.query.toLowerCase().includes(searchTerm.toLowerCase()) || 
-       p.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
-       p.pid.toString().includes(searchTerm)
+       (p.query || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+       (p.user || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+       (p.pid || '').toString().includes(searchTerm)
     );
   }, [processes, searchTerm]);
 
@@ -285,8 +285,8 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                                     <td className="px-6 py-4 text-xs font-mono font-bold text-slate-400">{proc.pid}</td>
                                     <td className="px-6 py-4">
                                        <div className="flex flex-col">
-                                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{proc.user}</span>
-                                          <span className="text-[9px] text-slate-400 font-mono">{proc.duration.split('.')[0]}</span>
+                                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{proc.user || 'system'}</span>
+                                          <span className="text-[9px] text-slate-400 font-mono">{(proc.duration || '0s').split('.')[0]}</span>
                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
@@ -300,7 +300,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                                     <td className="px-6 py-4">
                                        <div className="max-w-[300px] xl:max-w-[500px]">
                                           <code className="text-[11px] font-mono text-slate-600 dark:text-slate-400 block truncate group-hover:whitespace-normal group-hover:break-all">
-                                             {proc.query}
+                                             {proc.query || '(vazio)'}
                                           </code>
                                           {isBlocked && (
                                              <div className="flex items-center gap-1.5 text-[9px] text-rose-600 font-black mt-1 uppercase bg-rose-50 dark:bg-rose-900/30 px-2 py-0.5 rounded-lg w-fit border border-rose-100 dark:border-rose-800">

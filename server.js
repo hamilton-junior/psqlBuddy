@@ -94,7 +94,8 @@ app.post('/api/server-stats', async (req, res) => {
         pg_size_pretty(pg_database_size($1)) as db_size,
         (SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as active_queries,
         (SELECT COALESCE(max(now() - query_start), '0s'::interval)::text FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as max_duration,
-        xact_commit, xact_rollback,
+        COALESCE(xact_commit, 0) as xact_commit, 
+        COALESCE(xact_rollback, 0) as xact_rollback,
         round(100.0 * blks_hit / NULLIF(blks_read + blks_hit, 0), 2) as cache_hit_rate
       FROM pg_stat_database WHERE datname = $1;`;
     const statsRes = await client.query(statsQuery, [credentials.database]);
@@ -102,10 +103,14 @@ app.post('/api/server-stats', async (req, res) => {
     // 2. Processos com Bloqueios (Locks)
     const processesQuery = `
       SELECT 
-        pid, usename as user, client_addr as client,
-        (now() - query_start)::text as duration,
-        extract(epoch from (now() - query_start)) * 1000 as duration_ms,
-        state, query, wait_event_type as wait_event,
+        pid, 
+        COALESCE(usename, 'system') as user, 
+        COALESCE(client_addr::text, 'local') as client,
+        COALESCE((now() - query_start)::text, '0s') as duration,
+        extract(epoch from COALESCE((now() - query_start), '0s'::interval)) * 1000 as duration_ms,
+        state, 
+        COALESCE(query, '') as query, 
+        COALESCE(wait_event_type, 'None') as wait_event,
         pg_blocking_pids(pid) as blocking_pids
       FROM pg_stat_activity 
       WHERE datname = $1 AND pid <> pg_backend_pid()
@@ -119,7 +124,7 @@ app.post('/api/server-stats', async (req, res) => {
         pg_size_pretty(pg_total_relation_size(relid)) as total_size,
         pg_size_pretty(pg_relation_size(relid)) as table_size,
         pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) as index_size,
-        n_live_tup as estimated_rows
+        COALESCE(n_live_tup, 0) as estimated_rows
       FROM pg_stat_user_tables 
       ORDER BY pg_total_relation_size(relid) DESC LIMIT 5;`;
     const bloatRes = await client.query(bloatQuery);

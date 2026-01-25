@@ -67,31 +67,31 @@ export const getServerHealth = async (creds: DbCredentials): Promise<{ summary: 
     const data = await response.json();
     return {
        summary: {
-          connections: parseInt(data.summary.connections),
-          dbSize: data.summary.db_size,
-          activeQueries: parseInt(data.summary.active_queries),
-          maxQueryDuration: data.summary.max_duration,
-          transactionsCommit: parseInt(data.summary.xact_commit),
-          transactionsRollback: parseInt(data.summary.xact_rollback),
-          cacheHitRate: `${data.summary.cache_hit_rate}%`,
-          tps: parseInt(data.summary.xact_commit) || 0 // Fix: Added missing tps property
+          connections: parseInt(data.summary.connections) || 0,
+          dbSize: data.summary.db_size || '0 MB',
+          activeQueries: parseInt(data.summary.active_queries) || 0,
+          maxQueryDuration: data.summary.max_duration || '0s',
+          transactionsCommit: parseInt(data.summary.xact_commit) || 0,
+          transactionsRollback: parseInt(data.summary.xact_rollback) || 0,
+          cacheHitRate: `${data.summary.cache_hit_rate || 0}%`,
+          tps: parseInt(data.summary.xact_commit) || 0 
        },
-       processes: data.processes.map((p: any) => ({
+       processes: (data.processes || []).map((p: any) => ({
           pid: p.pid,
-          user: p.user,
+          user: p.user || 'system',
           clientAddr: p.client || 'local',
-          duration: p.duration,
-          durationMs: p.duration_ms,
-          state: p.state,
-          query: p.query,
+          duration: p.duration || '0s',
+          durationMs: p.duration_ms || 0,
+          state: p.state || 'unknown',
+          query: p.query || '',
           waitEvent: p.wait_event || 'None',
           blockingPids: p.blocking_pids || []
        })),
-       tableInsights: (data.tableInsights || []).map((ti: any) => ({ // Fix: Added tableInsights processing
-          name: ti.table_name,
-          totalSize: ti.total_size,
-          tableSize: ti.table_size,
-          indexSize: ti.index_size,
+       tableInsights: (data.tableInsights || []).map((ti: any) => ({ 
+          name: ti.table_name || 'unknown',
+          totalSize: ti.total_size || '0 B',
+          tableSize: ti.table_size || '0 B',
+          indexSize: ti.index_size || '0 B',
           estimatedRows: parseInt(ti.estimated_rows) || 0
        }))
     };
