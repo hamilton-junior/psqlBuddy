@@ -53,7 +53,7 @@ const Dialog: React.FC<DialogProps> = ({
              <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">{title}</h3>
           </div>
           
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed whitespace-pre-wrap">
             {message}
           </p>
 
