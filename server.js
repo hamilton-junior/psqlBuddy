@@ -100,7 +100,7 @@ app.post('/api/server-stats', async (req, res) => {
     const verRes = await client.query("SHOW server_version_num;");
     const vNum = parseInt(verRes.rows[0].server_version_num);
 
-    // 1. Sumário (CORRIGIDO: datfrozenxid vem de pg_database)
+    // 1. Sumário (CORRIGIDO: datfrozenxid vem de pg_database, adicionado stats_reset)
     const statsQuery = `
       SELECT 
         (SELECT numbackends FROM pg_stat_database WHERE datname = $1) as connections,
@@ -111,6 +111,7 @@ app.post('/api/server-stats', async (req, res) => {
         (SELECT xact_commit FROM pg_stat_database WHERE datname = $1) as xact_commit,
         (SELECT xact_rollback FROM pg_stat_database WHERE datname = $1) as xact_rollback,
         (SELECT round(100.0 * blks_hit / NULLIF(blks_read + blks_hit, 0), 2) FROM pg_stat_database WHERE datname = $1) as cache_hit_rate,
+        (SELECT stats_reset FROM pg_stat_database WHERE datname = $1) as stats_reset,
         age(datfrozenxid) as wraparound_age,
         round(100.0 * age(datfrozenxid) / 2000000000.0, 2) as wraparound_percent
       FROM pg_database WHERE datname = $1;`;
@@ -153,7 +154,7 @@ app.post('/api/server-stats', async (req, res) => {
       ORDER BY pg_total_relation_size(relid) DESC LIMIT 10;`;
     const bloatRes = await client.query(bloatQuery);
 
-    // 4. Índices Não Utilizados
+    // 4. Índices Não Utilizados (Mantido indisunique IS FALSE como proteção)
     const unusedIndexesQuery = `
       SELECT 
         schemaname as schema_name,

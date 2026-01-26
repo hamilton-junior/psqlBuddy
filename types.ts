@@ -40,6 +40,7 @@ export interface ServerStats {
   tps: number;
   wraparoundAge: number;
   wraparoundPercent: number;
+  statsReset?: string;
 }
 
 export interface TableInsight {

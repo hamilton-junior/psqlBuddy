@@ -5,7 +5,7 @@ import {
   RefreshCw, Trash2, Search, AlertCircle, 
   Loader2, Zap, ShieldAlert, Terminal, ZapOff, 
   Cpu, BarChart3, AlertTriangle, Ghost, ListOrdered, Sparkles, X, ChevronDown, CheckCircle2, Timer, Settings,
-  FileJson, FileText, Download, Share2, Layers, Anchor, ActivitySquare, Gauge, ShieldCheck, Info, Sparkle, Brush
+  FileJson, FileText, Download, Share2, Layers, Anchor, ActivitySquare, Gauge, ShieldCheck, Info, Sparkle, Brush, HelpCircle
 } from 'lucide-react';
 import { DbCredentials, ServerStats, ActiveProcess, TableInsight, UnusedIndex } from '../../types';
 import { getServerHealth, terminateProcess, vacuumTable, dropIndex } from '../../services/dbService';
@@ -30,6 +30,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [terminatingPid, setTerminatingPid] = useState<number | null>(null);
   const [optimizingItems, setOptimizingItems] = useState<Set<string>>(new Set());
+  const [showIndexWarningInfo, setShowIndexWarningInfo] = useState(false);
   
   // IA Diagnosis
   const [aiDiagnosis, setAiDiagnosis] = useState<string | null>(null);
@@ -150,7 +151,16 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
 
   const handleDropUnusedIndex = async (schema: string, index: string) => {
     if (!credentials) return;
-    if (!confirm(`Deseja realmente remover o índice ${index}? Esta ação não pode ser desfeita.`)) return;
+    
+    // Validação estendida via confirmação do usuário
+    const warningMsg = `AVISO DE SEGURANÇA PARA DBA:\n\n` +
+      `Um índice com 0 scans pode ainda ser vital se:\n` +
+      `1. For uma Constraint de Foreign Key (importante para DELETEs).\n` +
+      `2. For usado por queries raras de relatórios (anuais/mensais).\n` +
+      `3. As estatísticas foram resetadas recentemente (${stats?.statsReset || 'N/A'}).\n\n` +
+      `Deseja realmente remover o índice ${index}?`;
+
+    if (!confirm(warningMsg)) return;
     
     const itemKey = `drop-${schema}.${index}`;
     if (optimizingItems.has(itemKey)) return;
@@ -532,9 +542,32 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 shrink-0">
             {/* Índices Não Utilizados */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-sm flex flex-col overflow-hidden h-[380px]">
-               <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
-                  <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2"><Anchor className="w-4 h-4 text-indigo-500" /> Otimização: Índices Não Utilizados</h3>
+               <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2"><Anchor className="w-4 h-4 text-indigo-500" /> Otimização: Índices Não Utilizados</h3>
+                    <button 
+                      onClick={() => setShowIndexWarningInfo(!showIndexWarningInfo)}
+                      className="p-1 text-slate-400 hover:text-indigo-500 transition-colors"
+                      title="Por que o scan pode ser zero?"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {stats?.statsReset && (
+                    <span className="text-[9px] font-black text-slate-400 uppercase bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                      Coleta desde: {stats.statsReset}
+                    </span>
+                  )}
                </div>
+               
+               {showIndexWarningInfo && (
+                  <div className="px-6 py-3 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-800 animate-in slide-in-from-top-1">
+                     <p className="text-[10px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
+                       <strong>Atenção:</strong> Índices com 0 scans podem ainda ser úteis para garantir integridade (Unique), chaves estrangeiras (Foreign Keys) ou queries muito raras. Verifique a data de reset das estatísticas antes de excluir.
+                     </p>
+                  </div>
+               )}
+
                <div className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-4">
                   {unusedIndexes.length === 0 ? (
                      <div className="h-full flex flex-col items-center justify-center text-center p-6 opacity-40">

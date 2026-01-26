@@ -91,7 +91,8 @@ export const getServerHealth = async (creds: DbCredentials): Promise<{
           cacheHitRate: `${summary.cache_hit_rate || 0}%`,
           tps: parseInt(summary.xact_commit) || 0,
           wraparoundAge: parseInt(summary.wraparound_age) || 0,
-          wraparoundPercent: parseFloat(summary.wraparound_percent) || 0
+          wraparoundPercent: parseFloat(summary.wraparound_percent) || 0,
+          statsReset: summary.stats_reset ? new Date(summary.stats_reset).toLocaleString() : 'Desconhecido'
        },
        processes: (data.processes || []).map((p: any) => ({
           pid: p.pid,
