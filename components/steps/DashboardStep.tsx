@@ -1,7 +1,9 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import { DashboardItem } from '../../types';
 import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Trash2, Calendar, LayoutGrid, X } from 'lucide-react';
+import Dialog from '../common/Dialog';
 
 interface DashboardStepProps {
   items: DashboardItem[];
@@ -10,6 +12,7 @@ interface DashboardStepProps {
 }
 
 const DashboardStep: React.FC<DashboardStepProps> = ({ items, onRemoveItem, onClearAll }) => {
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   
   if (items.length === 0) {
     return (
@@ -75,6 +78,18 @@ const DashboardStep: React.FC<DashboardStepProps> = ({ items, onRemoveItem, onCl
 
   return (
     <div className="p-6 h-full overflow-y-auto">
+      {showClearConfirm && (
+        <Dialog 
+          isOpen={true}
+          type="danger"
+          title="Limpar Dashboard"
+          message="Deseja realmente remover todos os indicadores fixados no seu dashboard? Esta ação não afetará os dados no banco, apenas a visualização salva."
+          onConfirm={onClearAll}
+          onClose={() => setShowClearConfirm(false)}
+          confirmLabel="Limpar Tudo"
+        />
+      )}
+
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -86,7 +101,7 @@ const DashboardStep: React.FC<DashboardStepProps> = ({ items, onRemoveItem, onCl
           </p>
         </div>
         <button 
-           onClick={() => { if(confirm("Limpar todo o dashboard?")) onClearAll(); }}
+           onClick={() => setShowClearConfirm(true)}
            className="text-red-500 hover:text-red-700 text-sm font-bold flex items-center gap-2 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-lg"
         >
            <Trash2 className="w-4 h-4" /> Limpar Tudo

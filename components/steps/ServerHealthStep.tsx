@@ -12,6 +12,7 @@ import { getServerHealth, terminateProcess, vacuumTable, dropIndex } from '../..
 import { getHealthDiagnosis } from '../../services/geminiService';
 import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import { toast } from 'react-hot-toast';
+import Dialog from '../common/Dialog';
 
 interface ServerHealthStepProps {
   credentials: DbCredentials | null;
@@ -32,6 +33,15 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
   const [optimizingItems, setOptimizingItems] = useState<Set<string>>(new Set());
   const [showIndexWarningInfo, setShowIndexWarningInfo] = useState(false);
   
+  // Dialog System
+  const [dialogConfig, setDialogConfig] = useState<{ 
+     isOpen: boolean, 
+     type: 'confirm' | 'danger' | 'prompt', 
+     title: string, 
+     message: string, 
+     onConfirm: (val?: string) => void 
+  } | null>(null);
+
   // IA Diagnosis
   const [aiDiagnosis, setAiDiagnosis] = useState<string | null>(null);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
@@ -110,9 +120,8 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
      finally { setIsDiagnosing(false); }
   };
 
-  const handleKill = async (pid: number) => {
+  const executeKill = async (pid: number) => {
     if (!credentials) return;
-    if (!confirm(`Deseja forçar o encerramento do processo ${pid}?`)) return;
     console.log(`[SERVER_HEALTH] Tentando encerrar PID ${pid}...`);
     setTerminatingPid(pid);
     try {
@@ -124,6 +133,16 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
       console.error(`[SERVER_HEALTH] Erro ao encerrar PID ${pid}:`, err);
       toast.error(`Falha ao matar processo: ${err.message}`);
     } finally { setTerminatingPid(null); }
+  };
+
+  const handleKill = (pid: number) => {
+    setDialogConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Encerrar Processo',
+      message: `Deseja realmente forçar o encerramento do processo PID ${pid}? Esta ação interromperá a query em execução.`,
+      onConfirm: () => executeKill(pid)
+    });
   };
 
   const handleVacuum = async (schema: string, table: string) => {
@@ -149,19 +168,8 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
     }
   };
 
-  const handleDropUnusedIndex = async (schema: string, index: string) => {
+  const executeDropUnusedIndex = async (schema: string, index: string) => {
     if (!credentials) return;
-    
-    // Validação estendida via confirmação do usuário
-    const warningMsg = `AVISO DE SEGURANÇA PARA DBA:\n\n` +
-      `Um índice com 0 scans pode ainda ser vital se:\n` +
-      `1. For uma Constraint de Foreign Key (importante para DELETEs).\n` +
-      `2. For usado por queries raras de relatórios (anuais/mensais).\n` +
-      `3. As estatísticas foram resetadas recentemente (${stats?.statsReset || 'N/A'}).\n\n` +
-      `Deseja realmente remover o índice ${index}?`;
-
-    if (!confirm(warningMsg)) return;
-    
     const itemKey = `drop-${schema}.${index}`;
     if (optimizingItems.has(itemKey)) return;
     
@@ -181,6 +189,23 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
         return next;
       });
     }
+  };
+
+  const handleDropUnusedIndex = (schema: string, index: string) => {
+    const warningMsg = `AVISO DE SEGURANÇA PARA DBA:\n\n` +
+      `Um índice com 0 scans pode ainda ser vital se:\n` +
+      `1. For uma Constraint de Foreign Key (importante para DELETEs).\n` +
+      `2. For usado por queries raras de relatórios (anuais/mensais).\n` +
+      `3. As estatísticas foram resetadas recentemente (${stats?.statsReset || 'N/A'}).\n\n` +
+      `Deseja realmente remover o índice ${index}? Esta ação não pode ser desfeita.`;
+
+    setDialogConfig({
+      isOpen: true,
+      type: 'danger',
+      title: 'Excluir Índice Ocioso',
+      message: warningMsg,
+      onConfirm: () => executeDropUnusedIndex(schema, index)
+    });
   };
 
   const exportSnapshot = (format: 'json' | 'txt') => {
@@ -306,6 +331,18 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 pb-10">
       
+      {dialogConfig && (
+        <Dialog 
+          isOpen={dialogConfig.isOpen}
+          type={dialogConfig.type}
+          title={dialogConfig.title}
+          message={dialogConfig.message}
+          onConfirm={dialogConfig.onConfirm}
+          onClose={() => setDialogConfig(null)}
+          confirmLabel="Sim, Executar"
+        />
+      )}
+
       {/* Header Operational */}
       <div className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 shrink-0">
          <div>
