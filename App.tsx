@@ -1,9 +1,10 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
   AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem
 } from './types';
+// Fix: Import Loader2 icon used in the hydration loading screen
+import { Loader2 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import ConnectionStep from '@/components/steps/ConnectionStep';
 import BuilderStep from '@/components/steps/BuilderStep';
@@ -61,6 +62,7 @@ const App: React.FC = () => {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [executionResult, setExecutionResult] = useState<any[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
@@ -93,6 +95,61 @@ const App: React.FC = () => {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
   const manualCheckRef = useRef(false);
+
+  // --- PERSISTÊNCIA EM DISCO (ELECTRON) ---
+  
+  // 1. Hydration (Bootstrap inicial do disco -> localStorage)
+  useEffect(() => {
+    const hydrateFromDisk = async () => {
+        const electron = (window as any).electron;
+        if (electron && electron.invoke) {
+            console.log("[PERSISTENCE] Iniciando restauração de dados do disco...");
+            try {
+                const diskData = await electron.invoke('get-persistent-store');
+                if (diskData && Object.keys(diskData).length > 0) {
+                    Object.entries(diskData).forEach(([key, val]) => {
+                        localStorage.setItem(key, val as string);
+                    });
+                    console.log(`[PERSISTENCE] ${Object.keys(diskData).length} chaves restauradas com sucesso.`);
+                    
+                    // Re-atualizar estados locais para refletir o que veio do disco
+                    const savedSettings = localStorage.getItem('psqlBuddy-settings');
+                    if (savedSettings) setSettings(JSON.parse(savedSettings));
+                    
+                    const savedDash = localStorage.getItem('psqlBuddy-dashboard');
+                    if (savedDash) setDashboardItems(JSON.parse(savedDash));
+                }
+            } catch (e) {
+                console.error("[PERSISTENCE] Falha ao sincronizar disco -> localStorage:", e);
+            }
+        }
+        setIsHydrated(true);
+    };
+    hydrateFromDisk();
+  }, []);
+
+  // 2. Sync (localStorage -> Disco) - Debounced
+  useEffect(() => {
+    if (!isHydrated) return;
+    
+    const syncToDisk = () => {
+        const electron = (window as any).electron;
+        if (electron) {
+            const allKeys: Record<string, string> = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.startsWith('psqlBuddy-') || key.startsWith('psql-buddy-'))) {
+                    allKeys[key] = localStorage.getItem(key) || '';
+                }
+            }
+            electron.send('save-persistent-store', allKeys);
+            console.log("[PERSISTENCE] Sync automático localStorage -> Disco executado.");
+        }
+    };
+
+    const timer = setTimeout(syncToDisk, 2000); // Aguarda 2s após mudanças para gravar no disco
+    return () => clearTimeout(timer);
+  }, [settings, dashboardItems, virtualRelations, executionResult, isHydrated]);
 
   useEffect(() => {
     if (settings.theme === 'dark') document.documentElement.classList.add('dark');
@@ -192,6 +249,16 @@ const App: React.FC = () => {
     }
     finally { setIsExecuting(false); }
   };
+
+  // Impede renderização até que os dados do disco sejam injetados no localStorage
+  if (!isHydrated) {
+      return (
+          <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-indigo-400">
+              <Loader2 className="w-12 h-12 animate-spin mb-4" />
+              <span className="text-xs font-black uppercase tracking-[0.3em]">Restaurando Sessão...</span>
+          </div>
+      );
+  }
 
   return (
     <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors duration-500">

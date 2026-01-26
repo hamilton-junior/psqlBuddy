@@ -19,6 +19,9 @@ autoUpdater.allowDowngrade = true;
 autoUpdater.allowPrerelease = true; 
 autoUpdater.logger = console;
 
+// Caminho para armazenamento persistente fora do escopo do navegador
+const STORAGE_FILE = path.join(app.getPath('userData'), 'psqlbuddy_storage.json');
+
 function getCalculatedAppVersion() {
   if (app.isPackaged) return app.getVersion();
   try {
@@ -180,6 +183,29 @@ async function fetchGitHubVersions() {
     return { stable: 'Erro', wip: 'Erro', bleedingEdge: 'Erro', totalCommits: 0 }; 
   }
 }
+
+// Persistência de Dados
+ipcMain.handle('get-persistent-store', async () => {
+    console.log(`[MAIN] Solicitando leitura de persistência: ${STORAGE_FILE}`);
+    try {
+        if (fs.existsSync(STORAGE_FILE)) {
+            const data = fs.readFileSync(STORAGE_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.error("[MAIN] Erro ao ler arquivo de persistência:", e);
+    }
+    return {};
+});
+
+ipcMain.on('save-persistent-store', (event, data) => {
+    try {
+        fs.writeFileSync(STORAGE_FILE, JSON.stringify(data, null, 2));
+        console.log(`[MAIN] Persistência salva com sucesso (${Object.keys(data).length} chaves).`);
+    } catch (e) {
+        console.error("[MAIN] Falha crítica ao gravar persistência:", e);
+    }
+});
 
 app.whenReady().then(() => { 
   startBackend();
