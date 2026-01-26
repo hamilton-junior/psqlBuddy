@@ -22,6 +22,11 @@ const serverLog = (method, path, message, extra = '') => {
   console.log(`[${timestamp}] [SERVER] ${method} ${path} - ${message}`, extra);
 };
 
+const serverError = (method, path, error) => {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] [ERROR] ${method} ${path} - ${error.message}`, error.stack);
+};
+
 // Configurações de tipos do Postgres
 types.setTypeParser(25, (v) => v); 
 types.setTypeParser(1043, (v) => v);
@@ -29,7 +34,6 @@ types.setTypeParser(1042, (v) => v);
 
 serverLog('INIT', '-', 'Servidor inicializando em IPv4 estrito.');
 
-// Rota de Health Check
 app.get('/api/ping', (req, res) => {
   res.json({ status: 'online', timestamp: new Date().toISOString(), ipv4: true });
 });
@@ -44,7 +48,6 @@ async function setupSession(client) {
 
 app.post('/api/connect', async (req, res) => {
   let { host, port, user, password, database } = req.body;
-  const start = Date.now();
   if (host === 'localhost') host = '127.0.0.1';
   serverLog('POST', '/api/connect', `Tentativa: ${user}@${host}:${port}/${database}`);
   if (!host || !port || !user || !database) return res.status(400).json({ error: 'Faltam detalhes de conexão' });
@@ -63,7 +66,10 @@ app.post('/api/connect', async (req, res) => {
       return { name: t.table_name, schema: t.table_schema, description: t.description, columns: tableCols };
     });
     res.json({ name: database, tables: tables });
-  } catch (err) { res.status(500).json({ error: err.message }); } finally { try { await client.end(); } catch (e) {} }
+  } catch (err) { 
+    serverError('POST', '/api/connect', err);
+    res.status(500).json({ error: err.message }); 
+  } finally { try { await client.end(); } catch (e) {} }
 });
 
 app.post('/api/execute', async (req, res) => {
@@ -77,7 +83,10 @@ app.post('/api/execute', async (req, res) => {
     const result = await client.query(sql);
     if (Array.isArray(result)) res.json(result[result.length - 1].rows);
     else res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); } finally { try { await client.end(); } catch (e) {} }
+  } catch (err) { 
+    serverError('POST', '/api/execute', err);
+    res.status(500).json({ error: err.message }); 
+  } finally { try { await client.end(); } catch (e) {} }
 });
 
 app.post('/api/server-stats', async (req, res) => {
@@ -88,7 +97,11 @@ app.post('/api/server-stats', async (req, res) => {
   try {
     await client.connect();
     
-    // 1. Sumário estendido e Wraparound
+    // Detectar versão para queries condicionais
+    const verRes = await client.query("SHOW server_version_num;");
+    const vNum = parseInt(verRes.rows[0].server_version_num);
+
+    // 1. Sumário (Robusto)
     const statsQuery = `
       SELECT 
         (SELECT numbackends FROM pg_stat_database WHERE datname = $1) as connections,
@@ -104,7 +117,12 @@ app.post('/api/server-stats', async (req, res) => {
       FROM pg_stat_database WHERE datname = $1;`;
     const statsRes = await client.query(statsQuery, [credentials.database]);
 
-    // 2. Processos com Bloqueios e Wait Events
+    // 2. Processos (Version Aware)
+    // Se vNum < 100000 (v10), backend_type não existe.
+    // Se vNum < 90600 (v9.6), wait_event não existe.
+    const hasBackendType = vNum >= 100000;
+    const hasWaitEvent = vNum >= 90600;
+
     const processesQuery = `
       SELECT 
         pid, 
@@ -114,16 +132,16 @@ app.post('/api/server-stats', async (req, res) => {
         extract(epoch from COALESCE((now() - query_start), '0s'::interval)) * 1000 as duration_ms,
         state, 
         COALESCE(query, '') as query, 
-        COALESCE(wait_event_type, 'None') as wait_event_type,
-        COALESCE(wait_event, 'None') as wait_event,
+        ${hasWaitEvent ? 'COALESCE(wait_event_type, \'None\')' : '\'Old Version\''} as wait_event_type,
+        ${hasWaitEvent ? 'COALESCE(wait_event, \'None\')' : '\'Old Version\''} as wait_event,
         pg_blocking_pids(pid) as blocking_pids,
-        backend_type
+        ${hasBackendType ? 'backend_type' : '\'client backend\''} as backend_type
       FROM pg_stat_activity 
       WHERE (datname = $1 OR datname IS NULL) AND pid <> pg_backend_pid()
       ORDER BY duration_ms DESC;`;
     const procRes = await client.query(processesQuery, [credentials.database]);
 
-    // 3. Table Insights com Bloat e Autovacuum
+    // 3. Table Insights (User tables only)
     const bloatQuery = `
       SELECT 
         relname as table_name,
@@ -137,7 +155,7 @@ app.post('/api/server-stats', async (req, res) => {
       ORDER BY pg_total_relation_size(relid) DESC LIMIT 10;`;
     const bloatRes = await client.query(bloatQuery);
 
-    // 4. Índices Não Utilizados
+    // 4. Índices Não Utilizados (Safe check)
     const unusedIndexesQuery = `
       SELECT 
         relname as table_name, 
@@ -150,12 +168,15 @@ app.post('/api/server-stats', async (req, res) => {
     const unusedRes = await client.query(unusedIndexesQuery);
 
     res.json({
-      summary: statsRes.rows[0],
-      processes: procRes.rows,
-      tableInsights: bloatRes.rows,
-      unusedIndexes: unusedRes.rows
+      summary: statsRes.rows[0] || {},
+      processes: procRes.rows || [],
+      tableInsights: bloatRes.rows || [],
+      unusedIndexes: unusedRes.rows || []
     });
-  } catch (err) { res.status(500).json({ error: err.message }); } finally { try { await client.end(); } catch (e) {} }
+  } catch (err) { 
+    serverError('POST', '/api/server-stats', err);
+    res.status(500).json({ error: err.message }); 
+  } finally { try { await client.end(); } catch (e) {} }
 });
 
 app.post('/api/terminate-process', async (req, res) => {
@@ -166,7 +187,10 @@ app.post('/api/terminate-process', async (req, res) => {
     await client.connect();
     await client.query('SELECT pg_terminate_backend($1)', [pid]);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); } finally { try { await client.end(); } catch (e) {} }
+  } catch (err) { 
+    serverError('POST', '/api/terminate-process', err);
+    res.status(500).json({ error: err.message }); 
+  } finally { try { await client.end(); } catch (e) {} }
 });
 
 app.listen(PORT, HOST, () => {

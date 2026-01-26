@@ -64,24 +64,34 @@ export const getServerHealth = async (creds: DbCredentials): Promise<{
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credentials: normalizedCreds })
     });
+    
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to fetch server stats');
+      let msg = 'Failed to fetch server stats';
+      try {
+        const errData = await response.json();
+        msg = errData.error || msg;
+      } catch (e) {}
+      throw new Error(msg);
     }
+
     const data = await response.json();
+    
+    // Sanitização para evitar erros de undefined caso a query retorne vazia
+    const summary = data.summary || {};
+    
     return {
        summary: {
-          connections: parseInt(data.summary.connections) || 0,
-          maxConnections: parseInt(data.summary.max_connections) || 100,
-          dbSize: data.summary.db_size || '0 MB',
-          activeQueries: parseInt(data.summary.active_queries) || 0,
-          maxQueryDuration: data.summary.max_duration || '0s',
-          transactionsCommit: parseInt(data.summary.xact_commit) || 0,
-          transactionsRollback: parseInt(data.summary.xact_rollback) || 0,
-          cacheHitRate: `${data.summary.cache_hit_rate || 0}%`,
-          tps: parseInt(data.summary.xact_commit) || 0,
-          wraparoundAge: parseInt(data.summary.wraparound_age) || 0,
-          wraparoundPercent: parseFloat(data.summary.wraparound_percent) || 0
+          connections: parseInt(summary.connections) || 0,
+          maxConnections: parseInt(summary.max_connections) || 100,
+          dbSize: summary.db_size || '0 MB',
+          activeQueries: parseInt(summary.active_queries) || 0,
+          maxQueryDuration: summary.max_duration || '0s',
+          transactionsCommit: parseInt(summary.xact_commit) || 0,
+          transactionsRollback: parseInt(summary.xact_rollback) || 0,
+          cacheHitRate: `${summary.cache_hit_rate || 0}%`,
+          tps: parseInt(summary.xact_commit) || 0,
+          wraparoundAge: parseInt(summary.wraparound_age) || 0,
+          wraparoundPercent: parseFloat(summary.wraparound_percent) || 0
        },
        processes: (data.processes || []).map((p: any) => ({
           pid: p.pid,
@@ -112,6 +122,7 @@ export const getServerHealth = async (creds: DbCredentials): Promise<{
        }))
     };
   } catch (error: any) {
+    console.error("[DB:getServerHealth] Request failed", error);
     throw error;
   }
 };
