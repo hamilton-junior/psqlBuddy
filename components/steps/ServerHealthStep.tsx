@@ -43,7 +43,10 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
        setLoading(false);
        return;
     }
-    if (isManual) setLoading(true);
+    if (isManual) {
+        console.log("[SERVER_HEALTH] Iniciando busca manual de telemetria...");
+        setLoading(true);
+    }
     try {
       const data = await getServerHealth(credentials);
       const cacheVal = parseFloat((data.summary.cacheHitRate || '0').replace('%', '')) || 0;
@@ -64,46 +67,65 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
          return next.slice(-100); // Guardamos mais pontos para o gráfico expandido
       });
     } catch (err: any) {
+      console.error("[SERVER_HEALTH] Falha ao sincronizar telemetria:", err);
       setError(err.message || "Falha ao sincronizar telemetria.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchHealth(true); }, [credentials]);
+  useEffect(() => { 
+    console.log("[SERVER_HEALTH] Componente montado. Credenciais:", credentials?.host);
+    fetchHealth(true); 
+  }, [credentials]);
 
   useEffect(() => {
     let interval: any;
     if (autoRefresh && credentials && credentials.host !== 'simulated') {
+       console.log(`[SERVER_HEALTH] Auto-refresh ativado (intervalo: ${refreshInterval}ms)`);
        interval = setInterval(() => fetchHealth(), refreshInterval);
     }
-    return () => clearInterval(interval);
+    return () => {
+        if (interval) {
+            console.log("[SERVER_HEALTH] Desativando auto-refresh...");
+            clearInterval(interval);
+        }
+    };
   }, [autoRefresh, credentials, refreshInterval]);
 
   const handleAiDiagnosis = async () => {
      if (!stats || processes.length === 0) return;
+     console.log("[SERVER_HEALTH] Iniciando diagnóstico de IA...");
      setIsDiagnosing(true);
      try {
         const res = await getHealthDiagnosis(stats, processes);
         setAiDiagnosis(res);
-     } catch (e) { toast.error("Falha ao gerar diagnóstico."); }
+        console.log("[SERVER_HEALTH] Diagnóstico de IA concluído.");
+     } catch (e) { 
+        console.error("[SERVER_HEALTH] Erro no diagnóstico de IA:", e);
+        toast.error("Falha ao gerar diagnóstico."); 
+     }
      finally { setIsDiagnosing(false); }
   };
 
   const handleKill = async (pid: number) => {
     if (!credentials) return;
     if (!confirm(`Deseja forçar o encerramento do processo ${pid}?`)) return;
+    console.log(`[SERVER_HEALTH] Tentando encerrar PID ${pid}...`);
     setTerminatingPid(pid);
     try {
       await terminateProcess(credentials, pid);
       toast.success(`Processo ${pid} encerrado.`);
+      console.log(`[SERVER_HEALTH] PID ${pid} encerrado com sucesso.`);
       fetchHealth();
     } catch (err: any) {
+      console.error(`[SERVER_HEALTH] Erro ao encerrar PID ${pid}:`, err);
       toast.error(`Falha ao matar processo: ${err.message}`);
     } finally { setTerminatingPid(null); }
   };
 
   const exportSnapshot = (format: 'json' | 'txt') => {
+     console.log(`[SERVER_HEALTH] Exportando snapshot em formato ${format}...`);
      const snapshot = {
        timestamp: new Date().toISOString(),
        host: credentials?.host,
@@ -163,18 +185,6 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
      });
      return tree;
   }, [processes]);
-
-  const formatDurationDisplay = (duration: any): string => {
-    if (!duration) return '0s';
-    if (typeof duration === 'object') {
-       const parts = [];
-       if (duration.hours) parts.push(`${duration.hours}h`);
-       if (duration.minutes) parts.push(`${duration.minutes}m`);
-       if (duration.seconds) parts.push(`${duration.seconds}s`);
-       return parts.length > 0 ? parts.join(' ') : '0s';
-    }
-    return typeof duration === 'string' ? duration.split('.')[0] : String(duration);
-  };
 
   const getStatStatusColor = (key: string, value: any) => {
      if (key === 'cache') {
@@ -338,9 +348,10 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
             />
          </div>
 
-         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-0">
+         {/* Grid de Operação Principal (Processos e Gráfico de Carga) */}
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-0 shrink-0">
             {/* Processos Ativos e Wait Events */}
-            <div className="lg:col-span-2 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-sm overflow-hidden min-h-[400px]">
+            <div className="lg:col-span-2 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-sm overflow-hidden h-[480px]">
                <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
                   <div className="flex items-center gap-3">
                      <Terminal className="w-5 h-5 text-indigo-500" />
@@ -420,7 +431,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                                              </div>
                                           )}
                                           {blockingOthers && (
-                                             <div className="flex items-center gap-1.5 text-[8px] text-amber-600 font-black uppercase bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                                             <div className="flex items-center gap-1.5 text-[8px] text-amber-600 font-black uppercase bg-amber-100 dark:bg-rose-900/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">
                                                 <Layers className="w-2.5 h-2.5" /> Bloqueando: {blockingOthers.join(', ')}
                                              </div>
                                           )}
@@ -442,80 +453,93 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                </div>
             </div>
 
-            {/* Coluna Lateral: Manutenção e Índices */}
-            <div className="flex flex-col gap-8">
-               
-               {/* Gráfico de TPS */}
-               <div className="bg-slate-950 rounded-[2.5rem] p-6 border border-slate-800 shadow-2xl flex flex-col h-[200px]">
-                  <div className="flex items-center justify-between mb-4">
-                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ActivitySquare className="w-3.5 h-3.5 text-emerald-500" /> Carga Operacional</span>
-                     <span className="text-[10px] font-bold text-slate-500">Last 100 samples</span>
+            {/* Gráfico de TPS - Redimensionado para acompanhar a altura da tabela */}
+            <div className="bg-slate-950 rounded-[2.5rem] p-8 border border-slate-800 shadow-2xl flex flex-col h-[480px]">
+               <div className="flex items-center justify-between mb-8">
+                  <div>
+                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 mb-1"><ActivitySquare className="w-3.5 h-3.5 text-emerald-500" /> Carga Operacional</span>
+                     <h4 className="text-xl font-black text-white">Transações / seg</h4>
                   </div>
-                  <div className="flex-1 w-full">
-                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={history}>
-                           <Line type="monotone" dataKey="tps" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
-                           <YAxis hide />
-                           <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '10px' }} itemStyle={{ color: '#10b981' }} />
-                        </LineChart>
-                     </ResponsiveContainer>
-                  </div>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-900 px-3 py-1 rounded-full border border-slate-800">Last 100 samples</span>
                </div>
-
-               {/* Índices Não Utilizados */}
-               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-sm flex flex-col overflow-hidden flex-1">
-                  <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
-                     <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2"><Anchor className="w-4 h-4 text-indigo-500" /> Otimização: Índices Inúteis</h3>
-                  </div>
-                  <div className="flex-1 p-5 overflow-y-auto custom-scrollbar space-y-3">
-                     {unusedIndexes.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-6 opacity-40">
-                           <ShieldCheck className="w-10 h-10 text-emerald-500 mb-2" />
-                           <p className="text-[10px] font-bold uppercase text-slate-400">Excelente! Nenhum índice ocioso encontrado.</p>
-                        </div>
-                     ) : (
-                        unusedIndexes.map((idx, i) => (
-                           <div key={i} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 group hover:border-indigo-400 transition-all">
-                              <div className="flex justify-between items-start mb-1">
-                                 <span className="text-[11px] font-black text-slate-700 dark:text-white truncate pr-2">{idx.index}</span>
-                                 <span className="text-[10px] font-black text-rose-500 uppercase">{idx.size}</span>
-                              </div>
-                              <div className="text-[9px] text-slate-400 truncate">Tabela: {idx.table}</div>
-                              <div className="mt-2 text-[8px] font-bold text-slate-400 uppercase bg-white dark:bg-slate-900 px-2 py-0.5 rounded-full w-fit">Nunca Escaneado</div>
-                           </div>
-                        ))
-                     )}
-                  </div>
+               <div className="flex-1 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                     <LineChart data={history}>
+                        <Line type="monotone" dataKey="tps" stroke="#10b981" strokeWidth={4} dot={false} isAnimationActive={false} />
+                        <YAxis hide />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '10px' }} itemStyle={{ color: '#10b981' }} />
+                     </LineChart>
+                  </ResponsiveContainer>
                </div>
-
-               {/* Manutenção (Vácuo) */}
-               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-sm flex flex-col overflow-hidden flex-1">
-                  <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
-                     <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2"><Gauge className="w-4 h-4 text-emerald-500" /> Autovacuum & Bloat</h3>
-                  </div>
-                  <div className="flex-1 p-5 overflow-y-auto custom-scrollbar space-y-3">
-                     {tableInsights.map((tbl, idx) => (
-                        <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
-                           <div className="flex justify-between items-center mb-2">
-                              <span className="text-[10px] font-black text-slate-600 dark:text-slate-200 truncate">{tbl.name}</span>
-                              <div className="flex items-center gap-1.5">
-                                 <span className={`w-2 h-2 rounded-full ${tbl.deadTuples > 10000 ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
-                                 <span className="text-[9px] font-black text-slate-400 uppercase">{tbl.deadTuples} dead</span>
-                              </div>
-                           </div>
-                           <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                              <div className={`h-full transition-all ${tbl.deadTuples > 10000 ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((tbl.deadTuples / (tbl.estimatedRows || 1)) * 100, 100)}%` }} />
-                           </div>
-                           <div className="mt-2 flex justify-between items-center text-[8px] font-bold text-slate-400 uppercase">
-                              <span>Linhagem: {tbl.estimatedRows.toLocaleString()}</span>
-                              <span>Vacuum: {tbl.lastVacuum}</span>
-                           </div>
-                        </div>
-                     ))}
-                  </div>
+               <div className="mt-6 pt-6 border-t border-slate-900">
+                  <p className="text-xs text-slate-500 leading-relaxed">Frequência média de commits detectada no banco de dados.</p>
                </div>
             </div>
          </div>
+
+         {/* Nova Grade Inferior: Otimização e Manutenção lado a lado */}
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 shrink-0">
+            {/* Índices Não Utilizados */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-sm flex flex-col overflow-hidden h-[380px]">
+               <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
+                  <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2"><Anchor className="w-4 h-4 text-indigo-500" /> Otimização: Índices Não Utilizados</h3>
+               </div>
+               <div className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-4">
+                  {unusedIndexes.length === 0 ? (
+                     <div className="h-full flex flex-col items-center justify-center text-center p-6 opacity-40">
+                        <ShieldCheck className="w-10 h-10 text-emerald-500 mb-2" />
+                        <p className="text-[10px] font-bold uppercase text-slate-400">Excelente! Nenhum índice ocioso encontrado.</p>
+                     </div>
+                  ) : (
+                     unusedIndexes.map((idx, i) => (
+                        <div key={i} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 group hover:border-indigo-400 transition-all">
+                           <div className="flex justify-between items-start mb-2">
+                              <span className="text-[11px] font-black text-slate-700 dark:text-white truncate pr-2">{idx.index}</span>
+                              <span className="text-[10px] font-black text-rose-500 uppercase px-2 py-0.5 bg-rose-50 dark:bg-rose-900/30 rounded-lg">{idx.size}</span>
+                           </div>
+                           <div className="text-[9px] text-slate-400 flex items-center gap-1">
+                              <Database className="w-3 h-3" /> Tabela: <strong>{idx.table}</strong>
+                           </div>
+                           <div className="mt-3 text-[8px] font-bold text-slate-400 uppercase bg-white dark:bg-slate-900 px-2 py-0.5 rounded-full w-fit border border-slate-100 dark:border-slate-800">Nunca Escaneado</div>
+                        </div>
+                     ))
+                  )}
+               </div>
+            </div>
+
+            {/* Manutenção (Vácuo) */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-sm flex flex-col overflow-hidden h-[380px]">
+               <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
+                  <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2"><Gauge className="w-4 h-4 text-emerald-500" /> Autovacuum & Bloat</h3>
+               </div>
+               <div className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-4">
+                  {tableInsights.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
+                         <Info className="w-8 h-8 mb-2" />
+                         <p className="text-[10px] font-bold uppercase">Nenhum dado de tabela carregado.</p>
+                      </div>
+                  ) : tableInsights.map((tbl, idx) => (
+                     <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                        <div className="flex justify-between items-center mb-3">
+                           <span className="text-[11px] font-black text-slate-600 dark:text-slate-200 truncate">{tbl.name}</span>
+                           <div className="flex items-center gap-1.5">
+                              <span className={`w-2 h-2 rounded-full ${tbl.deadTuples > 10000 ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                              <span className="text-[9px] font-black text-slate-400 uppercase">{tbl.deadTuples.toLocaleString()} dead tuples</span>
+                           </div>
+                        </div>
+                        <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                           <div className={`h-full transition-all ${tbl.deadTuples > 10000 ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((tbl.deadTuples / (tbl.estimatedRows || 1)) * 100, 100)}%` }} />
+                        </div>
+                        <div className="mt-3 flex justify-between items-center text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
+                           <span className="flex items-center gap-1"><ListOrdered className="w-2.5 h-2.5" /> Linhagem: {tbl.estimatedRows.toLocaleString()}</span>
+                           <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> Vacuum: {tbl.lastVacuum}</span>
+                        </div>
+                     </div>
+                  ))}
+               </div>
+            </div>
+         </div>
+
       </div>
     </div>
   );
