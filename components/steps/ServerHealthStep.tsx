@@ -255,7 +255,9 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                Saúde do Servidor
             </h2>
             <div className="flex items-center gap-3 mt-1">
-               <span className="text-sm text-slate-500">Host: <strong>{credentials?.host}</strong></span>
+               <span className="text-sm text-slate-500">Banco: <strong>{credentials?.database}</strong></span>
+               <span className="text-slate-300 dark:text-slate-700">|</span>
+               <span className="text-sm text-slate-500">Tamanho: <strong>{stats?.dbSize || '--'}</strong></span>
                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px] font-black rounded-lg uppercase border border-emerald-200 dark:border-emerald-800">
                   <ActivitySquare className="w-3 h-3" /> Online
                </div>
