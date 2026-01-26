@@ -97,11 +97,10 @@ app.post('/api/server-stats', async (req, res) => {
   try {
     await client.connect();
     
-    // Detectar versão para queries condicionais
     const verRes = await client.query("SHOW server_version_num;");
     const vNum = parseInt(verRes.rows[0].server_version_num);
 
-    // 1. Sumário (Robusto)
+    // 1. Sumário (CORRIGIDO: datfrozenxid vem de pg_database)
     const statsQuery = `
       SELECT 
         (SELECT numbackends FROM pg_stat_database WHERE datname = $1) as connections,
@@ -109,17 +108,15 @@ app.post('/api/server-stats', async (req, res) => {
         pg_size_pretty(pg_database_size($1)) as db_size,
         (SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as active_queries,
         (SELECT COALESCE(max(now() - query_start), '0s'::interval)::text FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as max_duration,
-        COALESCE(xact_commit, 0) as xact_commit, 
-        COALESCE(xact_rollback, 0) as xact_rollback,
-        round(100.0 * blks_hit / NULLIF(blks_read + blks_hit, 0), 2) as cache_hit_rate,
+        (SELECT xact_commit FROM pg_stat_database WHERE datname = $1) as xact_commit,
+        (SELECT xact_rollback FROM pg_stat_database WHERE datname = $1) as xact_rollback,
+        (SELECT round(100.0 * blks_hit / NULLIF(blks_read + blks_hit, 0), 2) FROM pg_stat_database WHERE datname = $1) as cache_hit_rate,
         age(datfrozenxid) as wraparound_age,
         round(100.0 * age(datfrozenxid) / 2000000000.0, 2) as wraparound_percent
-      FROM pg_stat_database WHERE datname = $1;`;
+      FROM pg_database WHERE datname = $1;`;
     const statsRes = await client.query(statsQuery, [credentials.database]);
 
     // 2. Processos (Version Aware)
-    // Se vNum < 100000 (v10), backend_type não existe.
-    // Se vNum < 90600 (v9.6), wait_event não existe.
     const hasBackendType = vNum >= 100000;
     const hasWaitEvent = vNum >= 90600;
 
@@ -141,7 +138,7 @@ app.post('/api/server-stats', async (req, res) => {
       ORDER BY duration_ms DESC;`;
     const procRes = await client.query(processesQuery, [credentials.database]);
 
-    // 3. Table Insights (User tables only)
+    // 3. Table Insights
     const bloatQuery = `
       SELECT 
         relname as table_name,
@@ -155,7 +152,7 @@ app.post('/api/server-stats', async (req, res) => {
       ORDER BY pg_total_relation_size(relid) DESC LIMIT 10;`;
     const bloatRes = await client.query(bloatQuery);
 
-    // 4. Índices Não Utilizados (Safe check)
+    // 4. Índices Não Utilizados
     const unusedIndexesQuery = `
       SELECT 
         relname as table_name, 
