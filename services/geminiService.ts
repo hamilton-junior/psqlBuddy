@@ -188,7 +188,10 @@ export const generateSchemaFromTopic = async (topic: string, context: string): P
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
-    return JSON.parse(response.text || "{}");
+    const parsed = JSON.parse(response.text || "{}");
+    // Proteção: Garante que tables seja sempre um array, mesmo que vazio
+    if (!parsed.tables) parsed.tables = [];
+    return parsed;
   } catch (e: any) {
     console.error("[GEMINI_SERVICE] Erro ao gerar schema simulado:", e);
     throw e;

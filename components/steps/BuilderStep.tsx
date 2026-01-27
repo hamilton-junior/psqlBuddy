@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback, memo, useRef } from 'react';
 import { DatabaseSchema, BuilderState, ExplicitJoin, JoinType, Filter, Operator, OrderBy, AppSettings, SavedQuery, AggregateFunction, Column, Table, CalculatedColumn } from '../../types';
 import { Layers, ChevronRight, Settings2, RefreshCw, Search, X, CheckSquare, Square, Plus, Trash2, ArrowRightLeft, Filter as FilterIcon, ArrowDownAZ, List, Link2, ChevronDown, Save, FolderOpen, Calendar, Clock, Key, Combine, ArrowRight, ArrowLeft, FastForward, Target, CornerDownRight, Wand2, Loader2, Undo2, Redo2, Calculator, Sparkles, LayoutTemplate, PlayCircle, Eye, Info, ChevronUp, Link as LinkIcon } from 'lucide-react';
@@ -24,7 +25,7 @@ interface BuilderStepProps {
 type TabType = 'columns' | 'joins' | 'filters' | 'sortgroup';
 
 // Helper to ensure consistent ID generation
-const getTableId = (t: Table) => `${t.schema || 'public'}.${t.name}`;
+const getTableId = (t: Table) => `${t?.schema || 'public'}.${t?.name || 'unknown'}`;
 const getColId = (tableId: string, colName: string) => `${tableId}.${colName}`;
 
 // --- Helper to find automatic joins ---
@@ -36,13 +37,13 @@ const findBestJoin = (schema: DatabaseSchema, tableId1: string, tableId2: string
   const t1Schema = t1Parts[0]; const t1Name = t1Parts[1];
   const t2Schema = t2Parts[0]; const t2Name = t2Parts[1];
 
-  const table1 = schema.tables.find(t => t.name === t1Name && (t.schema || 'public') === t1Schema);
-  const table2 = schema.tables.find(t => t.name === t2Name && (t.schema || 'public') === t2Schema);
+  const table1 = schema.tables?.find(t => t?.name === t1Name && (t?.schema || 'public') === t1Schema);
+  const table2 = schema.tables?.find(t => t?.name === t2Name && (t?.schema || 'public') === t2Schema);
   
   if (!table1 || !table2) return null;
 
   // 1. Check T1 -> T2 (T1 has FK pointing to T2)
-  for (const col of table1.columns) {
+  for (const col of table1.columns || []) {
       if (col.isForeignKey && col.references) {
           const refParts = col.references.split('.');
           let targetMatch = false;
@@ -74,7 +75,7 @@ const findBestJoin = (schema: DatabaseSchema, tableId1: string, tableId2: string
   }
 
   // 2. Check T2 -> T1 (T2 has FK pointing to T1)
-  for (const col of table2.columns) {
+  for (const col of table2.columns || []) {
       if (col.isForeignKey && col.references) {
           const refParts = col.references.split('.');
           let targetMatch = false;
@@ -258,12 +259,12 @@ const TableCard = memo(({
   const tableId = getTableId(table);
 
   const filteredColumns = useMemo(() => {
-    if (!colSearchTerm.trim()) return table.columns;
+    if (!colSearchTerm.trim()) return table.columns || [];
     
     const term = colSearchTerm;
     const orGroups = term.split(/\s+OR\s+/i);
     
-    return table.columns.filter(col => {
+    return (table.columns || []).filter(col => {
        return orGroups.some(group => {
         const andTerms = group.trim().split(/\s+/);
         return andTerms.every(t => {
@@ -294,7 +295,7 @@ const TableCard = memo(({
     if (!hoveredColumn) return false;
     const hoveredTable = hoveredColumn.tableId.split('.')[1];
     const hoveredSchema = hoveredColumn.tableId.split('.')[0];
-    return table.columns.some(c => {
+    return (table.columns || []).some(c => {
        if (!c.references) return false;
        const parts = c.references.split('.');
        if (parts.length === 3) {
@@ -412,8 +413,8 @@ const TableCard = memo(({
       (next.hoveredColumn?.tableId === tableIdNext) ||
       (prev.hoveredColumn?.references?.includes(prev.table.name)) ||
       (next.hoveredColumn?.references?.includes(next.table.name)) ||
-      (prev.table.columns.some(c => c.references?.includes(prev.hoveredColumn?.tableId.split('.')[1] || '---'))) ||
-      (next.table.columns.some(c => c.references?.includes(next.hoveredColumn?.tableId.split('.')[1] || '---')));
+      (prev.table.columns?.some(c => c.references?.includes(prev.hoveredColumn?.tableId.split('.')[1] || '---'))) ||
+      (next.table.columns?.some(c => c.references?.includes(next.hoveredColumn?.tableId.split('.')[1] || '---')));
       
    return prev.isCollapsed === next.isCollapsed &&
           prev.colSearchTerm === next.colSearchTerm &&
@@ -545,7 +546,8 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   const smartStarters = useMemo(() => {
      if (state.selectedTables.length > 0) return [];
      const suggestions = [];
-     const usersTable = schema.tables.find(t => ['users', 'user', 'cliente', 'clientes', 'customer', 'customers'].includes(t.name.toLowerCase()));
+     const tables = schema.tables || [];
+     const usersTable = tables.find(t => t?.name && ['users', 'user', 'cliente', 'clientes', 'customer', 'customers'].includes(t.name.toLowerCase()));
      if (usersTable) {
         suggestions.push({
            icon: <LayoutTemplate className="w-5 h-5 text-indigo-500" />,
@@ -555,9 +557,9 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
            limit: 10
         });
      }
-     const ordersTable = schema.tables.find(t => ['orders', 'order', 'pedidos', 'vendas', 'sales'].includes(t.name.toLowerCase()));
+     const ordersTable = tables.find(t => t?.name && ['orders', 'order', 'pedidos', 'vendas', 'sales'].includes(t.name.toLowerCase()));
      if (ordersTable) {
-        const pk = ordersTable.columns.find(c => c.isPrimaryKey)?.name || 'id';
+        const pk = ordersTable.columns?.find(c => c.isPrimaryKey)?.name || 'id';
         suggestions.push({
            icon: <Calculator className="w-5 h-5 text-emerald-500" />,
            title: `Contar ${ordersTable.name}`,
@@ -567,7 +569,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
            aggs: { [getColId(getTableId(ordersTable), pk)]: 'COUNT' }
         });
      }
-     const recentTable = schema.tables.find(t => t.columns.some(c => c.name === 'created_at'));
+     const recentTable = tables.find(t => t?.columns && t.columns.some(c => c.name === 'created_at'));
      if (recentTable) {
         suggestions.push({
            icon: <Clock className="w-5 h-5 text-amber-500" />,
@@ -579,7 +581,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
         });
      }
      if (suggestions.length === 0) {
-        const first = schema.tables[0];
+        const first = tables[0];
         if (first) {
            suggestions.push({
               icon: <PlayCircle className="w-5 h-5 text-blue-500" />,
@@ -733,16 +735,16 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
   };
 
   const getColumnsForTable = useCallback((tableId: string) => {
-    const t = schema.tables.find(table => getTableId(table) === tableId);
-    return t ? t.columns : [];
+    const t = schema.tables?.find(table => getTableId(table) === tableId);
+    return t ? (t.columns || []) : [];
   }, [schema.tables]);
 
   const getAllSelectedTableColumns = () => {
     let cols: {tableId: string, table: string, column: string, fullId: string, type: string}[] = [];
     state.selectedTables.forEach(tId => {
-      const t = schema.tables.find(table => getTableId(table) === tId);
+      const t = schema.tables?.find(table => getTableId(table) === tId);
       if (t) {
-        t.columns.forEach(c => cols.push({ 
+        (t.columns || []).forEach(c => cols.push({ 
            tableId: tId, 
            table: t.name, 
            column: c.name, 
@@ -1101,7 +1103,7 @@ const BuilderStep: React.FC<BuilderStepProps> = ({ schema, state, onStateChange,
                       {state.calculatedColumns && state.calculatedColumns.length > 0 ? (<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">{state.calculatedColumns.map(calc => (<div key={calc.id} className="bg-white dark:bg-slate-800 p-2 rounded border border-indigo-100 dark:border-indigo-900/50 shadow-sm flex items-center justify-between group"><div className="flex-1 min-w-0"><div className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate flex items-center gap-1"><Calculator className="w-3 h-3 opacity-50" /> {calc.alias}</div><code className="text-[10px] text-slate-500 dark:text-slate-400 block truncate font-mono bg-slate-50 dark:bg-slate-900 px-1 rounded mt-0.5 border border-slate-100 dark:border-slate-800">{calc.expression}</code></div><button onClick={() => removeCalculatedColumn(calc.id)} className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button></div>))}</div>) : (<div className="text-[10px] text-slate-400 bg-slate-50/50 dark:bg-slate-900/30 border border-dashed border-slate-200 dark:border-slate-700 rounded p-2 text-center mb-4">Nenhuma fórmula criada. Clique em "Nova Fórmula" para criar campos personalizados (ex: lucro = venda - custo).</div>)}
                    </div>
                  )}
-                 {state.selectedTables.length === 0 ? (<div className="flex flex-col items-center justify-center h-full text-slate-400"><Layers className="w-16 h-16 mb-4 opacity-20" /><h3 className="text-lg font-semibold text-slate-600 dark:text-slate-300 mb-2">Nenhuma tabela selecionada</h3><p className="text-sm mb-8 text-center max-w-xs">Selecione tabelas na barra lateral ou use um modelo abaixo para começar.</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl px-4">{smartStarters.map((starter, idx) => (<button key={idx} onClick={() => applyStarter(starter)} className="flex flex-col items-center text-center p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-400 hover:shadow-md transition-all group"><div className="mb-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-full group-hover:scale-110 transition-transform">{starter.icon}</div><span className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">{starter.title}</span><span className="text-xs text-slate-500 dark:text-slate-400">{starter.desc}</span></button>))}</div></div>) : (state.selectedTables.map(tableId => { const table = schema.tables.find(t => getTableId(t) === tableId); if (!table) return null; return (<TableCard key={tableId} table={table} selectedColumns={state.selectedColumns} joinedColumnIds={joinedColumnIds} aggregations={state.aggregations} isCollapsed={collapsedTables.has(tableId)} colSearchTerm={columnSearchTerms[tableId] || ''} hoveredColumn={hoveredColumn} onToggleCollapse={toggleTableCollapse} onToggleColumn={toggleColumn} onAggregationChange={updateAggregation} onSelectAll={selectAllColumns} onSelectNone={selectNoneColumns} onSearchChange={handleColumnSearchChange} onClearSearch={handleClearColumnSearch} onHoverColumn={handleHoverColumn} onHoverOutColumn={handleHoverOutColumn} />); }))}
+                 {state.selectedTables.length === 0 ? (<div className="flex flex-col items-center justify-center h-full text-slate-400"><Layers className="w-16 h-16 mb-4 opacity-20" /><h3 className="text-lg font-semibold text-slate-600 dark:text-slate-300 mb-2">Nenhuma tabela selecionada</h3><p className="text-sm mb-8 text-center max-w-xs">Selecione tabelas na barra lateral ou use um modelo abaixo para começar.</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl px-4">{smartStarters.map((starter, idx) => (<button key={idx} onClick={() => applyStarter(starter)} className="flex flex-col items-center text-center p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-400 hover:shadow-md transition-all group"><div className="mb-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-full group-hover:scale-110 transition-transform">{starter.icon}</div><span className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">{starter.title}</span><span className="text-xs text-slate-500 dark:text-slate-400">{starter.desc}</span></button>))}</div></div>) : (state.selectedTables.map(tableId => { const table = schema.tables?.find(t => getTableId(t) === tableId); if (!table) return null; return (<TableCard key={tableId} table={table} selectedColumns={state.selectedColumns} joinedColumnIds={joinedColumnIds} aggregations={state.aggregations} isCollapsed={collapsedTables.has(tableId)} colSearchTerm={columnSearchTerms[tableId] || ''} hoveredColumn={hoveredColumn} onToggleCollapse={toggleTableCollapse} onToggleColumn={toggleColumn} onAggregationChange={updateAggregation} onSelectAll={selectAllColumns} onSelectNone={selectNoneColumns} onSearchChange={handleColumnSearchChange} onClearSearch={handleClearColumnSearch} onHoverColumn={handleHoverColumn} onHoverOutColumn={handleHoverOutColumn} />); }))}
                </div>
              )}
              {activeTab === 'joins' && (
