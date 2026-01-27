@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Settings, Save, X, Bot, Zap, 
@@ -9,7 +10,8 @@ import {
   UserCheck,
   Cpu,
   Lock,
-  ShieldAlert
+  ShieldAlert,
+  Key
 } from 'lucide-react';
 import { AppSettings, DatabaseSchema, DbCredentials } from '../types';
 import { runFullHealthCheck, HealthStatus, runRandomizedStressTest, StressTestLog } from '../services/healthService';
@@ -24,6 +26,7 @@ interface SettingsModalProps {
   credentials?: DbCredentials | null;
   simulationData?: SimulationData;
   remoteVersions?: { stable: string, wip: string, bleedingEdge: string, totalCommits?: number } | null;
+  initialTab?: TabId;
 }
 
 type TabId = 'interface' | 'ai' | 'database' | 'diagnostics';
@@ -31,9 +34,6 @@ type TabId = 'interface' | 'ai' | 'database' | 'diagnostics';
 declare const __APP_VERSION__: string;
 const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
 
-/**
- * Utilitário visual para formatar a versão.
- */
 const formatVersionDisplay = (v: string | undefined): string => {
   if (!v || v === '---') return '...';
   if (v === 'Erro') return 'Erro';
@@ -52,10 +52,10 @@ const formatVersionDisplay = (v: string | undefined): string => {
 
 export default function SettingsModal({ 
   settings, onSave, onClose, quotaExhausted,
-  schema, credentials, simulationData = {}, remoteVersions
+  schema, credentials, simulationData = {}, remoteVersions, initialTab = 'interface'
 }: SettingsModalProps) {
   const [formData, setFormData] = useState<AppSettings>({ ...settings });
-  const [activeTab, setActiveTab] = useState<TabId>('interface');
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
   const [healthResults, setHealthResults] = useState<HealthStatus[] | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   
@@ -234,7 +234,6 @@ export default function SettingsModal({
              
              {activeTab === 'interface' && (
                 <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-300">
-                   {/* 1. Personalização Visual (Topo) */}
                    <section>
                       <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                          <Monitor className="w-4 h-4" /> Personalização Visual
@@ -271,7 +270,6 @@ export default function SettingsModal({
                       </div>
                    </section>
 
-                   {/* 2. Comportamento do Construtor */}
                    <section>
                       <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                          <PenTool className="w-4 h-4" /> Comportamento do Construtor
@@ -305,7 +303,6 @@ export default function SettingsModal({
                       </div>
                    </section>
 
-                   {/* 3. Segurança & Governança (Última) */}
                    <section>
                       <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                          <ShieldCheck className="w-4 h-4" /> Segurança & Governança
@@ -356,49 +353,79 @@ export default function SettingsModal({
                       <Toggle checked={formData.enableAiGeneration} onChange={val => setFormData({...formData, enableAiGeneration: val})} colorClass="peer-checked:bg-indigo-400" />
                    </div>
 
-                   <div className={`grid grid-cols-2 gap-4 transition-all duration-500 ${!formData.enableAiGeneration ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
-                      <div className="p-5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl flex flex-col gap-4">
-                         <div className="flex items-center justify-between">
-                            <ShieldCheck className="w-6 h-6 text-emerald-500" />
-                            <Toggle checked={formData.enableAiValidation} onChange={val => setFormData({...formData, enableAiValidation: val})} colorClass="peer-checked:bg-emerald-500" />
-                         </div>
-                         <div>
-                            <span className="text-sm font-black text-slate-700 dark:text-slate-100 block">Validação em Tempo Real</span>
-                            <p className="text-[11px] text-slate-500 mt-1">Verifica a sintaxe do SQL gerado automaticamente.</p>
-                         </div>
-                      </div>
+                   <div className={`space-y-6 transition-all duration-500 ${!formData.enableAiGeneration ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
                       
-                      <div className="p-5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl flex flex-col gap-4">
-                         <div className="flex items-center justify-between">
-                            <Lightbulb className="w-6 h-6 text-amber-500" />
-                            <Toggle checked={formData.enableAiTips} onChange={val => setFormData({...formData, enableAiTips: val})} colorClass="peer-checked:bg-amber-500" />
-                         </div>
-                         <div>
-                            <span className="text-sm font-black text-slate-700 dark:text-slate-100 block">Dicas de Performance</span>
-                            <p className="text-[11px] text-slate-500 mt-1">Sugere índices e otimizações de plano de execução.</p>
-                         </div>
-                      </div>
-
-                      <div className="col-span-2 p-6 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem]">
-                         <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                               <Clock className="w-4 h-4 text-indigo-500" />
-                               <span className="text-xs font-black uppercase tracking-widest text-slate-500">Timeout de Processamento</span>
+                      {/* Gemini API Key Section */}
+                      <section className="bg-white dark:bg-slate-800 p-6 border border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-sm">
+                         <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl">
+                               <Key className="w-5 h-5" />
                             </div>
-                            <span className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-black text-indigo-600 dark:text-indigo-400">
-                               {formData.aiGenerationTimeout}ms
-                            </span>
+                            <h4 className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">Configuração da Chave de API</h4>
                          </div>
-                         <input 
-                            type="range" min="1000" max="10000" step="500"
-                            value={formData.aiGenerationTimeout} 
-                            onChange={e => setFormData({...formData, aiGenerationTimeout: parseInt(e.target.value)})}
-                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer accent-indigo-600"
-                         />
-                         <div className="flex justify-between mt-2 text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
-                            <span>Rápido (1s)</span>
-                            <span>Seguro (10s)</span>
+                         <p className="text-xs text-slate-500 mb-4">Insira sua chave do Google Gemini para habilitar as funções de IA. Ela será salva apenas localmente no seu dispositivo.</p>
+                         <div className="relative group">
+                            <input 
+                               type="password" 
+                               value={formData.geminiApiKey} 
+                               onChange={e => setFormData({...formData, geminiApiKey: e.target.value})}
+                               className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all pr-12"
+                               placeholder="Sua API Key do Gemini..."
+                            />
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                               <Lock className="w-4 h-4" />
+                            </div>
                          </div>
+                         <div className="mt-4 flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+                            <Info className="w-3.5 h-3.5" />
+                            <span>Caso não informe uma chave, o sistema tentará usar a pré-configurada no ambiente.</span>
+                         </div>
+                      </section>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl flex flex-col gap-4">
+                           <div className="flex items-center justify-between">
+                              <ShieldCheck className="w-6 h-6 text-emerald-500" />
+                              <Toggle checked={formData.enableAiValidation} onChange={val => setFormData({...formData, enableAiValidation: val})} colorClass="peer-checked:bg-emerald-500" />
+                           </div>
+                           <div>
+                              <span className="text-sm font-black text-slate-700 dark:text-slate-100 block">Validação em Tempo Real</span>
+                              <p className="text-[11px] text-slate-500 mt-1">Verifica a sintaxe do SQL gerado automaticamente.</p>
+                           </div>
+                        </div>
+                        
+                        <div className="p-5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl flex flex-col gap-4">
+                           <div className="flex items-center justify-between">
+                              <Lightbulb className="w-6 h-6 text-amber-500" />
+                              <Toggle checked={formData.enableAiTips} onChange={val => setFormData({...formData, enableAiTips: val})} colorClass="peer-checked:bg-amber-500" />
+                           </div>
+                           <div>
+                              <span className="text-sm font-black text-slate-700 dark:text-slate-100 block">Dicas de Performance</span>
+                              <p className="text-[11px] text-slate-500 mt-1">Sugere índices e otimizações de plano de execução.</p>
+                           </div>
+                        </div>
+
+                        <div className="col-span-2 p-6 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem]">
+                           <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-2">
+                                 <Clock className="w-4 h-4 text-indigo-500" />
+                                 <span className="text-xs font-black uppercase tracking-widest text-slate-500">Timeout de Processamento</span>
+                              </div>
+                              <span className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-black text-indigo-600 dark:text-indigo-400">
+                                 {formData.aiGenerationTimeout}ms
+                              </span>
+                           </div>
+                           <input 
+                              type="range" min="1000" max="10000" step="500"
+                              value={formData.aiGenerationTimeout} 
+                              onChange={e => setFormData({...formData, aiGenerationTimeout: parseInt(e.target.value)})}
+                              className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer accent-indigo-600"
+                           />
+                           <div className="flex justify-between mt-2 text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                              <span>Rápido (1s)</span>
+                              <span>Seguro (10s)</span>
+                           </div>
+                        </div>
                       </div>
                    </div>
                 </div>

@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
   AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem
 } from './types';
 // Fix: Import Loader2 icon used in the hydration loading screen
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import ConnectionStep from '@/components/steps/ConnectionStep';
 import BuilderStep from '@/components/steps/BuilderStep';
@@ -24,6 +25,7 @@ import LogAnalyzerModal from '@/components/LogAnalyzerModal';
 import TemplateModal from '@/components/TemplateModal';
 import SqlExtractorModal from '@/components/SqlExtractorModal';
 import UpdateModal from '@/components/UpdateModal';
+import Dialog from '@/components/common/Dialog';
 import { generateSqlFromBuilderState } from '@/services/geminiService';
 import { generateLocalSql } from '@/services/localSqlService';
 import { executeQueryReal } from '@/services/dbService';
@@ -79,6 +81,7 @@ const App: React.FC = () => {
   });
 
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'interface' | 'ai' | 'database' | 'diagnostics'>('interface');
   const [showDiagram, setShowDiagram] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -88,6 +91,7 @@ const App: React.FC = () => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSqlExtractor, setShowSqlExtractor] = useState(false);
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
+  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   
   const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade', currentVersion?: string, isManual?: boolean} | null>(null);
   const [remoteVersions, setRemoteVersions] = useState<{ stable: string; wip: string; bleedingEdge: string; totalCommits?: number } | null>(null);
@@ -155,7 +159,7 @@ const App: React.FC = () => {
     if (settings.theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
     localStorage.setItem('psqlBuddy-settings', JSON.stringify(settings));
-  }, [settings.theme]);
+  }, [settings.theme, settings]);
 
   const handleUpdateDetection = useCallback((info: any) => {
     const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
@@ -218,8 +222,22 @@ const App: React.FC = () => {
     setCurrentStep('builder');
   };
 
+  const checkApiKey = useCallback(() => {
+    if (!settings.geminiApiKey || settings.geminiApiKey.trim() === '') {
+       console.log("[APP] API Key faltando. Solicitando configuração.");
+       setShowKeyPrompt(true);
+       return false;
+    }
+    return true;
+  }, [settings.geminiApiKey]);
+
   const handleGenerateSql = async () => {
     if (!schema) return;
+    
+    if (settings.enableAiGeneration && !checkApiKey()) {
+       return;
+    }
+
     setIsGenerating(true);
     try {
       let result = settings.enableAiGeneration 
@@ -228,7 +246,11 @@ const App: React.FC = () => {
       setQueryResult(result);
       setCurrentStep('preview');
     } catch (error: any) { 
-      toast.error(error.message || "Erro ao gerar SQL"); 
+      if (error.message === 'MISSING_API_KEY') {
+        setShowKeyPrompt(true);
+      } else {
+        toast.error(error.message || "Erro ao gerar SQL"); 
+      }
     }
     finally { setIsGenerating(false); }
   };
@@ -237,7 +259,7 @@ const App: React.FC = () => {
     if (!credentials || !schema) return;
     const sqlToRun = sqlOverride || queryResult?.sql;
     if (!sqlToRun) return;
-    setIsExecuting(true);
+    setIsExecuting)true);
     try {
        let data = credentials.host === 'simulated'
           ? executeOfflineQuery(schema, simulationData, builderState)
@@ -263,9 +285,27 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors duration-500">
       <Toaster position="top-right" />
+      
+      {showKeyPrompt && (
+        <Dialog 
+          isOpen={true}
+          type="prompt"
+          title="Configuração de IA Necessária"
+          message="Para utilizar as funções de Inteligência Artificial, você precisa configurar sua API Key do Gemini. Deseja ir para a tela de configurações agora?"
+          confirmLabel="Ir para Configurações"
+          cancelLabel="Agora não"
+          onConfirm={() => {
+             setSettingsTab('ai');
+             setShowSettings(true);
+             setShowKeyPrompt(false);
+          }}
+          onClose={() => setShowKeyPrompt(false)}
+        />
+      )}
+
       <Sidebar 
         currentStep={currentStep} onNavigate={setCurrentStep} schema={schema} hasResults={executionResult.length > 0}
-        onOpenSettings={() => setShowSettings(true)} onOpenDiagram={() => setShowDiagram(true)}
+        onOpenSettings={() => { setSettingsTab('interface'); setShowSettings(true); }} onOpenDiagram={() => setShowDiagram(true)}
         onOpenHistory={() => setShowHistory(true)} onOpenShortcuts={() => setShowShortcuts(true)}
         onOpenCheatSheet={() => setShowCheatSheet(true)} onOpenVirtualRelations={() => setShowVirtualRelations(true)}
         onOpenLogAnalyzer={() => setShowLogAnalyzer(true)} onOpenTemplates={() => setShowTemplates(true)}
@@ -285,7 +325,7 @@ const App: React.FC = () => {
               <BuilderStep schema={schema} state={builderState} onStateChange={setBuilderState} onGenerate={handleGenerateSql} isGenerating={isGenerating} settings={settings} />
            )}
            {currentStep === 'preview' && queryResult && (
-              <PreviewStep queryResult={queryResult} onExecute={handleExecuteQuery} onBack={() => setCurrentStep('builder')} isExecuting={isExecuting} isValidating={false} schema={schema || undefined} />
+              <PreviewStep queryResult={queryResult} onExecute={handleExecuteQuery} onBack={() => setCurrentStep('builder')} isExecuting={isExecuting} isValidating={false} schema={schema || undefined} settings={settings} />
            )}
            {currentStep === 'results' && (
               <ResultsStep data={executionResult} sql={queryResult?.sql || ''} onBackToBuilder={() => setCurrentStep('builder')} onNewConnection={() => setCurrentStep('connection')} settings={settings} onShowToast={(m) => toast(m)} credentials={credentials} schema={schema || undefined} />
@@ -296,7 +336,7 @@ const App: React.FC = () => {
            {currentStep === 'roadmap' && <RoadmapStep />}
         </div>
       </main>
-      {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} remoteVersions={remoteVersions} />}
+      {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} remoteVersions={remoteVersions} initialTab={settingsTab} />}
       {showDiagram && schema && <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} credentials={credentials} />}
       {showHistory && <HistoryModal onClose={() => setShowHistory(false)} onLoadQuery={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} />}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}

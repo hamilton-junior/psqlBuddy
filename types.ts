@@ -79,6 +79,7 @@ export interface ActiveProcess {
 export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'serverhealth' | 'roadmap';
 
 export interface AppSettings {
+  geminiApiKey: string;
   enableAiGeneration: boolean;
   enableAiValidation: boolean;
   enableAiTips: boolean;
@@ -100,6 +101,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  geminiApiKey: '',
   enableAiGeneration: true,
   enableAiValidation: true,
   enableAiTips: true,
