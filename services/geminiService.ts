@@ -174,24 +174,83 @@ export const generateBuilderStateFromPrompt = async (schema: DatabaseSchema, use
 export const validateSqlQuery = async (sql: string, schema?: DatabaseSchema): Promise<any> => { return { isValid: true }; };
 export const fixSqlError = async (sql: string, errorMessage: string, schema: DatabaseSchema): Promise<string> => { return sql; };
 export const suggestRelationships = async (schema: DatabaseSchema): Promise<any[]> => { return []; };
+
 export const generateSchemaFromTopic = async (topic: string, context: string): Promise<DatabaseSchema> => {
   console.log("[GEMINI_SERVICE] Gerando schema simulado para o tópico:", topic);
   const key = getEffectiveApiKey();
   if (!key) throw new Error("MISSING_API_KEY");
 
   const ai = new GoogleGenAI({ apiKey: key });
-  const prompt = `Gere um schema de banco de dados PostgreSQL simulado para: "${topic}". Contexto: "${context}". Retorne apenas JSON seguindo a estrutura de DatabaseSchema.`;
+  const prompt = `Gere um schema de banco de dados PostgreSQL simulado completo para o tópico: "${topic}". Contexto: "${context}".`;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
-      config: { responseMimeType: "application/json" }
+      config: { 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING, description: "Nome do banco de dados" },
+            tables: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING, description: "Nome da tabela (snake_case)" },
+                  schema: { type: Type.STRING, description: "Nome do esquema (ex: public)" },
+                  description: { type: Type.STRING, description: "Descrição do propósito da tabela" },
+                  columns: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        name: { type: Type.STRING, description: "Nome da coluna" },
+                        type: { type: Type.STRING, description: "Tipo de dado PostgreSQL" },
+                        isPrimaryKey: { type: Type.BOOLEAN },
+                        isForeignKey: { type: Type.BOOLEAN },
+                        references: { type: Type.STRING, description: "Referência no formato schema.tabela.coluna" }
+                      },
+                      required: ["name", "type"]
+                    }
+                  }
+                },
+                required: ["name", "columns"]
+              }
+            }
+          },
+          required: ["name", "tables"]
+        }
+      }
     });
+    
     const parsed = JSON.parse(response.text || "{}");
-    // Proteção: Garante que tables seja sempre um array, mesmo que vazio
-    if (!parsed.tables) parsed.tables = [];
-    return parsed;
+    
+    // Sanitização profunda para evitar crash no frontend por campos faltantes
+    const sanitizedSchema: DatabaseSchema = {
+      name: String(parsed.name || topic),
+      tables: (parsed.tables || [])
+        .filter((t: any) => t && typeof t === 'object')
+        .map((t: any) => ({
+          name: String(t.name || 'unknown_table'),
+          schema: String(t.schema || 'public'),
+          description: t.description ? String(t.description) : undefined,
+          columns: (t.columns || [])
+            .filter((c: any) => c && typeof c === 'object')
+            .map((c: any) => ({
+              name: String(c.name || 'unknown_column'),
+              type: String(c.type || 'varchar'),
+              isPrimaryKey: !!c.isPrimaryKey,
+              isForeignKey: !!c.isForeignKey,
+              references: c.references ? String(c.references) : undefined
+            }))
+        })),
+      connectionSource: 'simulated'
+    };
+    
+    console.log("[GEMINI_SERVICE] Schema simulado gerado e sanitizado.");
+    return sanitizedSchema;
   } catch (e: any) {
     console.error("[GEMINI_SERVICE] Erro ao gerar schema simulado:", e);
     throw e;

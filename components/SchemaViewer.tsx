@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback, memo, useDeferredValue, useRef } from 'react';
 import { DatabaseSchema, Table, Column } from '../types';
 import { Database, Table as TableIcon, Key, Search, ChevronDown, ChevronRight, Link, ArrowUpRight, ArrowDownLeft, X, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Check, Filter, PlusCircle, Target, CornerDownRight, Loader2, ArrowRight, Folder, FolderOpen, Play, Info, Star, Copy } from 'lucide-react';
@@ -18,9 +19,13 @@ type SortField = 'name' | 'type' | 'key';
 type SortDirection = 'asc' | 'desc';
 type VisualState = 'normal' | 'focused' | 'dimmed' | 'parent' | 'child' | 'target' | 'source';
 
-const getTableId = (t: Table) => `${t.schema || 'public'}.${t.name}`;
+const getTableId = (t: Table) => {
+  if (!t) return 'unknown.unknown';
+  return `${t.schema || 'public'}.${t.name || 'unknown'}`;
+};
 
 const getRefTableId = (ref: string, currentSchema: string) => {
+  if (!ref) return '';
   const parts = ref.split('.');
   if (parts.length === 3) {
     return `${parts[0]}.${parts[1]}`;
@@ -47,7 +52,8 @@ interface SchemaColumnItemProps {
 const SchemaColumnItem = memo(({ 
   col, tableId, tableName, isHovered, isSelected, isRelTarget, isRelSource, debouncedTerm, onHover, onHoverOut, onClick
 }: SchemaColumnItemProps) => {
-  const isMatch = debouncedTerm && col.name.toLowerCase().includes(debouncedTerm.toLowerCase());
+  if (!col) return null;
+  const isMatch = debouncedTerm && col.name && col.name.toLowerCase().includes(debouncedTerm.toLowerCase());
   
   let bgClass = '';
   let colBadge = null;
@@ -74,12 +80,12 @@ const SchemaColumnItem = memo(({
 
   const handleCopyColumn = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(col.name);
+    navigator.clipboard.writeText(col.name || '');
     toast.success(`Coluna "${col.name}" copiada!`, { id: 'col-copy' });
   };
 
   const getTooltip = () => {
-    let lines = [`Coluna: ${col.name}`, `Tipo: ${col.type.toUpperCase()}`];
+    let lines = [`Coluna: ${col.name || '---'}`, `Tipo: ${(col.type || '---').toUpperCase()}`];
     if (col.isPrimaryKey) lines.push("Constraint: PRIMARY KEY (PK)");
     if (col.isForeignKey) {
        lines.push("Constraint: FOREIGN KEY (FK)");
@@ -97,9 +103,9 @@ const SchemaColumnItem = memo(({
           ${bgClass || `text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 ${col.isForeignKey ? 'hover:bg-amber-50 dark:hover:bg-amber-900/20' : ''}`}
           ${isMatch && !bgClass ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}
        `}
-       onMouseEnter={() => onHover(tableId, col.name, col.references)}
+       onMouseEnter={() => onHover(tableId, col.name || '', col.references)}
        onMouseLeave={onHoverOut}
-       onClick={(e) => { e.stopPropagation(); onClick(tableId, col.name, col.references); }}
+       onClick={(e) => { e.stopPropagation(); onClick(tableId, col.name || '', col.references); }}
        title={getTooltip()}
     >
       <div className="w-5 mr-1 flex justify-center shrink-0">
@@ -115,7 +121,7 @@ const SchemaColumnItem = memo(({
                  isRelSource ? 'text-emerald-800 dark:text-emerald-200' :
                  col.isForeignKey ? 'text-blue-700 dark:text-blue-400 font-medium' : 'text-slate-700 dark:text-slate-300'
               }`}>
-                {col.name}
+                {col.name || '---'}
               </span>
               {col.isForeignKey && (
                 <span className="flex items-center shrink-0">
@@ -135,12 +141,12 @@ const SchemaColumnItem = memo(({
                  isRelSource ? 'text-emerald-600 dark:text-emerald-400' :
                  'text-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-300'
               }`}>
-                <ArrowRight className="w-2 h-2" /> {col.references}
+                <ArrowRight className="w-2 h-2" /> {col.references || '---'}
               </span>
             )}
          </div>
          {colBadge ? colBadge : (
-            <span className="text-[10px] text-slate-400 ml-2 font-mono shrink-0" title={`Type: ${col.type}`}>{col.type.toLowerCase()}</span>
+            <span className="text-[10px] text-slate-400 ml-2 font-mono shrink-0" title={`Type: ${col.type}`}>{(col.type || '---').toLowerCase()}</span>
          )}
       </div>
     </div>
@@ -221,20 +227,20 @@ const SchemaTableItem = memo(({
 
   const handleCopyTable = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const fullName = `${table.schema || 'public'}.${table.name}`;
+    const fullName = `${table.schema || 'public'}.${table.name || 'unknown'}`;
     navigator.clipboard.writeText(fullName);
     toast.success(`Tabela "${fullName}" copiada!`, { id: 'table-copy' });
   };
 
   const getColumns = () => {
-    let cols = [...table.columns];
-    if (selectedTypeFilter) cols = cols.filter(c => c.type.toUpperCase().includes(selectedTypeFilter));
+    let cols = [...(table.columns || [])];
+    if (selectedTypeFilter) cols = cols.filter(c => (c.type || '').toUpperCase().includes(selectedTypeFilter));
     if (sortField) {
         cols.sort((a, b) => {
           let valA: any = '', valB: any = '';
           switch (sortField) {
-            case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
-            case 'type': valA = a.type.toLowerCase(); valB = b.type.toLowerCase(); break;
+            case 'name': valA = (a.name || '').toLowerCase(); valB = (b.name || '').toLowerCase(); break;
+            case 'type': valA = (a.type || '').toLowerCase(); valB = (b.type || '').toLowerCase(); break;
             case 'key': 
               valA = (a.isPrimaryKey ? 2 : 0) + (a.isForeignKey ? 1 : 0);
               valB = (b.isPrimaryKey ? 2 : 0) + (b.isForeignKey ? 1 : 0);
@@ -276,7 +282,7 @@ const SchemaTableItem = memo(({
         <TableIcon className={`w-4 h-4 shrink-0 ${isSelected || isExpanded ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
         <div className="flex-1 min-w-0 pr-2">
            <div className="flex items-center gap-2">
-              <span className={`font-medium text-sm truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-700 dark:text-slate-200'}`}>{table.name}</span>
+              <span className={`font-medium text-sm truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-slate-700 dark:text-slate-200'}`}>{table.name || 'unknown'}</span>
               <button 
                  onClick={handleCopyTable}
                  className="p-1 rounded opacity-0 group-hover/table:opacity-100 transition-all hover:bg-slate-100 dark:hover:bg-slate-700"
@@ -291,9 +297,9 @@ const SchemaTableItem = memo(({
               >
                  <Star className={`w-3 h-3 ${isFavorite ? 'fill-current' : ''}`} />
               </button>
-              {onPreview && (
+              {onPreview && table.name && (
                 <button 
-                  onClick={(e) => { e.stopPropagation(); onPreview(table.name); }}
+                  onClick={(e) => { e.stopPropagation(); onPreview(table.name!); }}
                   className="p-1 text-slate-400 hover:text-emerald-500 hover:bg-emerald-900/20 rounded opacity-0 group-hover/table:opacity-100 transition-opacity"
                   title="Visualizar 10 primeiros registros"
                 >
@@ -311,11 +317,11 @@ const SchemaTableItem = memo(({
                      className="w-full text-xs bg-slate-100 dark:bg-slate-700 border border-indigo-300 dark:border-indigo-500 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-200"
                      autoFocus
                      onKeyDown={(e) => {
-                       if (e.key === 'Enter') onSaveDescription(e, table.name);
+                       if (e.key === 'Enter') onSaveDescription(e, table.name || '');
                        if (e.key === 'Escape') onSetEditing(null);
                      }}
                    />
-                   <button onClick={(e) => onSaveDescription(e, table.name)} className="p-0.5 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200"><Check className="w-3 h-3" /></button>
+                   <button onClick={(e) => onSaveDescription(e, table.name || '')} className="p-0.5 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200"><Check className="w-3 h-3" /></button>
                  </div>
               ) : (
                  <div className="flex items-center gap-2 group/desc max-w-full relative">
@@ -343,6 +349,7 @@ const SchemaTableItem = memo(({
           </div>
           <div className="space-y-0.5">
             {getColumns().map((col) => {
+               if (!col || !col.name) return null;
                const colKey = `${tableId}.${col.name}`;
                const isHovered = hoveredColumnKey === colKey;
                const isSelected = selectedColumnKey === colKey;
@@ -369,7 +376,7 @@ const SchemaTableItem = memo(({
                    key={col.name} 
                    col={col} 
                    tableId={tableId}
-                   tableName={table.name} 
+                   tableName={table.name || 'unknown'} 
                    isHovered={isHovered} 
                    isSelected={isSelected}
                    isRelTarget={isRelTarget} 
@@ -477,15 +484,16 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
   const relationshipGraph = useMemo(() => {
     const parents: Record<string, Set<string>> = {};
     const children: Record<string, Set<string>> = {};
-    schema.tables.forEach(table => {
+    (schema.tables || []).forEach(table => {
+      if (!table) return;
       const tableId = getTableId(table);
       if (!parents[tableId]) parents[tableId] = new Set();
       if (!children[tableId]) children[tableId] = new Set();
-      table.columns.forEach(col => {
-        if (col.isForeignKey && col.references) {
-          const refTableId = getRefTableId(col.references, table.schema);
+      (table.columns || []).forEach(col => {
+        if (col && col.isForeignKey && col.references) {
+          const refTableId = getRefTableId(col.references, table.schema || 'public');
           if (refTableId && refTableId !== tableId) {
-             const exists = schema.tables.some(t => getTableId(t) === refTableId);
+             const exists = schema.tables.some(t => t && getTableId(t) === refTableId);
              if (exists) {
                 if (!parents[tableId]) parents[tableId] = new Set();
                 parents[tableId].add(refTableId);
@@ -497,14 +505,14 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
       });
     });
     return { parents, children };
-  }, [schema.name]); 
+  }, [schema.name, schema.tables]); 
 
   useEffect(() => {
     const timer = setTimeout(() => {
        setDebouncedTerm(inputValue);
        setRenderLimit(40); 
        if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
-       if (inputValue) setExpandedSchemas(new Set(schema.tables.map(t => t.schema || 'public').concat(['__favorites__'])));
+       if (inputValue) setExpandedSchemas(new Set((schema.tables || []).map(t => t?.schema || 'public').concat(['__favorites__'])));
     }, 300);
     return () => clearTimeout(timer);
   }, [inputValue, schema.tables]);
@@ -513,39 +521,43 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
     if (scrollContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
       if (scrollTop + clientHeight >= scrollHeight - 300) {
-        setRenderLimit(prev => Math.min(prev + 20, schema.tables.length));
+        setRenderLimit(prev => Math.min(prev + 20, (schema.tables || []).length));
       }
     }
-  }, [schema.tables.length]);
+  }, [schema.tables?.length]);
 
   const allColumnTypes = useMemo(() => {
     const types = new Set<string>();
-    schema.tables.forEach(t => t.columns.forEach(c => {
-      const simpleType = c.type.split('(')[0].toUpperCase();
-      types.add(simpleType);
+    (schema.tables || []).forEach(t => t && (t.columns || []).forEach(c => {
+      if (c && c.type) {
+         const simpleType = c.type.split('(')[0].toUpperCase();
+         types.add(simpleType);
+      }
     }));
     return Array.from(types).sort();
-  }, [schema.name]);
+  }, [schema.name, schema.tables]);
 
   const filteredTables = useMemo(() => {
     const term = debouncedTerm.toLowerCase().trim();
-    let tables = schema.tables;
+    let tables = schema.tables || [];
     if (term || selectedTypeFilter) {
       tables = tables.filter(table => {
-        const nameMatch = !term || table.name.toLowerCase().includes(term);
+        if (!table) return false;
+        const nameMatch = !term || (table.name && table.name.toLowerCase().includes(term));
         const descMatch = !term || (table.description && table.description.toLowerCase().includes(term));
-        const colMatch = !term || table.columns.some(col => col.name.toLowerCase().includes(term));
+        const colMatch = !term || (table.columns || []).some(col => col && col.name && col.name.toLowerCase().includes(term));
         const matchesSearch = nameMatch || descMatch || colMatch;
         let matchesType = true;
-        if (selectedTypeFilter) matchesType = table.columns.some(col => col.type.toUpperCase().includes(selectedTypeFilter));
+        if (selectedTypeFilter) matchesType = (table.columns || []).some(col => col && col.type && col.type.toUpperCase().includes(selectedTypeFilter));
         return matchesSearch && matchesType;
       });
     }
-    const sorted = [...tables];
+    const sorted = [...tables].filter(t => !!t);
     sorted.sort((a, b) => {
+      if (!a || !b) return 0;
       if (term) {
-        const nameA = a.name.toLowerCase();
-        const nameB = b.name.toLowerCase();
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
         if (nameA === term && nameB !== term) return -1;
         if (nameB === term && nameA !== term) return 1;
         const startsA = nameA.startsWith(term);
@@ -565,7 +577,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
         if (isSelA && !isSelB) return -1;
         if (!isSelA && isSelB) return 1;
       }
-      return a.name.localeCompare(b.name);
+      return (a.name || '').localeCompare(b.name || '');
     });
     return sorted;
   }, [schema.tables, debouncedTerm, selectedTypeFilter, selectedTableIds]);
@@ -577,6 +589,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
     const others: Table[] = [];
     
     filteredTables.forEach(table => {
+      if (!table) return;
       const tId = getTableId(table);
       if (favoriteTables.has(tId)) {
         favorites.push(table);
@@ -603,12 +616,13 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
      const schemas = Object.keys(groupedTables);
      
      return schemas.sort((a, b) => {
+        if (!a || !b) return 0;
         if (a === '__favorites__') return -1;
         if (b === '__favorites__') return 1;
         
         if (debouncedTerm) {
             const findRank = (s: string) => {
-               const idx = filteredTables.findIndex(t => (t.schema || 'public') === s);
+               const idx = filteredTables.findIndex(t => t && (t.schema || 'public') === s);
                return idx === -1 ? Infinity : idx;
             };
             return findRank(a) - findRank(b);
@@ -677,7 +691,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   const handleStartEditing = useCallback((e: React.MouseEvent, table: Table) => {
     e.stopPropagation();
-    setEditingTable(table.name);
+    setEditingTable(table.name || 'unknown');
     setTempDesc(table.description || '');
   }, []);
 
@@ -706,7 +720,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
 
   const expandAll = () => {
      setExpandedTables(new Set(filteredTables.map(t => getTableId(t))));
-     setExpandedSchemas(new Set(schema.tables.map(t => t.schema || 'public').concat(['__favorites__'])));
+     setExpandedSchemas(new Set((schema.tables || []).map(t => t?.schema || 'public').concat(['__favorites__'])));
   };
   const collapseAll = () => {
      setExpandedTables(new Set());
@@ -720,9 +734,12 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
     const activeTableId = deferredSelectedColumnKey ? (activeColumnKey?.split('.')[0] + '.' + activeColumnKey?.split('.')[1]) : deferredHoveredTableId;
     if (!activeTableId && !activeColumnRef) return map;
     if (activeColumnKey) {
-       const [s, t, c] = activeColumnKey.split('.');
+       const keyParts = activeColumnKey.split('.');
+       if (keyParts.length < 3) return map;
+       const [s, t, c] = keyParts;
        const sourceTableId = `${s}.${t}`;
-       schema.tables.forEach(table => {
+       (schema.tables || []).forEach(table => {
+          if (!table) return;
           const tId = getTableId(table);
           if (activeColumnRef) {
              const parts = activeColumnRef.split('.');
@@ -732,8 +749,8 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
              } else if (parts[0] === table.name) isTarget = true;
              if (isTarget) map.set(tId, 'target');
           }
-          table.columns.forEach(col => {
-             if (col.references) {
+          (table.columns || []).forEach(col => {
+             if (col && col.references) {
                 const parts = col.references.split('.');
                 let pointsToActive = false;
                 if (parts.length === 3) {
@@ -777,7 +794,7 @@ const SchemaViewer: React.FC<SchemaViewerProps> = ({
             <span title="Database Schema" className="flex items-center"><Database className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /></span>
             <div className="overflow-hidden">
               <h2 className="font-semibold text-sm uppercase tracking-wider truncate max-w-[120px]" title={schema.name}>{loading ? 'Carregando...' : schema.name}</h2>
-              <p className="text-[10px] text-slate-400">{schema.tables.length} tabelas</p>
+              <p className="text-[10px] text-slate-400">{(schema.tables || []).length} tabelas</p>
             </div>
           </div>
           {onRegenerateClick && (
