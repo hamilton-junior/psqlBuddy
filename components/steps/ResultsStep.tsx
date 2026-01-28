@@ -132,7 +132,8 @@ const HoverPreviewTooltip: React.FC<{
       {isPersistent && (
          <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Escolher Destino</span>
-            <button onClose={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-50" /></button>
+            {/* Fix: changed incorrectly named onClose prop to onClick for a button element */}
+            <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded"><X className="w-3.5 h-3.5 text-slate-50" /></button>
          </div>
       )}
 
@@ -1262,7 +1263,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
                      <div className="h-full flex flex-col gap-4">
                         <div className="flex-1 bg-slate-950 rounded-2xl p-4 border border-slate-800 shadow-inner relative group">
                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {/* Fix: use toast success */}
                               <button onClick={() => { navigator.clipboard.writeText(sqlStatementsPreview); toast.success("Script copiado!"); }} className="p-2 bg-slate-800 text-slate-400 hover:text-white rounded-lg"><Copy className="w-4 h-4" /></button>
                            </div>
                            <pre className="font-mono text-[11px] text-emerald-400 whitespace-pre-wrap h-full overflow-auto custom-scrollbar leading-relaxed">
@@ -1286,7 +1286,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
                         </div>
                         <div className="flex-1 bg-slate-950 rounded-2xl p-4 border border-slate-800 shadow-inner relative group">
                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {/* Fix: use toast success */}
                               <button onClick={() => { navigator.clipboard.writeText(rollbackStatements); toast.success("Rollback copiado!"); }} className="p-2 bg-slate-800 text-slate-400 hover:text-white rounded-lg"><Copy className="w-4 h-4" /></button>
                            </div>
                            <pre className="font-mono text-[11px] text-emerald-400 whitespace-pre-wrap h-full overflow-auto custom-scrollbar leading-relaxed">

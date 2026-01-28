@@ -242,11 +242,17 @@ ipcMain.on('check-update', async (event, branch) => {
   const updateType = comparison < 0 ? 'downgrade' : 'upgrade';
   console.log(`[MAIN] Atualização do tipo ${updateType} identificada: ${CURRENT_VERSION} -> ${remoteVersion}`);
 
-  // Configura o autoUpdater de acordo com o canal selecionado
+  // Configura o autoUpdater de acordo com o canal selecionado e garante que downgrade seja permitido
   autoUpdater.allowPrerelease = (branch === 'main');
+  autoUpdater.allowDowngrade = true;
 
   if (app.isPackaged) {
-    autoUpdater.checkForUpdates().catch((err) => {
+    autoUpdater.checkForUpdates().then((result) => {
+       console.log("[MAIN] checkForUpdates concluído com sucesso.", result ? "Update encontrado" : "Nenhum update via library");
+       // Se o autoUpdater não disparar 'update-available' automaticamente em downgrades
+       // mas nós sabemos que há uma diferença, o envio manual abaixo no .catch ou fallback
+       // pode ser necessário, mas o ideal é que a library gerencie o download.
+    }).catch((err) => {
       console.warn("[MAIN] Erro ao verificar via autoUpdater, enviando via IPC:", err.message);
       mainWindow.webContents.send('update-available', { 
         version: remoteVersion, 
@@ -266,6 +272,7 @@ ipcMain.on('check-update', async (event, branch) => {
 });
 
 autoUpdater.on('update-available', (info) => {
+  console.log(`[MAIN] Update disponível detectado pela library: ${info.version}`);
   const comparison = compareVersions(info.version, CURRENT_VERSION);
   const updateType = comparison < 0 ? 'downgrade' : 'upgrade';
   mainWindow.webContents.send('update-available', { 
@@ -276,6 +283,7 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', () => {
+  console.log("[MAIN] Library reportou: Update não disponível.");
   mainWindow.webContents.send('update-not-available');
 });
 
@@ -289,14 +297,27 @@ autoUpdater.on('download-progress', (p) => {
 });
 
 autoUpdater.on('update-downloaded', () => {
+  console.log("[MAIN] Download do pacote de atualização concluído.");
   mainWindow.webContents.send('update-ready');
 });
 
 ipcMain.on('start-download', () => {
-  autoUpdater.downloadUpdate();
+  console.log("[MAIN] Solicitação de início de download recebida do renderer.");
+  autoUpdater.downloadUpdate().then((paths) => {
+     console.log("[MAIN] downloadUpdate() resolvido. Caminhos:", paths);
+     if (!paths || paths.length === 0) {
+        console.warn("[MAIN] downloadUpdate retornou vazio. Pode ser que o autoUpdater não tenha um update pendente no estado interno.");
+     }
+  }).catch(err => {
+     console.error("[MAIN] Falha crítica ao chamar downloadUpdate():", err);
+     if (mainWindow) {
+        mainWindow.webContents.send('update-error', `Erro ao baixar: ${err.message}`);
+     }
+  });
 });
 
 ipcMain.on('install-update', () => {
+  console.log("[MAIN] Solicitando quitAndInstall()...");
   autoUpdater.quitAndInstall();
 });
 
