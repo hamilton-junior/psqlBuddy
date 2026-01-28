@@ -145,7 +145,7 @@ export default function SettingsModal({
     </button>
   );
 
-  const VersionItem = ({ title, version, icon: Icon, type, isActive = true }: { title: string, version: string | undefined, icon: any, type: 'local' | 'stable' | 'wip', isActive?: boolean }) => {
+  const VersionItem = ({ title, version, icon: Icon, type, isActive = true }: { title: string, version: string | undefined, icon: any, type: 'local' | 'stable' | 'bleeding', isActive?: boolean }) => {
     const display = version === undefined || version === '---' 
         ? <Loader2 className="w-4 h-4 animate-spin opacity-50" /> 
         : version === 'Erro' ? <XCircle className="w-4 h-4 text-rose-500" /> 
@@ -154,19 +154,19 @@ export default function SettingsModal({
     const colors = {
        local: 'text-emerald-600 dark:text-emerald-400',
        stable: 'text-indigo-600 dark:text-indigo-400',
-       wip: 'text-orange-600 dark:text-orange-400'
+       bleeding: 'text-rose-600 dark:text-rose-400'
     };
 
     const subLabels = {
        local: 'Instalada neste PC',
-       stable: 'Produção Estável',
-       wip: 'Experimental Pre-release'
+       stable: 'Última Estável',
+       bleeding: 'Último Bleeding Hub'
     };
 
     const bgColors = {
        local: 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-800/50',
        stable: 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-800/50',
-       wip: 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-100 dark:border-orange-800/50'
+       bleeding: 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-800/50'
     };
 
     return (
@@ -525,7 +525,7 @@ export default function SettingsModal({
                          </div>
                          <div>
                             <h4 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight leading-none">Canais de Distribuição</h4>
-                            <p className="text-xs text-slate-500 mt-1">Sincronização de versões com o GitHub Releases.</p>
+                            <p className="text-xs text-slate-500 mt-1">Sincronização de versões com o GitHub Hub.</p>
                          </div>
                       </div>
 
@@ -546,10 +546,10 @@ export default function SettingsModal({
                          />
 
                          <VersionItem 
-                            title="WIP / Pre-release" 
-                            version={remoteVersions?.wip} 
-                            icon={FlaskConical} 
-                            type="wip"
+                            title="Bleeding Hub" 
+                            version={remoteVersions?.bleedingEdge} 
+                            icon={Radio} 
+                            type="bleeding"
                             isActive={formData.updateBranch === 'main'}
                          />
                       </div>
@@ -574,7 +574,7 @@ export default function SettingsModal({
 
                          <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                               <GitBranch className="w-3.5 h-3.5" /> Canal Ativo: <span className="text-indigo-600 dark:text-indigo-400">{formData.updateBranch === 'stable' ? 'Estável' : 'WIP / Pre-release'}</span>
+                               <GitBranch className="w-3.5 h-3.5" /> Canal Ativo: <span className="text-indigo-600 dark:text-indigo-400">{formData.updateBranch === 'stable' ? 'Estável' : 'Bleeding Hub'}</span>
                             </label>
                             <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700">
                                <button 
@@ -590,14 +590,14 @@ export default function SettingsModal({
                                 </button>
                                 <button 
                                   type="button"
-                                  onClick={() => { console.log("[DIAGNOSTICS] Trocando para canal WIP (Pre-release)"); setFormData({...formData, updateBranch: 'main'}); }}
+                                  onClick={() => { console.log("[DIAGNOSTICS] Trocando para canal BLEEDING (commits)"); setFormData({...formData, updateBranch: 'main'}); }}
                                   className={`py-2 rounded-xl text-[10px] font-black uppercase transition-all
                                      ${formData.updateBranch === 'main' 
                                         ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-sm' 
                                         : 'text-slate-500 hover:text-slate-700'}
                                   `}
                                >
-                                  WIP / Beta
+                                  Bleeding
                                 </button>
                             </div>
                          </div>
