@@ -9,6 +9,10 @@
           "title": "IA SQL Architect (NLP to SQL)",
           "desc": "Tradução de linguagem natural em queries complexas e performáticas utilizando modelos Gemini 3 Flash/Pro.",
           "status": "Finalizado",
+          "size": "Grande",
+          "progress": 100,
+          "votes": 142,
+          "featureLink": "builder",
           "implementationPlan": [
             "Motor de inferência baseado no contexto do schema real.",
             "Validação sintática automática pós-geração.",
@@ -19,6 +23,10 @@
           "title": "Monitor de Saúde Enterprise (Advanced Telemetry)",
           "desc": "Telemetria profunda: Análise de Wait Events, árvore de bloqueios, detecção de índices inúteis e monitoramento de transação wraparound.",
           "status": "Finalizado",
+          "size": "Grande",
+          "progress": 100,
+          "votes": 89,
+          "featureLink": "serverhealth",
           "implementationPlan": [
             "Técnica: Agregadores de pg_stat_activity with wait_event_type categorizado.",
             "Diagnóstico: Identificação de índices redundantes com idx_scan = 0.",
@@ -29,6 +37,9 @@
           "title": "Visualizador de Linhagem (Data Lineage)",
           "desc": "Destaque visual do caminho que os dados percorrem em queries complexas, identificando tabelas fatos e dimensões.",
           "status": "Planejado",
+          "size": "Médio",
+          "progress": 0,
+          "votes": 256,
           "implementationPlan": [
             "Mapeamento de dependências entre joins.",
             "Visualização gráfica do fluxo de transformação de dados.",
@@ -39,6 +50,10 @@
           "title": "Exportação de Snapshot de Diagnóstico",
           "desc": "Gerador de relatórios técnicos em JSON/TXT contendo métricas, locks e plano de saúde do banco para compartilhamento.",
           "status": "Finalizado",
+          "size": "Pequeno",
+          "progress": 100,
+          "votes": 34,
+          "featureLink": "serverhealth",
           "implementationPlan": [
             "UI: Botões dedicados no topo da tela de Saúde.",
             "Técnica: Captura serializada do estado atual de telemetria.",
@@ -55,6 +70,9 @@
           "title": "Mapa Interativo do Schema",
           "desc": "Canvas infinito para visualização de tabelas, relacionamentos FK e validação de interseção de dados entre colunas.",
           "status": "Finalizado",
+          "size": "Grande",
+          "progress": 100,
+          "votes": 210,
           "implementationPlan": [
             "Layout automático baseado em densidade de conexões.",
             "Busca global de campos e tabelas com zoom dinâmico.",
@@ -64,7 +82,10 @@
         {
           "title": "Navegação por Abas (Multi-Query)",
           "desc": "Permite abrir e gerenciar múltiplas consultas simultaneamente em abas, facilitando a comparação de resultados.",
-          "status": "Planejado",
+          "status": "Em Desenvolvimento",
+          "size": "Médio",
+          "progress": 45,
+          "votes": 312,
           "implementationPlan": [
             "Interface de abas estilo IDE no topo do editor.",
             "Persistência de estado independente por aba.",
@@ -75,6 +96,9 @@
           "title": "Estados de 'Skeleton Loading' Refinados",
           "desc": "Melhoria na percepção de velocidade através de carregamentos que mimetizam a estrutura final dos dados.",
           "status": "Finalizado",
+          "size": "Pequeno",
+          "progress": 100,
+          "votes": 28,
           "implementationPlan": [
             "Criação de componentes de skeleton para tabelas e gráficos.",
             "Transições suaves entre estados de carregamento e dados reais.",
@@ -85,6 +109,9 @@
           "title": "Visual Explain Timeline (Gantt)",
           "desc": "Transformação do EXPLAIN ANALYZE em um gráfico de Gantt visual, mostrando cronologicamente onde cada Join ou Scan gastou tempo.",
           "status": "Planejado",
+          "size": "Médio",
+          "progress": 0,
+          "votes": 178,
           "implementationPlan": [
             "Parsing de planos de execução JSON do PostgreSQL.",
             "Destaque visual de gargalos de I/O e CPU por nó.",
@@ -94,7 +121,11 @@
         {
           "title": "Natural Language to Charts",
           "desc": "IA que analisa os resultados da query e sugere o melhor gráfico para visualização dos dados automaticamente.",
-          "status": "Finalizado"
+          "status": "Finalizado",
+          "size": "Médio",
+          "progress": 100,
+          "votes": 94,
+          "featureLink": "results"
         }
       ]
     },
@@ -105,12 +136,20 @@
         {
           "title": "Data Diff & Auditoria",
           "desc": "Ferramenta para comparar registros entre tabelas ou instâncias, identificando divergências em segundos.",
-          "status": "Finalizado"
+          "status": "Finalizado",
+          "size": "Grande",
+          "progress": 100,
+          "votes": 115,
+          "featureLink": "datadiff"
         },
         {
           "title": "Modo de Edição com Auditoria (Draft Changes)",
           "desc": "Carrinho de alterações que permite revisar todos os UPDATEs gerados antes de confirmar o COMMIT final.",
           "status": "Finalizado",
+          "size": "Médio",
+          "progress": 100,
+          "votes": 167,
+          "featureLink": "results",
           "implementationPlan": [
             "Log visual de alterações pendentes.",
             "Validação de integridade antes da execução.",
@@ -120,7 +159,10 @@
         {
           "title": "Cache de Telemetria",
           "desc": "Armazenamento local de métricas de saúde para visualização de histórico de performance offline.",
-          "status": "Planejado",
+          "status": "Em Discussão",
+          "size": "Médio",
+          "progress": 0,
+          "votes": 45,
           "implementationPlan": [
             "Persistência via IndexedDB ou arquivo local.",
             "Gráficos comparativos de performance temporal (D-1, D-7).",
@@ -130,12 +172,18 @@
         {
           "title": "Log Analyzer & SQL Extractor",
           "desc": "Extrator de comandos SQL de arquivos de log sujos e diagnóstico de erros via IA para proposição de correções.",
-          "status": "Finalizado"
+          "status": "Finalizado",
+          "size": "Médio",
+          "progress": 100,
+          "votes": 52
         },
         {
           "title": "Suporte Multi-Banco (MySQL/SQLite)",
           "desc": "Expansão do motor de drivers para suportar outros dialetos SQL comuns no ecossistema dev.",
-          "status": "Em Discussão"
+          "status": "Em Discussão",
+          "size": "Grande",
+          "progress": 0,
+          "votes": 489
         }
       ]
     }

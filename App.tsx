@@ -333,8 +333,7 @@ const App: React.FC = () => {
            {currentStep === 'datadiff' && schema && <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />}
            {currentStep === 'dashboard' && <DashboardStep items={dashboardItems} onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} onClearAll={() => setDashboardItems([])} />}
            {currentStep === 'serverhealth' && <ServerHealthStep credentials={credentials} />}
-           {/* Fix: Replace Rocket (icon) with RoadmapStep component */}
-           {currentStep === 'roadmap' && <RoadmapStep />}
+           {currentStep === 'roadmap' && <RoadmapStep onNavigate={setCurrentStep} />}
         </div>
       </main>
       {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} remoteVersions={remoteVersions} initialTab={settingsTab} />}
