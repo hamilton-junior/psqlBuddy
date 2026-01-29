@@ -5,7 +5,8 @@ import {
   Sparkles, ChevronDown, ChevronUp, 
   Code2, Layers, Loader2, AlertCircle, RefreshCcw,
   CloudDownload, LayoutGrid, ListTodo, CheckCircle2,
-  Clock, History, Dna, Play, Info, ThumbsUp, ArrowUpRight
+  Clock, History, Dna, Play, Info, ThumbsUp, ArrowUpRight,
+  GitCommit, Flag
 } from 'lucide-react';
 import { Skeleton } from '../common/Skeleton';
 import { AppStep } from '../../types';
@@ -22,6 +23,8 @@ interface RoadmapItem {
   size?: 'Pequeno' | 'Médio' | 'Grande';
   progress?: number;
   votes?: number;
+  addedInVersion?: string;
+  releasedInVersion?: string;
   featureLink?: AppStep;
   implementationPlan?: string[];
 }
@@ -59,14 +62,17 @@ const RoadmapStep: React.FC<{ onNavigate?: (step: AppStep) => void }> = ({ onNav
   const [votedItems, setVotedItems] = useState<Set<string>>(new Set());
 
   const fetchRoadmap = async () => {
+    console.log("[ROADMAP] Iniciando busca de dados do repositório...");
     setLoading(true);
     setError(null);
     try {
       const response = await fetch(ROADMAP_URL);
       if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
       const json = await response.json();
+      console.log("[ROADMAP] Dados recebidos com sucesso. Categorias encontradas:", json.categories?.length);
       setData(json);
     } catch (err: any) {
+      console.error("[ROADMAP] Falha crítica ao carregar roadmap:", err);
       setError("Não foi possível carregar o roadmap do servidor. Verifique sua conexão.");
     } finally {
       setTimeout(() => setLoading(false), 400);
@@ -79,6 +85,7 @@ const RoadmapStep: React.FC<{ onNavigate?: (step: AppStep) => void }> = ({ onNav
 
   const handleVote = (e: React.MouseEvent, title: string) => {
     e.stopPropagation();
+    console.log("[ROADMAP] Voto registrado para:", title);
     if (votedItems.has(title)) return;
     setVotedItems(prev => new Set(prev).add(title));
   };
@@ -102,7 +109,9 @@ const RoadmapStep: React.FC<{ onNavigate?: (step: AppStep) => void }> = ({ onNav
   }, [allItems]);
 
   const toggleItem = (title: string) => {
-    setExpandedItem(expandedItem === title ? null : title);
+    const nextState = expandedItem === title ? null : title;
+    console.log("[ROADMAP] Alternando visibilidade do item:", title, nextState ? "Expandido" : "Recolhido");
+    setExpandedItem(nextState);
   };
 
   if (error && !loading) {
@@ -350,8 +359,17 @@ const RoadmapStep: React.FC<{ onNavigate?: (step: AppStep) => void }> = ({ onNav
                            
                            <div className={`w-full md:w-1/2 pl-16 md:pl-0 ${isEven ? 'md:text-right md:order-1' : 'md:text-left md:order-3'}`}>
                               <div className={`inline-flex flex-col ${isEven ? 'md:items-end' : 'md:items-start'}`}>
-                                 <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em] mb-1">Impacto: {item.size || 'Médio'}</span>
-                                 <span className="text-2xl font-black text-slate-800 dark:text-white">Fase {idx + 1}</span>
+                                 <div className="flex items-center gap-2 mb-1">
+                                    <GitCommit className="w-4 h-4 text-indigo-500" />
+                                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">Originada em {item.addedInVersion || 'Legacy'}</span>
+                                 </div>
+                                 <h3 className="text-xl font-black text-slate-800 dark:text-white">{item.title}</h3>
+                                 {item.status === 'Finalizado' && item.releasedInVersion && (
+                                    <div className={`flex items-center gap-2 mt-1 px-3 py-1 bg-emerald-50 dark:bg-emerald-950/50 rounded-full border border-emerald-100 dark:border-emerald-900`}>
+                                       <Flag className="w-3 h-3 text-emerald-600" />
+                                       <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Lançada em {item.releasedInVersion}</span>
+                                    </div>
+                                 )}
                               </div>
                            </div>
                            

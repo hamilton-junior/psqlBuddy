@@ -12,6 +12,8 @@
           "size": "Grande",
           "progress": 100,
           "votes": 142,
+          "addedInVersion": "v0.1.0",
+          "releasedInVersion": "v0.2.10",
           "featureLink": "builder",
           "implementationPlan": [
             "Motor de inferência baseado no contexto do schema real.",
@@ -26,6 +28,8 @@
           "size": "Grande",
           "progress": 100,
           "votes": 89,
+          "addedInVersion": "v0.1.20",
+          "releasedInVersion": "v0.2.40",
           "featureLink": "serverhealth",
           "implementationPlan": [
             "Técnica: Agregadores de pg_stat_activity with wait_event_type categorizado.",
@@ -40,6 +44,7 @@
           "size": "Médio",
           "progress": 0,
           "votes": 256,
+          "addedInVersion": "v0.2.44",
           "implementationPlan": [
             "Mapeamento de dependências entre joins.",
             "Visualização gráfica do fluxo de transformação de dados.",
@@ -53,6 +58,8 @@
           "size": "Pequeno",
           "progress": 100,
           "votes": 34,
+          "addedInVersion": "v0.2.15",
+          "releasedInVersion": "v0.2.35",
           "featureLink": "serverhealth",
           "implementationPlan": [
             "UI: Botões dedicados no topo da tela de Saúde.",
@@ -73,6 +80,8 @@
           "size": "Grande",
           "progress": 100,
           "votes": 210,
+          "addedInVersion": "v0.1.5",
+          "releasedInVersion": "v0.2.5",
           "implementationPlan": [
             "Layout automático baseado em densidade de conexões.",
             "Busca global de campos e tabelas com zoom dinâmico.",
@@ -86,6 +95,7 @@
           "size": "Médio",
           "progress": 45,
           "votes": 312,
+          "addedInVersion": "v0.2.40",
           "implementationPlan": [
             "Interface de abas estilo IDE no topo do editor.",
             "Persistência de estado independente por aba.",
@@ -99,6 +109,8 @@
           "size": "Pequeno",
           "progress": 100,
           "votes": 28,
+          "addedInVersion": "v0.2.30",
+          "releasedInVersion": "v0.2.42",
           "implementationPlan": [
             "Criação de componentes de skeleton para tabelas e gráficos.",
             "Transições suaves entre estados de carregamento e dados reais.",
@@ -112,6 +124,7 @@
           "size": "Médio",
           "progress": 0,
           "votes": 178,
+          "addedInVersion": "v0.2.44",
           "implementationPlan": [
             "Parsing de planos de execução JSON do PostgreSQL.",
             "Destaque visual de gargalos de I/O e CPU por nó.",
@@ -125,6 +138,8 @@
           "size": "Médio",
           "progress": 100,
           "votes": 94,
+          "addedInVersion": "v0.2.10",
+          "releasedInVersion": "v0.2.20",
           "featureLink": "results"
         }
       ]
@@ -140,6 +155,8 @@
           "size": "Grande",
           "progress": 100,
           "votes": 115,
+          "addedInVersion": "v0.1.50",
+          "releasedInVersion": "v0.2.10",
           "featureLink": "datadiff"
         },
         {
@@ -149,6 +166,8 @@
           "size": "Médio",
           "progress": 100,
           "votes": 167,
+          "addedInVersion": "v0.2.5",
+          "releasedInVersion": "v0.2.30",
           "featureLink": "results",
           "implementationPlan": [
             "Log visual de alterações pendentes.",
@@ -163,6 +182,7 @@
           "size": "Médio",
           "progress": 0,
           "votes": 45,
+          "addedInVersion": "v0.2.44",
           "implementationPlan": [
             "Persistência via IndexedDB ou arquivo local.",
             "Gráficos comparativos de performance temporal (D-1, D-7).",
@@ -175,7 +195,9 @@
           "status": "Finalizado",
           "size": "Médio",
           "progress": 100,
-          "votes": 52
+          "votes": 52,
+          "addedInVersion": "v0.2.0",
+          "releasedInVersion": "v0.2.15"
         },
         {
           "title": "Suporte Multi-Banco (MySQL/SQLite)",
@@ -183,7 +205,8 @@
           "status": "Em Discussão",
           "size": "Grande",
           "progress": 0,
-          "votes": 489
+          "votes": 489,
+          "addedInVersion": "v0.2.44"
         }
       ]
     }
