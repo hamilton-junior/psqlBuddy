@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight, AlertTriangle, Undo2, ShieldAlert, Pencil, ArrowUp, ArrowDown, ArrowUpDown, History, RotateCcw, FileWarning } from 'lucide-react';
 import { AppSettings, ExplainNode, DatabaseSchema, Table } from '../../types';
@@ -353,7 +352,7 @@ const ManualMappingPopover: React.FC<{
                          </select>
                       </div>
                       <button 
-                         onClick={handleAddLink}
+                         onClick={handleAdd}
                          disabled={!selectedTable || !keyCol || !previewCol}
                          className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-sm"
                       >
@@ -733,7 +732,7 @@ const VirtualTable = ({
                         <tr 
                            key={rowIdx} 
                            onClick={() => !isAdvancedMode && onRowClick(row)} 
-                           className={`group hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors h-[40px] ${isAdvancedMode ? '' : 'cursor-pointer'} animate-in fade-in slide-in-from-bottom-1 duration-300 fill-mode-backwards`}
+                           className={`group hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors h-[40px] ${isAdvancedMode ? '' : 'cursor-pointer'} opacity-0 animate-row-entry`}
                            style={{ animationDelay: `${Math.min(rowIdx * 30, 600)}ms` }}
                         >
                            {columns.map((col, cIdx) => (
@@ -1278,7 +1277,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
 
                   {reviewTab === 'rollback' && (
                      <div className="h-full flex flex-col gap-4">
-                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-2xl flex items-center gap-4">
+                        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 p-4 rounded-2xl border border-amber-100 dark:border-amber-800 animate-in zoom-in-95">
                            <RotateCcw className="w-6 h-6 text-amber-600 shrink-0" />
                            <div>
                               <h4 className="text-xs font-black text-amber-800 dark:text-amber-300 uppercase tracking-widest">Plano de Desastre</h4>
@@ -1362,11 +1361,12 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
                  data={filteredData} 
                  columns={columns} 
                  highlightMatch={highlightMatch} 
-                 onRowClick={(row) => !settings?.advancedMode && setSelectedRow(row)} 
+                 onRowClick={(row: any) => !settings?.advancedMode && setSelectedRow(row)} 
                  isAdvancedMode={settings?.advancedMode} 
                  onUpdateCell={handleUpdateCell} 
                  onOpenJson={setViewJson} 
-                 onDrillDown={(table, col, val, allLinks) => setDrillDownTarget({ table, col, val, allLinks })} 
+                 // Fix: Explicitly type parameters in onDrillDown to avoid 'unknown' inference
+                 onDrillDown={(table: string, col: string, val: any, allLinks?: ManualLink[]) => setDrillDownTarget({ table, col, val, allLinks })} 
                  schema={schema} 
                  defaultTableName={mainTableName} 
                  credentials={credentials} 
