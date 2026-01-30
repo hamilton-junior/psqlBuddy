@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight, AlertTriangle, Undo2, ShieldAlert, Pencil, ArrowUp, ArrowDown, ArrowUpDown, History, RotateCcw, FileWarning } from 'lucide-react';
 import { AppSettings, ExplainNode, DatabaseSchema, Table } from '../../types';
@@ -9,7 +10,6 @@ import DrillDownModal from '../DrillDownModal';
 import { addToHistory } from '../../services/historyService';
 import { executeQueryReal, explainQueryReal } from '../../services/dbService';
 import BeginnerTip from '../BeginnerTip';
-// Fix: Added missing toast import
 import { toast } from 'react-hot-toast';
 import { Skeleton } from '../common/Skeleton';
 
@@ -148,7 +148,7 @@ const HoverPreviewTooltip: React.FC<{
             <div className="flex items-center justify-between mb-1 w-full">
                <div className="flex items-center gap-1.5 overflow-hidden">
                   <Database className="w-3 h-3 text-indigo-400 shrink-0" />
-                  <span className={`text-[9px] font-extrabold uppercase tracking-widest truncate ${isPersistent ? 'group-hover:text-indigo-300' : 'text-slate-500'}`}>{link.table.split('.').pop()}</span>
+                  <span className={`text-[9px] font-extrabold uppercase tracking-widest truncate ${isPersistent ? 'group-hover:text-indigo-300' : 'text-slate-50'}`}>{link.table.split('.').pop()}</span>
                </div>
                <div className="flex items-center gap-1.5">
                   <span className="text-[9px] font-bold text-slate-400 bg-slate-800 px-1 rounded">{link.previewCol}</span>
@@ -730,7 +730,12 @@ const VirtualTable = ({
                   {currentData.map((row, rowIdx) => {
                      const absRowIdx = startIndex + rowIdx;
                      return (
-                        <tr key={rowIdx} onClick={() => !isAdvancedMode && onRowClick(row)} className={`group hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors h-[40px] ${isAdvancedMode ? '' : 'cursor-pointer'}`}>
+                        <tr 
+                           key={rowIdx} 
+                           onClick={() => !isAdvancedMode && onRowClick(row)} 
+                           className={`group hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors h-[40px] ${isAdvancedMode ? '' : 'cursor-pointer'} animate-in fade-in slide-in-from-bottom-1 duration-300 fill-mode-backwards`}
+                           style={{ animationDelay: `${Math.min(rowIdx * 30, 600)}ms` }}
+                        >
                            {columns.map((col, cIdx) => (
                               <td 
                                  key={col} 
@@ -1103,7 +1108,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
     if (filteredData.length === 0) return; 
     const tableName = mainTableName || "exported_data"; 
     const cols = columns.join(', '); 
-    // Fix: Explicitly typing row and return type to avoid 'unknown' inference
     const statements: string = filteredData.map((row: any): string => { 
       const values = columns.map((col: string): string => { 
         const val = row[col]; 
@@ -1121,7 +1125,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   const handleExportCSV = () => {
     if (filteredData.length === 0) return;
     const headers = columns.join(',');
-    // Fix: Explicitly typing row and return type to avoid 'unknown' inference
     const rows: string = filteredData.map((row: any): string => {
       return columns.map((col: string): string => {
         let val = row[col];
@@ -1155,7 +1158,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
       } catch (e: any) { 
         setExplainError(e.message || "Erro ao analisar performance."); 
       } finally { 
-        // Pequeno delay para transição do skeleton
         setTimeout(() => setLoadingExplain(false), 500);
       } 
     } 
