@@ -1,4 +1,3 @@
-
 export interface Column {
   name: string;
   type: string;
@@ -173,7 +172,7 @@ export interface BuilderState {
   aggregations: Record<string, AggregateFunction>; 
   joins: ExplicitJoin[];
   filters: Filter[];
-  groupBy: string[];
+  groupBy: [] | string[];
   orderBy: OrderBy[];
   limit: number;
   calculatedColumns?: CalculatedColumn[];

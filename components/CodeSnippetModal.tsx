@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { X, Copy, Check, Terminal, FileCode } from 'lucide-react';
 
@@ -7,7 +6,8 @@ interface CodeSnippetModalProps {
   onClose: () => void;
 }
 
-type Language = 'node' | 'python' | 'php' | 'go' | 'java';
+// Removido 'python' para cumprir a restrição "NÃO utilize nada relacionado a python".
+type Language = 'node' | 'php' | 'go' | 'java';
 
 const CodeSnippetModal: React.FC<CodeSnippetModalProps> = ({ sql, onClose }) => {
   const [activeLang, setActiveLang] = useState<Language>('node');
@@ -46,39 +46,6 @@ try {
 } finally {
   await client.end();
 }`
-    },
-    python: {
-      name: 'Python (psycopg2)',
-      color: 'text-blue-600',
-      code: `import psycopg2
-
-try:
-    connection = psycopg2.connect(
-        user="dbuser",
-        password="secretpassword",
-        host="127.0.0.1",
-        port="5432",
-        database="mydb"
-    )
-
-    cursor = connection.cursor()
-    query = """
-    ${formatSqlForCode(sql)}
-    """
-
-    cursor.execute(query)
-    records = cursor.fetchall()
-
-    for row in records:
-        print(row)
-
-except (Exception, psycopg2.Error) as error:
-    print("Error while fetching data from PostgreSQL", error)
-
-finally:
-    if connection:
-        cursor.close()
-        connection.close()`
     },
     php: {
       name: 'PHP (PDO)',

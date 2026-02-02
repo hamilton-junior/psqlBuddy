@@ -1,4 +1,3 @@
-
 {
   "categories": [
     {
@@ -34,7 +33,8 @@
           "implementationPlan": [
             "Técnica: Agregadores de pg_stat_activity with wait_event_type categorizado.",
             "Diagnóstico: Identificação de índices redundantes com idx_scan = 0.",
-            "Segurança: Alerta visual de Transaction Wraparound baseado em age(datfrozenxid)."
+            "Segurança: Alerta visual de Transaction Wraparound baseado em age(datfrozenxid).",
+            "Locks: Visualizador hierárquico de árvore de bloqueios (Root Blockers)."
           ]
         },
         {

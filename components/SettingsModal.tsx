@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Settings, Save, X, Bot, Zap, 
@@ -197,7 +196,7 @@ export default function SettingsModal({
              </div>
              <div>
                 <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Preferências do Sistema</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Personalize sua experiência e monitore a saúde do banco.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Personalize sua experiênca e monitore a saúde do banco.</p>
              </div>
           </div>
           <button onClick={onClose} className="p-2.5 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-slate-500 transition-all">
@@ -355,30 +354,25 @@ export default function SettingsModal({
 
                    <div className={`space-y-6 transition-all duration-500 ${!formData.enableAiGeneration ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
                       
-                      {/* Gemini API Key Section */}
+                      {/* Gemini API Key Section - Restored */}
                       <section className="bg-white dark:bg-slate-800 p-6 border border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-sm">
                          <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl">
+                            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
                                <Key className="w-5 h-5" />
                             </div>
-                            <h4 className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">Configuração da Chave de API</h4>
+                            <h4 className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">Gemini API Key</h4>
                          </div>
-                         <p className="text-xs text-slate-500 mb-4">Insira sua chave do Google Gemini para habilitar as funções de IA. Ela será salva apenas localmente no seu dispositivo.</p>
-                         <div className="relative group">
+                         <div className="space-y-2">
                             <input 
                                type="password" 
                                value={formData.geminiApiKey} 
-                               onChange={e => setFormData({...formData, geminiApiKey: e.target.value})}
-                               className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all pr-12"
-                               placeholder="Sua API Key do Gemini..."
+                               onChange={e => setFormData({...formData, geminiApiKey: e.target.value})} 
+                               placeholder="AIzaSy..." 
+                               className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
                             />
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
-                               <Lock className="w-4 h-4" />
-                            </div>
-                         </div>
-                         <div className="mt-4 flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
-                            <Info className="w-3.5 h-3.5" />
-                            <span>Caso não informe uma chave, o sistema tentará usar a pré-configurada no ambiente.</span>
+                            <p className="text-[10px] text-slate-400 flex items-center gap-1 ml-2">
+                               <ShieldCheck className="w-3 h-3" /> Sua chave é armazenada apenas no seu navegador.
+                            </p>
                          </div>
                       </section>
 
@@ -677,12 +671,10 @@ export default function SettingsModal({
                                </div>
                                <div className="flex justify-between items-center text-slate-400">
                                   <span>Ambiente Electron:</span>
-                                  {/* Fix: Property 'process' does not exist on type 'Window'. Accessing versions via exposed electron object. */}
                                   <span className="text-indigo-400">v{(window as any).electron?.versions?.electron || 'N/A'}</span>
                                </div>
                                <div className="flex justify-between items-center text-slate-400">
                                   <span>Kernel Node:</span>
-                                  {/* Fix: Property 'process' does not exist on type 'Window'. Accessing versions via exposed electron object. */}
                                   <span className="text-emerald-400">v{(window as any).electron?.versions?.node || 'N/A'}</span>
                                </div>
                             </div>

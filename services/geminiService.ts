@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseSchema, QueryResult, BuilderState, ServerStats, ActiveProcess } from "../types";
 
@@ -7,20 +6,24 @@ const cleanJsonString = (str: string): string => {
   return str.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
 };
 
+/**
+ * Guideline Adaptada: Busca a chave configurada pelo usuário no localStorage primeiro,
+ * permitindo gestão via UI. Utiliza process.env.API_KEY como fallback.
+ */
 const getEffectiveApiKey = (): string => {
   try {
-    const settingsStr = localStorage.getItem('psqlBuddy-settings');
-    if (settingsStr) {
-      const settings = JSON.parse(settingsStr);
-      if (settings.geminiApiKey && settings.geminiApiKey.trim() !== '') {
-        console.log("[GEMINI_SERVICE] Utilizando API Key fornecida pelo usuário.");
-        return settings.geminiApiKey;
-      }
-    }
+     const settingsStr = localStorage.getItem('psqlBuddy-settings');
+     if (settingsStr) {
+        const settings = JSON.parse(settingsStr);
+        if (settings.geminiApiKey && settings.geminiApiKey.trim() !== '') {
+           return settings.geminiApiKey;
+        }
+     }
   } catch (e) {
-    console.warn("[GEMINI_SERVICE] Falha ao ler API Key das configurações:", e);
+     console.error("[GEMINI_SERVICE] Falha ao ler chave do localStorage:", e);
   }
-  console.log("[GEMINI_SERVICE] Utilizando API Key padrão do ambiente.");
+  
+  console.log("[GEMINI_SERVICE] Utilizando API Key do ambiente.");
   return process.env.API_KEY || "";
 };
 
@@ -51,8 +54,9 @@ export const getHealthDiagnosis = async (stats: ServerStats, processes: ActivePr
   `;
 
   try {
+    // Guideline: Utilizando gemini-3-pro-preview para análise complexa de DBA.
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
     });
     console.log("[GEMINI_SERVICE] Diagnóstico gerado com sucesso.");
@@ -80,8 +84,9 @@ export const generateSqlFromBuilderState = async (schema: DatabaseSchema, state:
   `;
 
   try {
+    // Guideline: Utilizando gemini-3-pro-preview para geração de código SQL.
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
@@ -110,10 +115,11 @@ export const analyzeQueryPerformance = async (schema: DatabaseSchema, sql: strin
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
+    console.log("[GEMINI_SERVICE] Análise de performance concluída.");
     return JSON.parse(response.text || "{}");
   } catch (e: any) {
     console.error("[GEMINI_SERVICE] Erro na análise de performance:", e);
@@ -135,10 +141,11 @@ export const analyzeLog = async (schema: DatabaseSchema, logText: string): Promi
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
+    console.log("[GEMINI_SERVICE] Log analisado com sucesso.");
     return JSON.parse(response.text || "{}");
   } catch (e: any) {
     console.error("[GEMINI_SERVICE] Erro na análise de log:", e);
@@ -160,10 +167,11 @@ export const generateBuilderStateFromPrompt = async (schema: DatabaseSchema, use
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
+    console.log("[GEMINI_SERVICE] Magic Fill concluído.");
     return JSON.parse(response.text || "{}");
   } catch (e: any) {
     console.error("[GEMINI_SERVICE] Erro no Magic Fill:", e);
@@ -185,7 +193,7 @@ export const generateSchemaFromTopic = async (topic: string, context: string): P
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: { 
         responseMimeType: "application/json",
@@ -227,7 +235,6 @@ export const generateSchemaFromTopic = async (topic: string, context: string): P
     
     const parsed = JSON.parse(response.text || "{}");
     
-    // Sanitização profunda para evitar crash no frontend por campos faltantes
     const sanitizedSchema: DatabaseSchema = {
       name: String(parsed.name || topic),
       tables: (parsed.tables || [])
@@ -268,10 +275,11 @@ export const extractSqlFromLogs = async (logText: string): Promise<string[]> => 
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
+    console.log("[GEMINI_SERVICE] SQL extraído com sucesso.");
     return JSON.parse(response.text || "[]");
   } catch (e: any) {
     console.error("[GEMINI_SERVICE] Erro ao extrair SQL:", e);

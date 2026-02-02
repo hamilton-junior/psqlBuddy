@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
@@ -102,7 +101,7 @@ const App: React.FC = () => {
 
   // Monitor de navegação para Logs
   useEffect(() => {
-    console.log(`[NAVIGATION] Mudando para o step: ${currentStep.toUpperCase()} | Cross-fade Speed: 150ms`);
+    console.log(`[NAVIGATION] Mudando para o step: ${currentStep.toUpperCase()} | Pure Cross-fade Speed: 150ms`);
   }, [currentStep]);
 
   // --- PERSISTÊNCIA EM DISCO (ELECTRON) ---
@@ -227,9 +226,11 @@ const App: React.FC = () => {
 
   const checkApiKey = useCallback(() => {
     if (!settings.geminiApiKey || settings.geminiApiKey.trim() === '') {
-       console.log("[APP] API Key faltando. Solicitando configuração.");
-       setShowKeyPrompt(true);
-       return false;
+       console.log("[APP] API Key faltando no localStorage. Verificando ambiente...");
+       if (!process.env.API_KEY) {
+          setShowKeyPrompt(true);
+          return false;
+       }
     }
     return true;
   }, [settings.geminiApiKey]);
@@ -324,14 +325,14 @@ const App: React.FC = () => {
         }}
       />
       <main className="flex-1 overflow-hidden relative flex flex-col">
-        <div className="flex-1 p-6 overflow-hidden h-full relative">
+        <div className="flex-1 overflow-hidden h-full relative">
            <AnimatePresence mode="popLayout">
              <motion.div
                key={currentStep}
-               initial={{ opacity: 0, y: 6, filter: 'blur(2px)' }}
-               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-               exit={{ opacity: 0, y: -6, filter: 'blur(2px)' }}
-               transition={{ duration: 0.15, ease: "easeOut" }}
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               transition={{ duration: 0.15, ease: "linear" }}
                className="h-full w-full absolute top-0 left-0 p-6"
              >
                {currentStep === 'connection' && <ConnectionStep onSchemaLoaded={handleSchemaLoaded} settings={settings} />}
