@@ -49,22 +49,23 @@
           "implementationPlan": [
             "Explain (ANALYZE, BUFFERS, VERBOSE) para profiling profundo.",
             "Histórico persistente de snapshots via LocalStorage.",
-            "Análise comparativa de regressão de performance via Gemini 3 Pro."
+            "Análise comparativa de performance via Gemini 3 Pro."
           ]
         },
         {
           "title": "Monitor de Storage de Disco",
-          "desc": "Visualizador de uso de disco físico por banco de dados e diretório de dados, com projeção de quota.",
+          "desc": "Visualizador de uso de disco físico por banco de dados e diretório de dados, com projeção de quota customizável.",
           "status": "Finalizado",
           "size": "Médio",
           "progress": 100,
           "votes": 156,
           "addedInVersion": "v0.2.44",
-          "releasedInVersion": "v0.2.46",
+          "releasedInVersion": "v0.2.47",
+          "featureLink": "serverhealth",
           "implementationPlan": [
             "Integração com chamadas de sistema (df/wmic) via backend.",
             "Visualização de ocupação por partição e banco individual.",
-            "Localização do diretório físico de dados do Postgres."
+            "Gatilho de alerta de quota configurável pelo usuário."
           ]
         },
         {

@@ -113,6 +113,7 @@ export interface AppSettings {
   defaultRowsPerPage: number;
   theme: 'light' | 'dark';
   updateBranch: 'stable' | 'main';
+  storageQuotaTrigger: number; // Porcentagem para alerta de disco
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -134,7 +135,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultDiffLimit: 500, 
   defaultRowsPerPage: 10,
   theme: 'dark',
-  updateBranch: 'stable'
+  updateBranch: 'stable',
+  storageQuotaTrigger: 90
 };
 
 export interface QueryProfilingSnapshot {

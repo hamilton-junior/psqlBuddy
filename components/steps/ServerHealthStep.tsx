@@ -4,9 +4,10 @@ import {
   RefreshCw, Trash2, Search, AlertCircle, 
   Loader2, Zap, ShieldAlert, Terminal, ZapOff, 
   Cpu, BarChart3, AlertTriangle, Ghost, ListOrdered, Sparkles, X, ChevronDown, CheckCircle2, Timer, Settings,
-  FileJson, FileText, Download, Share2, Layers, Anchor, ActivitySquare, Gauge, ShieldCheck, Info, Sparkle, Brush, HelpCircle, Network, ChevronRight, Play, HardDrive, PieChart as PieChartIcon
+  FileJson, FileText, Download, Share2, Layers, Anchor, ActivitySquare, Gauge, ShieldCheck, Info, Sparkle, Brush, HelpCircle, Network, ChevronRight, Play, HardDrive, PieChart as PieChartIcon,
+  Settings2
 } from 'lucide-react';
-import { DbCredentials, ServerStats, ActiveProcess, TableInsight, UnusedIndex, StorageStats } from '../../types';
+import { DbCredentials, ServerStats, ActiveProcess, TableInsight, UnusedIndex, StorageStats, AppSettings } from '../../types';
 import { getServerHealth, terminateProcess, vacuumTable, dropIndex, fetchStorageStats } from '../../services/dbService';
 import { getHealthDiagnosis } from '../../services/geminiService';
 import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip, AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
@@ -27,6 +28,41 @@ const formatBytes = (bytes: number) => {
    const i = Math.floor(Math.log(bytes) / Math.log(k));
    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
+
+const StorageSkeleton = () => (
+  <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
+        <Skeleton className="w-1/3 h-3 rounded" />
+        <div className="flex items-center gap-8">
+          <Skeleton className="w-28 h-28 rounded-full" />
+          <div className="space-y-2 flex-1">
+            <Skeleton className="w-3/4 h-4 rounded" />
+            <Skeleton className="w-1/2 h-3 rounded" />
+            <Skeleton className="w-1/2 h-3 rounded" />
+          </div>
+        </div>
+      </div>
+      <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
+        <Skeleton className="w-1/3 h-3 rounded" />
+        <div className="flex items-center gap-3">
+          <Skeleton className="w-10 h-10 rounded-xl" />
+          <div className="space-y-2 flex-1">
+            <Skeleton className="w-1/2 h-4 rounded" />
+            <Skeleton className="w-1/3 h-3 rounded" />
+          </div>
+        </div>
+        <Skeleton className="w-full h-12 rounded-xl" />
+      </div>
+    </div>
+    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl overflow-hidden p-6 space-y-6">
+       <Skeleton className="w-1/4 h-3 rounded" />
+       <div className="flex items-end gap-4 h-48">
+          {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="flex-1 rounded-t-lg" style={{ height: `${20 + Math.random() * 60}%` }} />)}
+       </div>
+    </div>
+  </div>
+);
 
 const LockTreeNode: React.FC<{ 
   pid: number, 
@@ -114,6 +150,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
   const [tableInsights, setTableInsights] = useState<TableInsight[]>([]);
   const [unusedIndexes, setUnusedIndexes] = useState<UnusedIndex[]>([]);
   const [loading, setLoading] = useState(true);
+  const [storageLoading, setStorageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(5000); 
@@ -122,6 +159,14 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
   const [terminatingPid, setTerminatingPid] = useState<number | null>(null);
   const [optimizingItems, setOptimizingItems] = useState<Set<string>>(new Set());
   const [showIndexWarningInfo, setShowIndexWarningInfo] = useState(false);
+
+  // Settings for quota trigger
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem('psqlBuddy-settings');
+      return saved ? JSON.parse(saved) : { storageQuotaTrigger: 90 };
+    } catch { return { storageQuotaTrigger: 90 } as any; }
+  });
   
   const [dialogConfig, setDialogConfig] = useState<{ 
      isOpen: boolean, 
@@ -148,15 +193,10 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
     }
 
     try {
-      const [healthData, storageData] = await Promise.all([
-         getServerHealth(credentials),
-         fetchStorageStats(credentials)
-      ]);
-
+      const healthData = await getServerHealth(credentials);
       const cacheVal = parseFloat((healthData.summary.cacheHitRate || '0').replace('%', '')) || 0;
       
       setStats(healthData.summary);
-      setStorage(storageData);
       setProcesses(healthData.processes);
       setTableInsights(healthData.tableInsights || []);
       setUnusedIndexes(healthData.unusedIndexes || []);
@@ -171,11 +211,30 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
          }];
          return next.slice(-100); 
       });
+
+      // Fetch storage separately to avoid blocking summary UI
+      if (!storage || isManual) {
+        syncStorage();
+      }
+
     } catch (err: any) {
       console.error("[HEALTH] Falha na sincronização:", err);
       setError(err.message || "Falha ao sincronizar telemetria.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncStorage = async () => {
+    if (!credentials) return;
+    setStorageLoading(true);
+    try {
+      const storageData = await fetchStorageStats(credentials);
+      setStorage(storageData);
+    } catch (e) {
+      console.error("[HEALTH] Falha ao sincronizar storage:", e);
+    } finally {
+      setStorageLoading(false);
     }
   };
 
@@ -277,6 +336,13 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
       message: `Deseja realmente remover o índice ${index}? Esta ação não pode ser desfeita.`,
       onConfirm: () => executeDropUnusedIndex(schema, index)
     });
+  };
+
+  const updateQuotaTrigger = (val: number) => {
+    const nextSettings = { ...appSettings, storageQuotaTrigger: val };
+    setAppSettings(nextSettings);
+    localStorage.setItem('psqlBuddy-settings', JSON.stringify(nextSettings));
+    toast.success(`Alerta de storage reconfigurado para ${val}%`);
   };
 
   const exportSnapshot = (format: 'json' | 'txt') => {
@@ -463,7 +529,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                   <StatCard title="Pool de Conexões" value={`${stats?.connections || 0}/${stats?.maxConnections || '--'}`} sub={`${Math.round(((stats?.connections || 0) / (stats?.maxConnections || 1)) * 100)}% de ocupação`} icon={Users} historyKey="conn" />
                   <StatCard title="Cache Hit Rate" value={stats?.cacheHitRate || '---'} sub="Eficiência de Buffer Pool" icon={Activity} type="cache" historyKey="cache" />
                   <StatCard title="Transações (Commit)" value={stats?.transactionsCommit ? stats.transactionsCommit.toLocaleString() : '---'} sub="Throughput operacional" icon={BarChart3} historyKey="tps" />
-                  <StatCard title="Uso de Disco Total" value={`${storage?.partition.percent || 0}%`} sub={`${formatBytes(storage?.partition.free || 0)} disponíveis`} icon={HardDrive} />
+                  <StatCard title="Uso de Disco Total" value={storageLoading ? '...' : `${storage?.partition.percent || 0}%`} sub={storageLoading ? 'Calculando...' : `${formatBytes(storage?.partition.free || 0)} disponíveis`} icon={HardDrive} />
                </>
             )}
          </div>
@@ -490,7 +556,7 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                         {rootBlockers.length > 0 && <span className="bg-rose-500 text-white text-[8px] px-1.5 py-0.5 rounded-full">{rootBlockers.length}</span>}
                      </button>
                      <button 
-                        onClick={() => setActiveSubTab('storage')}
+                        onClick={() => { setActiveSubTab('storage'); if(!storage) syncStorage(); }}
                         className={`px-6 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2
                            ${activeSubTab === 'storage' ? 'border-amber-600 text-amber-600 bg-white dark:bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-600'}
                         `}
@@ -498,6 +564,11 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                         <HardDrive className="w-4 h-4" /> Armazenamento
                      </button>
                   </div>
+                  {activeSubTab === 'storage' && (
+                     <button onClick={syncStorage} disabled={storageLoading} className="p-2 text-slate-400 hover:text-indigo-500 rounded-lg transition-colors">
+                        <RefreshCw className={`w-4 h-4 ${storageLoading ? 'animate-spin' : ''}`} />
+                     </button>
+                  )}
                </div>
 
                <div className="flex-1 overflow-auto custom-scrollbar p-6">
@@ -566,7 +637,8 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                      </div>
                   )}
 
-                  {activeSubTab === 'storage' && storage && (
+                  {activeSubTab === 'storage' && (
+                    storageLoading ? <StorageSkeleton /> : storage ? (
                      <div className="space-y-8 animate-in fade-in duration-300">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                            <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
@@ -575,8 +647,8 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                                  <div className="relative w-28 h-28">
                                     <ResponsiveContainer width="100%" height="100%">
                                        <PieChart>
-                                          <Pie data={[{v: storage.partition.used}, {v: storage.partition.free}]} innerRadius={35} outerRadius={50} dataKey="v">
-                                             <Cell fill={storage.partition.percent > 85 ? '#ef4444' : '#6366f1'} />
+                                          <Pie data={[{v: storage.partition.used}, {v: storage.partition.free}]} innerRadius={35} outerRadius={50} dataKey="v" isAnimationActive={false}>
+                                             <Cell fill={storage.partition.percent > (appSettings.storageQuotaTrigger || 90) ? '#ef4444' : '#6366f1'} />
                                              <Cell fill="#e2e8f0" className="dark:fill-slate-700" />
                                           </Pie>
                                        </PieChart>
@@ -593,17 +665,32 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                               </div>
                            </div>
                            <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
-                              <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4">Projeção de Quota</h5>
+                              <div className="flex items-center justify-between mb-4">
+                                 <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Controle de Quota App-Level</h5>
+                                 <div className="flex items-center gap-2 px-2 py-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm">
+                                    <Settings2 className="w-3 h-3 text-slate-400" />
+                                    <input 
+                                       type="number" 
+                                       min="10" max="99" 
+                                       value={appSettings.storageQuotaTrigger}
+                                       onChange={(e) => updateQuotaTrigger(parseInt(e.target.value) || 90)}
+                                       className="w-8 bg-transparent text-[10px] font-black text-indigo-600 outline-none"
+                                    />
+                                    <span className="text-[9px] font-bold text-slate-400">%</span>
+                                 </div>
+                              </div>
                               <div className="flex flex-col gap-4">
                                  <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-white dark:bg-slate-900 rounded-xl shadow-sm text-amber-500"><AlertTriangle className="w-5 h-5" /></div>
+                                    <div className={`p-2 bg-white dark:bg-slate-900 rounded-xl shadow-sm ${storage.partition.percent > appSettings.storageQuotaTrigger ? 'text-rose-500 animate-pulse' : 'text-amber-500'}`}>
+                                       <AlertTriangle className="w-5 h-5" />
+                                    </div>
                                     <div>
                                        <div className="text-xs font-black text-slate-700 dark:text-white uppercase">Alerta de Espaço</div>
-                                       <div className="text-[10px] text-slate-500">Gatilho configurado em 90%</div>
+                                       <div className="text-[10px] text-slate-500">Limite de segurança em {appSettings.storageQuotaTrigger}%</div>
                                     </div>
                                  </div>
                                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed italic">
-                                    O diretório de dados está em <strong>{storage.dataDirectory}</strong>. Baseado na taxa de logs, certifique-se de ter ao menos 2x o tamanho do maior banco disponível.
+                                    O diretório de dados está em <strong>{storage.dataDirectory}</strong>. {storage.partition.percent > appSettings.storageQuotaTrigger ? 'CRÍTICO: O uso excedeu o limite de alerta definido.' : 'O volume atual está dentro da zona de segurança operacional.'}
                                  </p>
                               </div>
                            </div>
@@ -628,6 +715,13 @@ const ServerHealthStep: React.FC<ServerHealthStepProps> = ({ credentials }) => {
                            </div>
                         </div>
                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-4">
+                         <Database className="w-12 h-12 opacity-30" />
+                         <p className="text-xs font-bold uppercase tracking-widest">Nenhum dado de storage sincronizado.</p>
+                         <button onClick={syncStorage} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Sincronizar Agora</button>
+                      </div>
+                    )
                   )}
                </div>
             </div>
