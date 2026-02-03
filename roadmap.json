@@ -195,11 +195,12 @@
         {
           "title": "Exportação de Workspaces",
           "desc": "Salva todo o contexto (SQL, Gráficos, Conexão e Snapshots) em um único arquivo de projeto portátil.",
-          "status": "Planejado",
+          "status": "Finalizado",
           "size": "Médio",
-          "progress": 0,
+          "progress": 100,
           "votes": 45,
           "addedInVersion": "v0.2.44",
+          "releasedInVersion": "v0.2.48",
           "implementationPlan": [
             "Serialização complexa do estado do builder.",
             "Encriptação opcional do arquivo exportado.",

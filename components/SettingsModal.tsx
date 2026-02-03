@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Settings, Save, X, Bot, Zap, 
   ShieldCheck, Lightbulb, Clock, LayoutList, ListFilter, 
-  AlertCircle, GraduationCap, PenTool, DatabaseZap, HeartPulse, 
+  // Added missing AlertTriangle import to fix: Cannot find name 'AlertTriangle'
+  AlertCircle, AlertTriangle, GraduationCap, PenTool, DatabaseZap, HeartPulse, 
   Activity, CheckCircle2, XCircle, RefreshCw, Play, 
   Bug, Loader2, Database, User, Server, Hash, Shield, Terminal, ZapOff, ActivitySquare,
   LayoutGrid, Monitor, Moon, Sun, ChevronRight, Gauge, GitCompare, GitBranch, FlaskConical, Tag, Info, Github, GitCommit, Radio, Binary,
@@ -10,11 +11,16 @@ import {
   Cpu,
   Lock,
   ShieldAlert,
-  Key
+  Key,
+  Archive,
+  UploadCloud,
+  FileDown,
+  History
 } from 'lucide-react';
 import { AppSettings, DatabaseSchema, DbCredentials } from '../types';
 import { runFullHealthCheck, HealthStatus, runRandomizedStressTest, StressTestLog } from '../services/healthService';
 import { SimulationData } from '../services/simulationService';
+import { toast } from 'react-hot-toast';
 
 interface SettingsModalProps {
   settings: AppSettings;
@@ -28,7 +34,7 @@ interface SettingsModalProps {
   initialTab?: TabId;
 }
 
-type TabId = 'interface' | 'ai' | 'database' | 'diagnostics';
+type TabId = 'interface' | 'ai' | 'database' | 'workspace' | 'diagnostics';
 
 declare const __APP_VERSION__: string;
 const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.10';
@@ -61,6 +67,7 @@ export default function SettingsModal({
   const [isStressing, setIsStressing] = useState(false);
   const [stressLogs, setStressLogs] = useState<StressTestLog[]>([]);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isConnected = !!schema;
 
@@ -113,6 +120,77 @@ export default function SettingsModal({
     } finally {
       setIsStressing(false);
     }
+  };
+
+  // --- WORKSPACE EXPORT/IMPORT LOGIC ---
+  
+  const handleExportWorkspace = () => {
+    console.log("[WORKSPACE] Iniciando exportação completa de dados...");
+    const workspaceData: Record<string, string> = {};
+    
+    const prefixes = ['psqlBuddy-', 'psql-buddy-', 'psqlbuddy-'];
+    
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && prefixes.some(p => key.startsWith(p))) {
+            workspaceData[key] = localStorage.getItem(key) || '';
+        }
+    }
+
+    const exportObj = {
+        version: CURRENT_APP_VERSION,
+        exportedAt: new Date().toISOString(),
+        data: workspaceData
+    };
+
+    const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `PSQLBuddy_Workspace_${new Date().toISOString().split('T')[0]}.buddy`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    console.log(`[WORKSPACE] Exportação concluída. ${Object.keys(workspaceData).length} chaves serializadas.`);
+    toast.success("Workspace exportado com sucesso!");
+  };
+
+  const handleImportWorkspace = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    console.log(`[WORKSPACE] Lendo arquivo para importação: ${file.name}`);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const content = JSON.parse(event.target?.result as string);
+            
+            if (!content.data || typeof content.data !== 'object') {
+                throw new Error("Estrutura de arquivo Workspace inválida.");
+            }
+
+            console.log(`[WORKSPACE] Validando pacote de dados v${content.version}...`);
+            
+            // Confirm Dialog could be implemented, but for now we follow minimal changes
+            Object.entries(content.data).forEach(([key, val]) => {
+                localStorage.setItem(key, val as string);
+            });
+
+            console.log("[WORKSPACE] Importação bem-sucedida. Solicitando reload...");
+            toast.success("Dados importados! Reiniciando aplicação...", { duration: 3000 });
+            
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+
+        } catch (err: any) {
+            console.error("[WORKSPACE] Falha na importação:", err);
+            toast.error(`Erro ao importar workspace: ${err.message}`);
+        }
+    };
+    reader.readAsText(file);
   };
 
   const healthScore = useMemo(() => {
@@ -210,6 +288,7 @@ export default function SettingsModal({
              <TabButton id="interface" label="Interface" icon={LayoutGrid} />
              <TabButton id="ai" label="IA Gemini" icon={Bot} />
              <TabButton id="database" label="Banco de Dados" icon={Server} />
+             <TabButton id="workspace" label="Workspace" icon={Archive} />
              <TabButton id="diagnostics" label="Diagnóstico" icon={HeartPulse} />
              
              <div className="mt-auto pt-6 border-t border-slate-100 dark:border-slate-800">
@@ -354,7 +433,6 @@ export default function SettingsModal({
 
                    <div className={`space-y-6 transition-all duration-500 ${!formData.enableAiGeneration ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
                       
-                      {/* Gemini API Key Section - Restored */}
                       <section className="bg-white dark:bg-slate-800 p-6 border border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-sm">
                          <div className="flex items-center gap-3 mb-4">
                             <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
@@ -505,6 +583,82 @@ export default function SettingsModal({
                          </p>
                       </div>
                    </div>
+                </div>
+             )}
+
+             {activeTab === 'workspace' && (
+                <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-300">
+                    <div className="p-8 bg-slate-950 rounded-[2.5rem] text-white overflow-hidden relative border border-slate-800 shadow-2xl">
+                        <div className="absolute top-0 right-0 p-10 opacity-10 pointer-events-none">
+                            <Archive className="w-40 h-40" />
+                        </div>
+                        
+                        <div className="relative z-10 max-w-lg">
+                            <h4 className="text-2xl font-black tracking-tight mb-4 flex items-center gap-3">
+                                <Archive className="w-8 h-8 text-indigo-400" /> Gerenciar Workspace
+                            </h4>
+                            <p className="text-slate-400 font-medium leading-relaxed mb-8">
+                                Exporte todo o seu histórico, conexões, templates e configurações para um arquivo único. 
+                                Útil para backup ou sincronização entre dispositivos.
+                            </p>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <button 
+                                    onClick={handleExportWorkspace}
+                                    className="flex flex-col items-center gap-3 p-6 bg-white/5 hover:bg-white/10 border border-white/10 rounded-3xl transition-all group"
+                                >
+                                    <div className="p-3 bg-indigo-600 rounded-2xl group-hover:scale-110 transition-transform">
+                                        <FileDown className="w-6 h-6 text-white" />
+                                    </div>
+                                    <span className="text-sm font-black uppercase tracking-widest text-indigo-100">Exportar (.buddy)</span>
+                                </button>
+                                
+                                <button 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="flex flex-col items-center gap-3 p-6 bg-white/5 hover:bg-white/10 border border-white/10 rounded-3xl transition-all group"
+                                >
+                                    <div className="p-3 bg-emerald-600 rounded-2xl group-hover:scale-110 transition-transform">
+                                        <UploadCloud className="w-6 h-6 text-white" />
+                                    </div>
+                                    <span className="text-sm font-black uppercase tracking-widest text-emerald-100">Importar Dados</span>
+                                </button>
+                                <input 
+                                    ref={fileInputRef}
+                                    type="file" 
+                                    accept=".buddy,.json" 
+                                    onChange={handleImportWorkspace} 
+                                    className="hidden" 
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-[2rem] p-6 flex gap-4">
+                        <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-1" />
+                        <div>
+                            <h5 className="text-sm font-black text-amber-800 dark:text-amber-200 uppercase tracking-widest mb-1">Aviso de Sobrescrita</h5>
+                            <p className="text-xs text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
+                                Ao importar um arquivo de workspace, todos os seus dados atuais (queries salvas, histórico, conexões) serão 
+                                substituídos pelos dados contidos no arquivo. Certifique-se de exportar seus dados atuais primeiro se precisar mantê-los.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-800 p-6 border border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-sm">
+                        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <History className="w-4 h-4" /> Informações do Pacote
+                        </h5>
+                        <div className="grid grid-cols-2 gap-4 text-xs font-medium">
+                            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl flex justify-between items-center">
+                                <span className="text-slate-500">Chaves de LocalStorage:</span>
+                                <span className="text-indigo-600 dark:text-indigo-400 font-black">{localStorage.length}</span>
+                            </div>
+                            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl flex justify-between items-center">
+                                <span className="text-slate-500">Formato:</span>
+                                <span className="text-emerald-600 dark:text-emerald-400 font-black">Buddy JSON v2</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
              )}
 
