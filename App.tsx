@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
-  AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem
+  AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem, QueryTab
 } from './types';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from '@/components/Sidebar';
+import TabBar from '@/components/TabBar';
 import ConnectionStep from '@/components/steps/ConnectionStep';
 import BuilderStep from '@/components/steps/BuilderStep';
 import PreviewStep from '@/components/steps/PreviewStep';
@@ -42,27 +44,51 @@ const INITIAL_BUILDER_STATE: BuilderState = {
   limit: 100
 };
 
-function compareVersions(v1: string, v2: string) {
-  if (!v1 || v1 === '...' || !v2 || v2 === '...') return 0;
-  const p1 = v1.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
-  const p2 = v2.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
-  for (let i = 0; i < 3; i++) {
-    if (p1[i] > p2[i]) return 1;
-    if (p1[i] < p2[i]) return -1;
-  }
-  return 0;
+function createNewTab(index: number): QueryTab {
+  return {
+    id: crypto.randomUUID(),
+    name: index === 0 ? 'Consulta Principal' : `Consulta ${index + 1}`,
+    currentStep: 'builder',
+    builderState: { ...INITIAL_BUILDER_STATE },
+    queryResult: null,
+    executionResult: [],
+    isGenerating: false,
+    isExecuting: false
+  };
 }
 
 const App: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<AppStep>('connection');
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
   const [credentials, setCredentials] = useState<DbCredentials | null>(null);
   const [simulationData, setSimulationData] = useState<SimulationData>({});
-  const [builderState, setBuilderState] = useState<BuilderState>(INITIAL_BUILDER_STATE);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [executionResult, setExecutionResult] = useState<any[]>([]);
-  const [isExecuting, setIsExecuting] = useState(false);
+  
+  // Tab Management
+  const [tabs, setTabs] = useState<QueryTab[]>([createNewTab(0)]);
+  const [activeTabId, setActiveTabId] = useState<string>(tabs[0].id);
+  const [globalStep, setGlobalStep] = useState<AppStep | 'query'>('connection');
+
+  const activeTab = useMemo(() => tabs.find(t => t.id === activeTabId) || tabs[0], [tabs, activeTabId]);
+
+  const updateActiveTab = useCallback((updater: (tab: QueryTab) => Partial<QueryTab>) => {
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, ...updater(t) } : t));
+  }, [activeTabId]);
+
+  const handleAddTab = () => {
+    const newTab = createNewTab(tabs.length);
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+    setGlobalStep('query');
+  };
+
+  const handleCloseTab = (id: string) => {
+    if (tabs.length === 1) return;
+    const newTabs = tabs.filter(t => t.id !== id);
+    setTabs(newTabs);
+    if (activeTabId === id) {
+      setActiveTabId(newTabs[newTabs.length - 1].id);
+    }
+  };
+
   const [isHydrated, setIsHydrated] = useState(false);
   
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -99,32 +125,20 @@ const App: React.FC = () => {
   const [updateReady, setUpdateReady] = useState(false);
   const manualCheckRef = useRef(false);
 
-  // Ref para controle de concorrência na geração de IA
   const generationIdRef = useRef(0);
 
-  // Monitor de navegação para Logs
-  useEffect(() => {
-    console.log(`[NAVIGATION] Mudando para o step: ${currentStep.toUpperCase()} | Pure Cross-fade Speed: 150ms`);
-  }, [currentStep]);
-
-  // --- PERSISTÊNCIA EM DISCO (ELECTRON) ---
-  
   useEffect(() => {
     const hydrateFromDisk = async () => {
         const electron = (window as any).electron;
         if (electron && electron.invoke) {
-            console.log("[PERSISTENCE] Iniciando restauração de dados do disco...");
             try {
                 const diskData = await electron.invoke('get-persistent-store');
                 if (diskData && Object.keys(diskData).length > 0) {
                     Object.entries(diskData).forEach(([key, val]) => {
                         localStorage.setItem(key, val as string);
                     });
-                    console.log(`[PERSISTENCE] ${Object.keys(diskData).length} chaves restauradas com sucesso.`);
-                    
                     const savedSettings = localStorage.getItem('psqlBuddy-settings');
                     if (savedSettings) setSettings(JSON.parse(savedSettings));
-                    
                     const savedDash = localStorage.getItem('psqlBuddy-dashboard');
                     if (savedDash) setDashboardItems(JSON.parse(savedDash));
                 }
@@ -139,7 +153,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!isHydrated) return;
-    
     const syncToDisk = () => {
         const electron = (window as any).electron;
         if (electron) {
@@ -151,13 +164,11 @@ const App: React.FC = () => {
                 }
             }
             electron.send('save-persistent-store', allKeys);
-            console.log("[PERSISTENCE] Sync automático localStorage -> Disco executado.");
         }
     };
-
     const timer = setTimeout(syncToDisk, 2000); 
     return () => clearTimeout(timer);
-  }, [settings, dashboardItems, virtualRelations, executionResult, isHydrated]);
+  }, [settings, dashboardItems, virtualRelations, isHydrated]);
 
   useEffect(() => {
     if (settings.theme === 'dark') document.documentElement.classList.add('dark');
@@ -166,23 +177,12 @@ const App: React.FC = () => {
   }, [settings.theme, settings]);
 
   const handleUpdateDetection = useCallback((info: any) => {
-    const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
-    const isManual = manualCheckRef.current || info.isManual;
-    const type = info.updateType || (compareVersions(info.version, currentAppVersion) < 0 ? 'downgrade' : 'upgrade');
+    const type = info.updateType;
     if (type === 'downgrade') toast("Aviso: Downgrade disponível", { icon: '⚠️' });
     else toast("Nova atualização encontrada!", { icon: '✨' });
-    if (isManual || !ignoredVersions.includes(info.version)) {
-      setUpdateInfo({
-        version: info.version,
-        notes: info.releaseNotes || (type === 'downgrade' ? 'Uma versão anterior foi solicitada ou está disponível para restauração.' : 'Novas melhorias e correções disponíveis.'),
-        branch: info.branch || (settings.updateBranch === 'main' ? 'Main' : 'Stable'),
-        updateType: type as 'upgrade' | 'downgrade',
-        currentVersion: currentAppVersion,
-        isManual: !!isManual
-      });
-    }
+    setUpdateInfo({ ...info, currentVersion: currentAppVersion, isManual: manualCheckRef.current });
     manualCheckRef.current = false;
-  }, [settings.updateBranch, currentAppVersion]);
+  }, [currentAppVersion]);
 
   useEffect(() => {
     const electron = (window as any).electron;
@@ -193,7 +193,6 @@ const App: React.FC = () => {
       electron.on('update-not-available', () => {
         if (manualCheckRef.current) toast.success("Você já está na versão sincronizada!");
         manualCheckRef.current = false;
-        setUpdateInfo(null);
       });
       electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
       electron.on('update-ready', () => {
@@ -201,116 +200,70 @@ const App: React.FC = () => {
         setDownloadProgress(100);
         toast.success("Download pronto!");
       });
-      electron.on('update-error', (msg: string) => {
-        if (manualCheckRef.current) toast.error("Falha ao verificar alterações.");
-        manualCheckRef.current = false;
-        setDownloadProgress(null);
-      });
       return () => electron.removeAllListeners('update-available');
     }
   }, [handleUpdateDetection]);
 
-  const handleStartDownload = () => {
-    const electron = (window as any).electron;
-    if (electron) { 
-      setDownloadProgress(0); 
-      electron.send('start-download');
-      toast.loading("Iniciando transferência...");
-    }
-  };
-
   const handleSchemaLoaded = (loadedSchema: DatabaseSchema, creds: DbCredentials) => {
-    console.log(`[SCHEMA_LOADED] Novo schema detectado: ${loadedSchema.name}`);
     setSchema(loadedSchema);
     setCredentials(creds);
     if (loadedSchema.connectionSource === 'simulated') setSimulationData(initializeSimulation(loadedSchema));
-    setCurrentStep('builder');
+    setGlobalStep('query');
+    updateActiveTab(() => ({ currentStep: 'builder' }));
   };
-
-  const checkApiKey = useCallback(() => {
-    if (!settings.geminiApiKey || settings.geminiApiKey.trim() === '') {
-       console.log("[APP] API Key faltando no localStorage. Verificando ambiente...");
-       if (!process.env.API_KEY) {
-          setShowKeyPrompt(true);
-          return false;
-       }
-    }
-    return true;
-  }, [settings.geminiApiKey]);
 
   const handleGenerateSql = async () => {
     if (!schema) return;
-    if (settings.enableAiGeneration && !checkApiKey()) return;
-
     const currentGenId = ++generationIdRef.current;
-    setIsGenerating(true);
-    console.log(`[AI_GEN] Iniciando geração (ID: ${currentGenId}) via Gemini...`);
+    updateActiveTab(() => ({ isGenerating: true }));
     
     try {
       let result = settings.enableAiGeneration 
-        ? await generateSqlFromBuilderState(schema, builderState, settings.enableAiTips)
-        : generateLocalSql(schema, builderState);
+        ? await generateSqlFromBuilderState(schema, activeTab.builderState, settings.enableAiTips)
+        : generateLocalSql(schema, activeTab.builderState);
       
-      // Se o ID mudou, o usuário pulou ou iniciou outra geração
-      if (currentGenId !== generationIdRef.current) {
-        console.log(`[AI_GEN] Geração ID ${currentGenId} descartada (ID atual: ${generationIdRef.current}).`);
-        return;
-      }
+      if (currentGenId !== generationIdRef.current) return;
 
-      setQueryResult(result);
-      setCurrentStep('preview');
-      console.log("[AI_GEN] Geração concluída.");
+      updateActiveTab(() => ({ 
+        queryResult: result, 
+        currentStep: 'preview', 
+        isGenerating: false 
+      }));
     } catch (error: any) { 
       if (currentGenId !== generationIdRef.current) return;
-      
-      console.error("[AI_GEN] Erro na geração:", error);
-      if (error.message === 'MISSING_API_KEY') {
-        setShowKeyPrompt(true);
-      } else {
-        toast.error(error.message || "Erro ao gerar SQL"); 
-      }
-    }
-    finally { 
-      if (currentGenId === generationIdRef.current) {
-        setIsGenerating(false); 
-      }
+      updateActiveTab(() => ({ isGenerating: false }));
+      if (error.message === 'MISSING_API_KEY') setShowKeyPrompt(true);
+      else toast.error(error.message || "Erro ao gerar SQL"); 
     }
   };
 
-  // Função para pular a geração por IA e usar lógica local determinística
-  const handleSkipAi = useCallback(() => {
-    if (!schema) return;
-    console.log(`[BUILDER] Usuário optou por pular IA. Invalidando geração ID: ${generationIdRef.current}`);
-    
-    // Incrementa o ID para que a promessa da IA em curso seja ignorada ao retornar
-    generationIdRef.current++;
-    setIsGenerating(false);
-    
-    const result = generateLocalSql(schema, builderState);
-    setQueryResult(result);
-    setCurrentStep('preview');
-    // Corrigido: toast.info não existe no react-hot-toast. Usando chamada base com ícone.
-    toast("Geração por IA interrompida. Usando lógica local.", { icon: 'ℹ️' });
-  }, [schema, builderState]);
-
   const handleExecuteQuery = async (sqlOverride?: string) => {
     if (!credentials || !schema) return;
-    const sqlToRun = sqlOverride || queryResult?.sql;
+    const sqlToRun = sqlOverride || activeTab.queryResult?.sql;
     if (!sqlToRun) return;
-    setIsExecuting(true);
-    console.log("[DB_EXEC] Executando query no banco...");
+    updateActiveTab(() => ({ isExecuting: true }));
     try {
        let data = credentials.host === 'simulated'
-          ? executeOfflineQuery(schema, simulationData, builderState)
+          ? executeOfflineQuery(schema, simulationData, activeTab.builderState)
           : await executeQueryReal(credentials, sqlToRun);
-       setExecutionResult(data);
-       setCurrentStep('results');
-       console.log(`[DB_EXEC] Sucesso. ${data.length} linhas retornadas.`);
+       updateActiveTab(() => ({ 
+         executionResult: data, 
+         currentStep: 'results', 
+         isExecuting: false 
+       }));
     } catch (error: any) { 
-      console.error("[DB_EXEC] Falha na execução:", error);
+      updateActiveTab(() => ({ isExecuting: false }));
       toast.error(error.message || "Falha na execução"); 
     }
-    finally { setIsExecuting(false); }
+  };
+
+  const handleSidebarNavigate = (step: AppStep) => {
+    if (['builder', 'preview', 'results'].includes(step)) {
+      setGlobalStep('query');
+      updateActiveTab(() => ({ currentStep: step as AppStep }));
+    } else {
+      setGlobalStep(step);
+    }
   };
 
   if (!isHydrated) {
@@ -328,23 +281,16 @@ const App: React.FC = () => {
       
       {showKeyPrompt && (
         <Dialog 
-          isOpen={true}
-          type="prompt"
-          title="Configuração de IA Necessária"
-          message="Para utilizar as funções de Inteligência Artificial, você precisa configurar sua API Key do Gemini. Deseja ir para a tela de configurações agora?"
-          confirmLabel="Ir para Configurações"
-          cancelLabel="Agora não"
-          onConfirm={() => {
-             setSettingsTab('ai');
-             setShowSettings(true);
-             setShowKeyPrompt(false);
-          }}
+          isOpen={true} type="prompt" title="IA Necessária"
+          message="Configure sua API Key para usar IA."
+          onConfirm={() => { setSettingsTab('ai'); setShowSettings(true); setShowKeyPrompt(false); }}
           onClose={() => setShowKeyPrompt(false)}
         />
       )}
 
       <Sidebar 
-        currentStep={currentStep} onNavigate={setCurrentStep} schema={schema} hasResults={executionResult.length > 0}
+        currentStep={globalStep === 'query' ? activeTab.currentStep : globalStep} 
+        onNavigate={handleSidebarNavigate} schema={schema} hasResults={activeTab.executionResult.length > 0}
         onOpenSettings={() => { setSettingsTab('interface'); setShowSettings(true); }} onOpenDiagram={() => setShowDiagram(true)}
         onOpenHistory={() => setShowHistory(true)} onOpenShortcuts={() => setShowShortcuts(true)}
         onOpenCheatSheet={() => setShowCheatSheet(true)} onOpenVirtualRelations={() => setShowVirtualRelations(true)}
@@ -352,77 +298,70 @@ const App: React.FC = () => {
         onOpenSqlExtractor={() => setShowSqlExtractor(true)} 
         onCheckUpdate={() => { 
           const electron = (window as any).electron;
-          if (electron) {
-            manualCheckRef.current = true; 
-            electron.send('check-update', settings.updateBranch); 
-          }
+          if (electron) { manualCheckRef.current = true; electron.send('check-update', settings.updateBranch); }
         }}
       />
+      
       <main className="flex-1 overflow-hidden relative flex flex-col">
+        {globalStep === 'query' && (
+          <TabBar 
+            tabs={tabs} 
+            activeTabId={activeTabId} 
+            onSwitch={setActiveTabId} 
+            onClose={handleCloseTab} 
+            onAdd={handleAddTab} 
+          />
+        )}
+        
         <div className="flex-1 overflow-hidden h-full relative">
            <AnimatePresence mode="popLayout">
              <motion.div
-               key={currentStep}
-               initial={{ opacity: 0 }}
-               animate={{ opacity: 1 }}
-               exit={{ opacity: 0 }}
+               key={`${globalStep}-${activeTabId}-${activeTab.currentStep}`}
+               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                transition={{ duration: 0.15, ease: "linear" }}
                className="h-full w-full absolute top-0 left-0 p-6"
              >
-               {currentStep === 'connection' && <ConnectionStep onSchemaLoaded={handleSchemaLoaded} settings={settings} />}
-               {currentStep === 'builder' && schema && (
+               {globalStep === 'connection' && <ConnectionStep onSchemaLoaded={handleSchemaLoaded} settings={settings} />}
+               {globalStep === 'query' && activeTab.currentStep === 'builder' && schema && (
                   <BuilderStep 
-                    schema={schema} 
-                    state={builderState} 
-                    onStateChange={setBuilderState} 
-                    onGenerate={handleGenerateSql} 
-                    onSkipAi={handleSkipAi}
-                    isGenerating={isGenerating} 
+                    schema={schema} state={activeTab.builderState} 
+                    onStateChange={(s) => updateActiveTab(() => ({ builderState: s }))} 
+                    onGenerate={handleGenerateSql} isGenerating={activeTab.isGenerating} 
                     settings={settings} 
                   />
                )}
-               {currentStep === 'preview' && queryResult && (
-                  <PreviewStep queryResult={queryResult} onExecute={handleExecuteQuery} onBack={() => setCurrentStep('builder')} isExecuting={isExecuting} isValidating={false} schema={schema || undefined} settings={settings} credentials={credentials} />
+               {globalStep === 'query' && activeTab.currentStep === 'preview' && activeTab.queryResult && (
+                  <PreviewStep 
+                    queryResult={activeTab.queryResult} onExecute={handleExecuteQuery} 
+                    onBack={() => updateActiveTab(() => ({ currentStep: 'builder' }))} 
+                    isExecuting={activeTab.isExecuting} isValidating={false} schema={schema || undefined} settings={settings} credentials={credentials} />
                )}
-               {currentStep === 'results' && (
-                  <ResultsStep data={executionResult} sql={queryResult?.sql || ''} onBackToBuilder={() => setCurrentStep('builder')} onNewConnection={() => setCurrentStep('connection')} settings={settings} onShowToast={(m) => toast(m)} credentials={credentials} schema={schema || undefined} />
+               {globalStep === 'query' && activeTab.currentStep === 'results' && (
+                  <ResultsStep 
+                    data={activeTab.executionResult} sql={activeTab.queryResult?.sql || ''} 
+                    onBackToBuilder={() => updateActiveTab(() => ({ currentStep: 'builder' }))} 
+                    onNewConnection={() => setGlobalStep('connection')} settings={settings} 
+                    onShowToast={(m) => toast(m)} credentials={credentials} schema={schema || undefined} />
                )}
-               {currentStep === 'datadiff' && schema && <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />}
-               {currentStep === 'dashboard' && <DashboardStep items={dashboardItems} onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} onClearAll={() => setDashboardItems([])} />}
-               {currentStep === 'serverhealth' && <ServerHealthStep credentials={credentials} />}
-               {currentStep === 'roadmap' && <RoadmapStep onNavigate={setCurrentStep} />}
+               {globalStep === 'datadiff' && schema && <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />}
+               {globalStep === 'dashboard' && <DashboardStep items={dashboardItems} onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} onClearAll={() => setDashboardItems([])} />}
+               {globalStep === 'serverhealth' && <ServerHealthStep credentials={credentials} />}
+               {globalStep === 'roadmap' && <RoadmapStep onNavigate={handleSidebarNavigate} />}
              </motion.div>
            </AnimatePresence>
         </div>
       </main>
+
       {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} remoteVersions={remoteVersions} initialTab={settingsTab} />}
       {showDiagram && schema && <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} credentials={credentials} />}
-      {showHistory && <HistoryModal onClose={() => setShowHistory(false)} onLoadQuery={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} />}
+      {showHistory && <HistoryModal onClose={() => setShowHistory(false)} onLoadQuery={sql => { updateActiveTab(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
       {showCheatSheet && <SqlCheatSheetModal onClose={() => setShowCheatSheet(false)} />}
       {showVirtualRelations && schema && <VirtualRelationsModal schema={schema} existingRelations={virtualRelations} onAddRelation={r => setVirtualRelations(p => [...p, r])} onRemoveRelation={id => setVirtualRelations(p => p.filter(r => r.id !== id))} onClose={() => setShowVirtualRelations(false)} credentials={credentials} />}
-      {showLogAnalyzer && schema && <LogAnalyzerModal schema={schema} onClose={() => setShowLogAnalyzer(false)} onRunSql={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} />}
-      {showTemplates && <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} />}
-      {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={sql => { setQueryResult({sql, explanation:'', tips:[]}); setCurrentStep('preview'); }} settings={settings} />}
-      {updateInfo && (
-        <UpdateModal 
-          updateInfo={updateInfo} 
-          downloadProgress={downloadProgress} 
-          isReady={updateReady} 
-          onClose={() => setUpdateInfo(null)} 
-          onStartDownload={handleStartDownload} 
-          onInstall={() => {
-            const electron = (window as any).electron;
-            if (electron) electron.send('install-update');
-          }} 
-          onIgnore={() => { 
-            const ign = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]'); 
-            ign.push(updateInfo.version); 
-            localStorage.setItem('psqlBuddy-ignored-versions', JSON.stringify(ign)); 
-            setUpdateInfo(null); 
-          }} 
-        />
-      )}
+      {showLogAnalyzer && schema && <LogAnalyzerModal schema={schema} onClose={() => setShowLogAnalyzer(false)} onRunSql={sql => { updateActiveTab(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
+      {showTemplates && <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={sql => { updateActiveTab(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
+      {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={sql => { updateActiveTab(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} settings={settings} />}
+      {updateInfo && <UpdateModal updateInfo={updateInfo} downloadProgress={downloadProgress} isReady={updateReady} onClose={() => setUpdateInfo(null)} onStartDownload={() => { setDownloadProgress(0); (window as any).electron.send('start-download'); }} onInstall={() => (window as any).electron.send('install-update')} onIgnore={() => setUpdateInfo(null)} />}
     </div>
   );
 };

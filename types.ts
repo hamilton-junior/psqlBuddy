@@ -1,3 +1,4 @@
+
 export interface Column {
   name: string;
   type: string;
@@ -93,6 +94,17 @@ export interface ActiveProcess {
 
 export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'serverhealth' | 'roadmap';
 
+export interface QueryTab {
+  id: string;
+  name: string;
+  currentStep: AppStep;
+  builderState: BuilderState;
+  queryResult: QueryResult | null;
+  executionResult: any[];
+  isGenerating: boolean;
+  isExecuting: boolean;
+}
+
 export interface AppSettings {
   geminiApiKey: string;
   enableAiGeneration: boolean;
@@ -102,7 +114,7 @@ export interface AppSettings {
   advancedMode: boolean; 
   enableDmlSafety: boolean;
   blockDestructiveCommands: boolean;
-  enableDataMasking: boolean; // Novo campo de configuração
+  enableDataMasking: boolean; 
   backgroundLoadLinks: boolean; 
   aiGenerationTimeout: number; 
   defaultDbHost: string;
@@ -114,7 +126,7 @@ export interface AppSettings {
   defaultRowsPerPage: number;
   theme: 'light' | 'dark';
   updateBranch: 'stable' | 'main';
-  storageQuotaTrigger: number; // Porcentagem para alerta de disco
+  storageQuotaTrigger: number; 
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -126,7 +138,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   advancedMode: false, 
   enableDmlSafety: true,
   blockDestructiveCommands: true,
-  enableDataMasking: true, // Padrão ativado para máxima segurança
+  enableDataMasking: true, 
   backgroundLoadLinks: true,
   aiGenerationTimeout: 3000,
   defaultDbHost: 'localhost',
@@ -146,7 +158,7 @@ export interface QueryProfilingSnapshot {
   name: string;
   timestamp: number;
   sql: string;
-  plan: any; // ExplainNode formatted or raw JSON
+  plan: any; 
   metrics: {
     totalRuntime: number;
     planningTime: number;
