@@ -76,6 +76,13 @@ export interface UnusedIndex {
   size: string;
 }
 
+export interface UnusedIndex {
+  schema: string;
+  table: string;
+  index: string;
+  size: string;
+}
+
 export interface ActiveProcess {
   pid: number;
   user: string;
@@ -124,7 +131,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   beginnerMode: true, 
   advancedMode: false, 
   enableDmlSafety: true,
-  blockDestructiveCommands: false,
+  blockDestructiveCommands: true,
   backgroundLoadLinks: true,
   aiGenerationTimeout: 3000,
   defaultDbHost: 'localhost',
@@ -233,14 +240,6 @@ export interface VirtualRelation {
 export enum MessageRole {
   USER = 'user',
   ASSISTANT = 'assistant'
-}
-
-export interface ChatMessage {
-  id: string;
-  role: MessageRole;
-  content: string;
-  queryResult?: QueryResult;
-  mockData?: any[];
 }
 
 export interface ChatMessage {
