@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
-  AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem, QueryTab
+  AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem, QueryTab,
+  TabResultsState
 } from './types';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -44,6 +45,21 @@ const INITIAL_BUILDER_STATE: BuilderState = {
   limit: 100
 };
 
+const INITIAL_RESULTS_STATE: TabResultsState = {
+  activeTab: 'table',
+  search: '',
+  filters: [],
+  chatMessages: [
+    { id: '1', role: 'assistant', text: 'Olá! Analisei os dados retornados pela sua consulta. O que você gostaria de saber sobre eles? Posso encontrar tendências, anomalias ou resumir os resultados.' }
+  ],
+  chatInput: '',
+  chartConfig: {
+    type: 'bar',
+    xAxis: '',
+    yKeys: []
+  }
+};
+
 function createNewTab(index: number): QueryTab {
   return {
     id: crypto.randomUUID(),
@@ -53,7 +69,8 @@ function createNewTab(index: number): QueryTab {
     queryResult: null,
     executionResult: [],
     isGenerating: false,
-    isExecuting: false
+    isExecuting: false,
+    resultsState: { ...INITIAL_RESULTS_STATE }
   };
 }
 
@@ -72,6 +89,12 @@ const App: React.FC = () => {
   const updateActiveTab = useCallback((updater: (tab: QueryTab) => Partial<QueryTab>) => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, ...updater(t) } : t));
   }, [activeTabId]);
+
+  const updateActiveResultsState = useCallback((partial: Partial<TabResultsState>) => {
+    updateActiveTab(tab => ({
+      resultsState: { ...tab.resultsState, ...partial }
+    }));
+  }, [updateActiveTab]);
 
   const handleAddTab = () => {
     const newTab = createNewTab(tabs.length);
@@ -116,7 +139,6 @@ const App: React.FC = () => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSqlExtractor, setShowSqlExtractor] = useState(false);
   const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
-  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   
   const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade', currentVersion?: string, isManual?: boolean} | null>(null);
   const [remoteVersions, setRemoteVersions] = useState<{ stable: string; wip: string; bleedingEdge: string; totalCommits?: number } | null>(null);
@@ -232,8 +254,7 @@ const App: React.FC = () => {
     } catch (error: any) { 
       if (currentGenId !== generationIdRef.current) return;
       updateActiveTab(() => ({ isGenerating: false }));
-      if (error.message === 'MISSING_API_KEY') setShowKeyPrompt(true);
-      else toast.error(error.message || "Erro ao gerar SQL"); 
+      toast.error(error.message || "Erro ao gerar SQL"); 
     }
   };
 
@@ -249,7 +270,8 @@ const App: React.FC = () => {
        updateActiveTab(() => ({ 
          executionResult: data, 
          currentStep: 'results', 
-         isExecuting: false 
+         isExecuting: false,
+         resultsState: { ...INITIAL_RESULTS_STATE } // Resetar estado visual para novos dados
        }));
     } catch (error: any) { 
       updateActiveTab(() => ({ isExecuting: false }));
@@ -279,15 +301,6 @@ const App: React.FC = () => {
     <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-colors duration-500">
       <Toaster position="top-right" />
       
-      {showKeyPrompt && (
-        <Dialog 
-          isOpen={true} type="prompt" title="IA Necessária"
-          message="Configure sua API Key para usar IA."
-          onConfirm={() => { setSettingsTab('ai'); setShowSettings(true); setShowKeyPrompt(false); }}
-          onClose={() => setShowKeyPrompt(false)}
-        />
-      )}
-
       <Sidebar 
         currentStep={globalStep === 'query' ? activeTab.currentStep : globalStep} 
         onNavigate={handleSidebarNavigate} schema={schema} hasResults={activeTab.executionResult.length > 0}
@@ -341,7 +354,9 @@ const App: React.FC = () => {
                     data={activeTab.executionResult} sql={activeTab.queryResult?.sql || ''} 
                     onBackToBuilder={() => updateActiveTab(() => ({ currentStep: 'builder' }))} 
                     onNewConnection={() => setGlobalStep('connection')} settings={settings} 
-                    onShowToast={(m) => toast(m)} credentials={credentials} schema={schema || undefined} />
+                    onShowToast={(m) => toast(m)} credentials={credentials} schema={schema || undefined} 
+                    resultsState={activeTab.resultsState} onResultsStateChange={updateActiveResultsState}
+                  />
                )}
                {globalStep === 'datadiff' && schema && <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />}
                {globalStep === 'dashboard' && <DashboardStep items={dashboardItems} onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} onClearAll={() => setDashboardItems([])} />}

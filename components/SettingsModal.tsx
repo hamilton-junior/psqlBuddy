@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Settings, Save, X, Bot, Zap, 
@@ -409,18 +410,6 @@ export default function SettingsModal({
                       <Toggle checked={formData.enableAiGeneration} onChange={val => setFormData({...formData, enableAiGeneration: val})} colorClass="peer-checked:bg-indigo-400" />
                    </div>
                    <div className={`space-y-6 transition-all duration-500 ${!formData.enableAiGeneration ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
-                      <section className="bg-white dark:bg-slate-800 p-6 border border-slate-100 dark:border-slate-800 rounded-[2rem] shadow-sm">
-                         <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
-                               <Key className="w-5 h-5" />
-                            </div>
-                            <h4 className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest">Gemini API Key</h4>
-                         </div>
-                         <div className="space-y-2">
-                            <input type="password" value={formData.geminiApiKey} onChange={e => setFormData({...formData, geminiApiKey: e.target.value})} placeholder="AIzaSy..." className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
-                            <p className="text-[10px] text-slate-400 flex items-center gap-1 ml-2"><ShieldCheck className="w-3 h-3" /> Sua chave é armazenada apenas no seu navegador.</p>
-                         </div>
-                      </section>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="p-5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl flex flex-col gap-4">
                            <div className="flex items-center justify-between">

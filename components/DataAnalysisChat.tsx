@@ -2,23 +2,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, User, Bot, Loader2 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
+import { AnalysisMessage } from '../types';
 
 interface DataAnalysisChatProps {
   data: any[];
   sql: string;
+  messages: AnalysisMessage[];
+  chatInput: string;
+  onMessagesChange: (msgs: AnalysisMessage[]) => void;
+  onChatInputChange: (val: string) => void;
 }
 
-interface ChatMsg {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-}
-
-const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql }) => {
-  const [messages, setMessages] = useState<ChatMsg[]>([
-    { id: '1', role: 'assistant', text: 'Olá! Analisei os dados retornados pela sua consulta. O que você gostaria de saber sobre eles? Posso encontrar tendências, anomalias ou resumir os resultados.' }
-  ]);
-  const [input, setInput] = useState('');
+const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql, messages, chatInput, onMessagesChange, onChatInputChange }) => {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -28,17 +23,18 @@ const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql }) => {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
+    if (!chatInput.trim() || loading) return;
 
-    const userMsg: ChatMsg = { id: Date.now().toString(), role: 'user', text: input };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
+    const currentText = chatInput;
+    const userMsg: AnalysisMessage = { id: Date.now().toString(), role: 'user', text: currentText };
+    const updatedMessages = [...messages, userMsg];
+    
+    onMessagesChange(updatedMessages);
+    onChatInputChange(''); // Limpa o rascunho global
     setLoading(true);
 
     try {
-      // Always initialize GoogleGenAI with the API key from process.env right before making a call.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Limit context to first 20 rows to avoid token limits
       const dataSample = data.slice(0, 20); 
       const context = `
         CONTEXTO SQL: "${sql}"
@@ -54,74 +50,52 @@ const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql }) => {
         
         (Nota: Existem ${data.length} linhas no total. Esta é apenas uma amostra).
         
-        PERGUNTA DO USUÁRIO: "${userMsg.text}"
+        PERGUNTA DO USUÁRIO: "${currentText}"
         
         INSTRUÇÃO: Aja como um Analista de Dados Sênior. Responda à pergunta do usuário com base nos dados fornecidos e nas regras de negócio acima. 
         Use Markdown para formatar sua resposta (negrito, listas, código).
         Seja perspicaz, aponte curiosidades se houver, e seja conciso. Responda em Português.
       `;
 
-      // Using gemini-3-flash-preview for data analysis and conversation
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: context,
       });
 
       const responseText = response.text || "Desculpe, não consegui analisar os dados agora.";
-
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', text: responseText }]);
+      onMessagesChange([...updatedMessages, { id: (Date.now() + 1).toString(), role: 'assistant', text: responseText }]);
     } catch (error) {
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', text: "Erro ao conectar com o analista de IA." }]);
+      onMessagesChange([...updatedMessages, { id: (Date.now() + 1).toString(), role: 'assistant', text: "Erro ao conectar com o analista de IA." }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Improved Robust Markdown Parser
   const renderFormattedText = (text: string) => {
-    // 1. Safe HTML encoding (basic)
     let html = text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
 
-    // 2. Tokenize Code Blocks to protect them from other formatting
     const codeBlocks: string[] = [];
     html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
        codeBlocks.push(code);
        return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
     });
 
-    // 3. Headers
     html = html.replace(/^### (.*$)/gm, '<h3 class="text-sm font-bold text-slate-800 dark:text-white mt-3 mb-1">$1</h3>');
     html = html.replace(/^## (.*$)/gm, '<h2 class="text-base font-bold text-slate-800 dark:text-white mt-4 mb-2">$1</h2>');
-
-    // 4. Bold (**text**)
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-indigo-900 dark:text-indigo-200">$1</strong>');
-    
-    // 5. Italic (*text*)
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-    // 6. Inline Code (`text`)
     html = html.replace(/`([^`]+)`/g, '<code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded font-mono text-xs text-rose-600 dark:text-rose-300">$1</code>');
-
-    // 7. Lists (- item)
-    // Convert newlines followed by "- " into list items
     html = html.replace(/^\s*-\s+(.*)$/gm, '<li class="ml-4 list-disc marker:text-slate-400">$1</li>');
 
-    // 8. Restore Code Blocks (formatted)
     html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, index) => {
        const code = codeBlocks[parseInt(index)];
        return `<pre class="bg-slate-900 text-slate-50 p-3 rounded-lg my-3 overflow-x-auto text-xs font-mono border border-slate-700 shadow-sm">${code.trim()}</pre>`;
     });
     
-    // 9. Newlines to <br> (only if not inside a tag)
-    // We do a simple pass to convert remaining \n to <br> but tricky to not break tags.
-    // Instead, we rely on the styling 'whitespace-pre-wrap' in the container or minimal brs.
-    // However, for Chat bubbles, explicit BRs are often safer for parsing:
     html = html.replace(/\n/g, '<br />');
-
-    // Clean up excessive breaks after block elements
     html = html.replace(/(<\/h2>|<\/h3>|<\/pre>|<\/li>)\s*<br \/>/g, '$1');
     html = html.replace(/<br \/>\s*(<h2|<h3|<pre|<li)/g, '$1');
 
@@ -168,14 +142,14 @@ const DataAnalysisChat: React.FC<DataAnalysisChatProps> = ({ data, sql }) => {
             <Sparkles className="absolute left-3 w-4 h-4 text-emerald-500" />
             <input 
                type="text" 
-               value={input}
-               onChange={e => setInput(e.target.value)}
+               value={chatInput}
+               onChange={e => onChatInputChange(e.target.value)}
                placeholder="Pergunte algo sobre estes resultados..."
                className="w-full pl-10 pr-12 py-3 bg-slate-100 dark:bg-slate-900 border border-transparent focus:bg-white dark:focus:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-sm"
             />
             <button 
                type="submit"
-               disabled={!input.trim() || loading}
+               disabled={!chatInput.trim() || loading}
                className="absolute right-2 p-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg disabled:opacity-50 transition-colors"
             >
                <Send className="w-4 h-4" />

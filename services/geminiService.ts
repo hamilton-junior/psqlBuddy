@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseSchema, QueryResult, BuilderState, ServerStats, ActiveProcess } from "../types";
 
@@ -6,33 +7,13 @@ const cleanJsonString = (str: string): string => {
   return str.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
 };
 
-/**
- * Guideline Adaptada: Busca a chave configurada pelo usuário no localStorage primeiro,
- * permitindo gestão via UI. Utiliza process.env.API_KEY como fallback.
- */
-const getEffectiveApiKey = (): string => {
-  try {
-     const settingsStr = localStorage.getItem('psqlBuddy-settings');
-     if (settingsStr) {
-        const settings = JSON.parse(settingsStr);
-        if (settings.geminiApiKey && settings.geminiApiKey.trim() !== '') {
-           return settings.geminiApiKey;
-        }
-     }
-  } catch (e) {
-     console.error("[GEMINI_SERVICE] Falha ao ler chave do localStorage:", e);
-  }
-  
-  console.log("[GEMINI_SERVICE] Utilizando API Key do ambiente.");
-  return process.env.API_KEY || "";
-};
+// Initializing ai instance directly with process.env.API_KEY is preferred by the guidelines.
+// However, since several functions are exported, we will initialize within them or at module level if valid.
 
 export const getHealthDiagnosis = async (stats: ServerStats, processes: ActiveProcess[]): Promise<string> => {
   console.log("[GEMINI_SERVICE] Iniciando diagnóstico de saúde do servidor...");
-  const key = getEffectiveApiKey();
-  if (!key) throw new Error("MISSING_API_KEY");
-
-  const ai = new GoogleGenAI({ apiKey: key });
+  // ALWAYS use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     Como um DBA Sênior PostgreSQL, analise a telemetria atual do servidor:
     
@@ -54,7 +35,6 @@ export const getHealthDiagnosis = async (stats: ServerStats, processes: ActivePr
   `;
 
   try {
-    // Guideline: Utilizando gemini-3-pro-preview para análise complexa de DBA.
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
@@ -69,10 +49,8 @@ export const getHealthDiagnosis = async (stats: ServerStats, processes: ActivePr
 
 export const generateSqlFromBuilderState = async (schema: DatabaseSchema, state: BuilderState, includeTips: boolean = true): Promise<QueryResult> => {
   console.log("[GEMINI_SERVICE] Gerando SQL a partir do estado do builder...");
-  const key = getEffectiveApiKey();
-  if (!key) throw new Error("MISSING_API_KEY");
-
-  const ai = new GoogleGenAI({ apiKey: key });
+  // ALWAYS use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     Gere uma query SQL PostgreSQL baseada neste estado: ${JSON.stringify(state)}.
     Contexto do Schema: ${JSON.stringify(schema.tables.map(t => ({ name: t.name, cols: t.columns.map(c => c.name) })))}.
@@ -84,7 +62,6 @@ export const generateSqlFromBuilderState = async (schema: DatabaseSchema, state:
   `;
 
   try {
-    // Guideline: Utilizando gemini-3-pro-preview para geração de código SQL.
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
@@ -100,10 +77,8 @@ export const generateSqlFromBuilderState = async (schema: DatabaseSchema, state:
 
 export const analyzeQueryPerformance = async (schema: DatabaseSchema, sql: string): Promise<any> => {
   console.log("[GEMINI_SERVICE] Analisando performance da query...");
-  const key = getEffectiveApiKey();
-  if (!key) throw new Error("MISSING_API_KEY");
-
-  const ai = new GoogleGenAI({ apiKey: key });
+  // ALWAYS use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     Analise a performance desta query SQL: "${sql}".
     Schema: ${JSON.stringify(schema.tables.map(t => ({ name: t.name, cols: t.columns.map(c => c.name) })))}.
@@ -129,10 +104,8 @@ export const analyzeQueryPerformance = async (schema: DatabaseSchema, sql: strin
 
 export const analyzeLog = async (schema: DatabaseSchema, logText: string): Promise<{ sql: string, explanation: string }> => {
   console.log("[GEMINI_SERVICE] Analisando log de erro...");
-  const key = getEffectiveApiKey();
-  if (!key) throw new Error("MISSING_API_KEY");
-
-  const ai = new GoogleGenAI({ apiKey: key });
+  // ALWAYS use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     Analise este log de erro de banco de dados: "${logText}".
     Sugira uma query SQL para investigar ou corrigir o problema baseado neste schema: ${JSON.stringify(schema.tables.map(t => ({ name: t.name, cols: t.columns.map(c => c.name) })))}.
@@ -155,10 +128,8 @@ export const analyzeLog = async (schema: DatabaseSchema, logText: string): Promi
 
 export const generateBuilderStateFromPrompt = async (schema: DatabaseSchema, userPrompt: string): Promise<Partial<BuilderState>> => {
   console.log("[GEMINI_SERVICE] Magic Fill: Convertendo prompt em estado de builder...");
-  const key = getEffectiveApiKey();
-  if (!key) throw new Error("MISSING_API_KEY");
-
-  const ai = new GoogleGenAI({ apiKey: key });
+  // ALWAYS use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     Converta este pedido do usuário em um estado de BuilderState JSON: "${userPrompt}".
     Schema disponível: ${JSON.stringify(schema.tables.map(t => ({ name: t.name, cols: t.columns.map(c => c.name) })))}.
@@ -185,10 +156,8 @@ export const suggestRelationships = async (schema: DatabaseSchema): Promise<any[
 
 export const generateSchemaFromTopic = async (topic: string, context: string): Promise<DatabaseSchema> => {
   console.log("[GEMINI_SERVICE] Gerando schema simulado para o tópico:", topic);
-  const key = getEffectiveApiKey();
-  if (!key) throw new Error("MISSING_API_KEY");
-
-  const ai = new GoogleGenAI({ apiKey: key });
+  // ALWAYS use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Gere um schema de banco de dados PostgreSQL simulado completo para o tópico: "${topic}". Contexto: "${context}".`;
 
   try {
@@ -267,10 +236,8 @@ export const generateSchemaFromTopic = async (topic: string, context: string): P
 export const parseSchemaFromDDL = async (ddl: string): Promise<DatabaseSchema> => { return { name: '', tables: [] }; };
 export const extractSqlFromLogs = async (logText: string): Promise<string[]> => {
   console.log("[GEMINI_SERVICE] Extraindo queries de logs...");
-  const key = getEffectiveApiKey();
-  if (!key) throw new Error("MISSING_API_KEY");
-
-  const ai = new GoogleGenAI({ apiKey: key });
+  // ALWAYS use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Extraia todas as queries SQL válidas deste texto: "${logText}". Retorne um array JSON de strings.`;
 
   try {

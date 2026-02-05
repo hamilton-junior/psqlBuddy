@@ -1,32 +1,27 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon, AlertCircle, Settings2, CheckSquare, Square } from 'lucide-react';
+import { ChartConfig } from '../types';
 
 interface DataVisualizerProps {
   data: any[];
+  chartConfig: ChartConfig;
+  onConfigChange: (cfg: ChartConfig) => void;
   onDrillDown?: (col: string, val: any) => void;
 }
 
-type ChartType = 'bar' | 'line' | 'area';
-
-const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) => {
-  const [chartType, setChartType] = useState<ChartType>('bar');
+const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, chartConfig, onConfigChange, onDrillDown }) => {
   const [configOpen, setConfigOpen] = useState(false);
-
-  // State for user configuration
-  const [selectedXAxis, setSelectedXAxis] = useState<string>('');
-  const [selectedYKeys, setSelectedYKeys] = useState<string[]>([]);
 
   // 1. Process Data (Ensure numbers are numbers) & Extract Keys
   const { processedData, allKeys, potentialNumberKeys } = useMemo(() => {
     if (!data || data.length === 0) return { processedData: [], allKeys: [], potentialNumberKeys: [] };
     
-    // Normalize data: try to parse numeric strings as floats
     const cleanData = data.map(row => {
        const newRow: any = { ...row };
        Object.keys(newRow).forEach(key => {
           const val = newRow[key];
-          // Check if looks like number
           if (typeof val === 'string' && !isNaN(Number(val)) && val.trim() !== '') {
              newRow[key] = Number(val);
           }
@@ -34,10 +29,8 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
        return newRow;
     });
 
-    // Extract ALL keys from ALL rows (handling sparse data)
     const allUniqueKeys = Array.from(new Set(cleanData.flatMap((row: any) => Object.keys(row)))) as string[];
 
-    // Find keys that are actually numbers in at least ONE row
     let numKeys = allUniqueKeys.filter(k => {
        const hasNumber = cleanData.some(row => {
           const val = row[k];
@@ -56,9 +49,9 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
     return { processedData: cleanData, allKeys: allUniqueKeys, potentialNumberKeys: numKeys };
   }, [data]);
 
-  // 2. Initialize Defaults (Heuristics)
+  // 2. Initialize Defaults (Heuristics) - Only if empty
   useEffect(() => {
-    if (allKeys.length === 0) return;
+    if (allKeys.length === 0 || chartConfig.xAxis) return;
 
     const defaultX = allKeys.find(k => {
        const kLower = k.toLowerCase();
@@ -67,30 +60,36 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
         return processedData.some(row => typeof row[k] === 'string');
     }) || allKeys[0];
 
-    setSelectedXAxis(defaultX);
-
+    let defaultY = [];
     if (potentialNumberKeys.length > 0) {
-       setSelectedYKeys(potentialNumberKeys.slice(0, 3));
-    } else {
-       setSelectedYKeys([]);
+       defaultY = potentialNumberKeys.slice(0, 3);
     }
 
-  }, [processedData, allKeys, potentialNumberKeys]);
+    onConfigChange({ ...chartConfig, xAxis: defaultX, yKeys: defaultY });
+  }, [processedData, allKeys, potentialNumberKeys, chartConfig.xAxis]);
 
   const toggleYKey = (key: string) => {
-    setSelectedYKeys(prev => {
-      if (prev.includes(key)) return prev.filter(k => k !== key);
-      return [...prev, key];
-    });
+    const newYKeys = chartConfig.yKeys.includes(key) 
+      ? chartConfig.yKeys.filter(k => k !== key) 
+      : [...chartConfig.yKeys, key];
+    onConfigChange({ ...chartConfig, yKeys: newYKeys });
+  };
+
+  const setChartType = (type: ChartConfig['type']) => {
+    onConfigChange({ ...chartConfig, type });
+  };
+
+  const setSelectedXAxis = (xAxis: string) => {
+    onConfigChange({ ...chartConfig, xAxis });
   };
 
   const handleChartClick = (dataPoint: any) => {
-     if (onDrillDown && dataPoint && selectedXAxis) {
-        const val = dataPoint[selectedXAxis];
+     if (onDrillDown && dataPoint && chartConfig.xAxis) {
+        const val = dataPoint[chartConfig.xAxis];
         if (val !== undefined && val !== null) {
-           onDrillDown(selectedXAxis, val);
+           onDrillDown(chartConfig.xAxis, val);
         } else if (dataPoint.activeLabel) {
-           onDrillDown(selectedXAxis, dataPoint.activeLabel);
+           onDrillDown(chartConfig.xAxis, dataPoint.activeLabel);
         }
      }
   };
@@ -105,7 +104,7 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
   const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
   const renderChart = () => {
-     if (selectedYKeys.length === 0) {
+     if (chartConfig.yKeys.length === 0) {
         return (
            <div className="flex flex-col items-center justify-center h-full text-slate-400">
              <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
@@ -127,16 +126,16 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
         color: document.documentElement.classList.contains('dark') ? '#f1f5f9' : '#1e293b'
      };
 
-     switch (chartType) {
+     switch (chartConfig.type) {
         case 'line':
            return (
               <LineChart {...commonProps}>
                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.5} vertical={false} />
-                 <XAxis dataKey={selectedXAxis} stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} dy={10} />
+                 <XAxis dataKey={chartConfig.xAxis} stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} dy={10} />
                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
                  <Tooltip contentStyle={tooltipStyle} />
                  <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                 {selectedYKeys.map((key, index) => (
+                 {chartConfig.yKeys.map((key, index) => (
                     <Line 
                        key={key} 
                        type="monotone" 
@@ -153,11 +152,11 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
            return (
               <AreaChart {...commonProps}>
                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.5} vertical={false} />
-                 <XAxis dataKey={selectedXAxis} stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} dy={10} />
+                 <XAxis dataKey={chartConfig.xAxis} stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} dy={10} />
                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
                  <Tooltip contentStyle={tooltipStyle} />
                  <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                 {selectedYKeys.map((key, index) => (
+                 {chartConfig.yKeys.map((key, index) => (
                     <Area 
                         key={key} 
                         type="monotone" 
@@ -176,15 +175,14 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
            return (
               <BarChart {...commonProps}>
                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.5} vertical={false} />
-                 <XAxis dataKey={selectedXAxis} stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} dy={10} />
+                 <XAxis dataKey={chartConfig.xAxis} stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} dy={10} />
                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
-                 {/* CURSOR REMOVIDO: Limpa o fundo retangular branco ao passar o mouse */}
                  <Tooltip 
                     contentStyle={tooltipStyle} 
                     cursor={false} 
                  />
                  <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                 {selectedYKeys.map((key, index) => (
+                 {chartConfig.yKeys.map((key, index) => (
                     <Bar 
                         key={key} 
                         dataKey={key} 
@@ -202,14 +200,12 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
 
   return (
     <div className="flex flex-col h-full space-y-4">
-       {/* Configuration Bar */}
        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
-          
           <div className="flex items-center gap-3">
              <div className="flex bg-white dark:bg-slate-800 rounded-lg p-1 shadow-sm border border-slate-200 dark:border-slate-700">
-                <button onClick={() => setChartType('bar')} className={`p-1.5 rounded transition-colors ${chartType === 'bar' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-400'}`} title="Gráfico de Barras"><BarChart3 className="w-4 h-4" /></button>
-                <button onClick={() => setChartType('line')} className={`p-1.5 rounded transition-colors ${chartType === 'line' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-400'}`} title="Gráfico de Linha"><LineChartIcon className="w-4 h-4" /></button>
-                <button onClick={() => setChartType('area')} className={`p-1.5 rounded transition-colors ${chartType === 'area' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-400'}`} title="Gráfico de Área"><AreaChartIcon className="w-4 h-4" /></button>
+                <button onClick={() => setChartType('bar')} className={`p-1.5 rounded transition-colors ${chartConfig.type === 'bar' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-400'}`} title="Gráfico de Barras"><BarChart3 className="w-4 h-4" /></button>
+                <button onClick={() => setChartType('line')} className={`p-1.5 rounded transition-colors ${chartConfig.type === 'line' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-400'}`} title="Gráfico de Linha"><LineChartIcon className="w-4 h-4" /></button>
+                <button onClick={() => setChartType('area')} className={`p-1.5 rounded transition-colors ${chartConfig.type === 'area' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'text-slate-400'}`} title="Gráfico de Área"><AreaChartIcon className="w-4 h-4" /></button>
              </div>
              
              <button 
@@ -222,20 +218,19 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
           </div>
 
           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-100 dark:border-slate-800">
-             <span>Eixo X: <strong className="text-indigo-600 dark:text-indigo-400 ml-1">{selectedXAxis}</strong></span>
+             <span>Eixo X: <strong className="text-indigo-600 dark:text-indigo-400 ml-1">{chartConfig.xAxis}</strong></span>
              <span className="w-px h-3 bg-slate-200 dark:bg-slate-700 mx-1"></span>
-             <span>Eixo Y: <strong className="text-indigo-600 dark:text-indigo-400 ml-1">{selectedYKeys.join(', ') || 'Nenhum'}</strong></span>
+             <span>Eixo Y: <strong className="text-indigo-600 dark:text-indigo-400 ml-1">{chartConfig.yKeys.join(', ') || 'Nenhum'}</strong></span>
           </div>
        </div>
 
-       {/* Configuration Panel */}
        {configOpen && (
           <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl animate-in slide-in-from-top-2 duration-300">
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">Eixo X (Categorias)</label>
                    <select 
-                      value={selectedXAxis} 
+                      value={chartConfig.xAxis} 
                       onChange={(e) => setSelectedXAxis(e.target.value)}
                       className="w-full text-xs font-bold p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                    >
@@ -248,7 +243,7 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, onDrillDown }) =>
                       {potentialNumberKeys.length === 0 ? (
                          <span className="text-xs text-amber-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Nenhuma coluna numérica</span>
                       ) : potentialNumberKeys.map(key => {
-                         const isSelected = selectedYKeys.includes(key);
+                         const isSelected = chartConfig.yKeys.includes(key);
                          return (
                             <button 
                               key={key}

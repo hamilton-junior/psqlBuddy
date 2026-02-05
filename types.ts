@@ -94,6 +94,36 @@ export interface ActiveProcess {
 
 export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'serverhealth' | 'roadmap';
 
+export type ResultTab = 'table' | 'terminal' | 'chart' | 'analysis' | 'explain';
+export type FilterOperator = 'contains' | 'equals' | 'starts' | 'ends' | 'gt' | 'lt';
+
+export interface FilterRule {
+  column: string;
+  operator: FilterOperator;
+  value: string;
+}
+
+export interface ChartConfig {
+  type: 'bar' | 'line' | 'area';
+  xAxis: string;
+  yKeys: string[];
+}
+
+export interface AnalysisMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+export interface TabResultsState {
+  activeTab: ResultTab;
+  search: string;
+  filters: FilterRule[];
+  chatMessages: AnalysisMessage[];
+  chatInput: string;
+  chartConfig: ChartConfig;
+}
+
 export interface QueryTab {
   id: string;
   name: string;
@@ -103,10 +133,10 @@ export interface QueryTab {
   executionResult: any[];
   isGenerating: boolean;
   isExecuting: boolean;
+  resultsState: TabResultsState;
 }
 
 export interface AppSettings {
-  geminiApiKey: string;
   enableAiGeneration: boolean;
   enableAiValidation: boolean;
   enableAiTips: boolean;
@@ -130,7 +160,6 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  geminiApiKey: '',
   enableAiGeneration: true,
   enableAiValidation: true,
   enableAiTips: true,
