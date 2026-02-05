@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { DatabaseSchema, QueryResult, OptimizationAnalysis, AppSettings } from '../../types';
-import { Terminal, Play, ArrowLeft, CheckCircle2, ShieldAlert, Info, Copy, Check, Loader2, Lightbulb, ShieldOff, AlertCircle, AlignLeft, Minimize2, Split, Code2, Zap, TrendingUp, Gauge, X, Shield, Lock, Unlock, DatabaseZap, AlertTriangle } from 'lucide-react';
+import { Terminal, Play, ArrowLeft, CheckCircle2, ShieldAlert, Info, Copy, Check, Loader2, Lightbulb, ShieldOff, AlertCircle, AlignLeft, Minimize2, Split, Code2, Zap, TrendingUp, Gauge, X, Shield, Lock, Unlock, DatabaseZap, AlertTriangle, Sparkles } from 'lucide-react';
 import Editor, { useMonaco, DiffEditor } from '@monaco-editor/react';
 import { analyzeQueryPerformance } from '../../services/geminiService';
 import { executeDryRun } from '../../services/dbService';
@@ -18,6 +19,13 @@ interface PreviewStepProps {
   credentials?: any;
 }
 
+interface SqlInsight {
+  id: string;
+  type: 'warning' | 'danger' | 'info';
+  title: string;
+  message: string;
+}
+
 const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBack, isExecuting, isValidating, validationDisabled, schema, settings, credentials }) => {
   const [copied, setCopied] = useState(false);
   const [editedSql, setEditedSql] = useState(queryResult.sql || '');
@@ -26,6 +34,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
   const [analysisResult, setAnalysisResult] = useState<OptimizationAnalysis | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [isSafetyUnlocked, setIsSafetyUnlocked] = useState(false);
+  const [showAdvisor, setShowAdvisor] = useState(false);
   
   const [isDryRunning, setIsDryRunning] = useState(false);
   const [dryRunResult, setDryRunResult] = useState<{ affectedRows: number } | null>(null);
@@ -39,7 +48,63 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
      return /\b(UPDATE|DELETE|INSERT)\b/.test(sql);
   }, [editedSql]);
 
-  // Fix: Move safetyError before its usage in useEffect
+  // DBA Advisor - Motor de Heurísticas
+  const dbaInsights = useMemo((): SqlInsight[] => {
+    const insights: SqlInsight[] = [];
+    const sql = editedSql.trim();
+    const upperSql = sql.toUpperCase();
+    if (!sql) return [];
+
+    // 1. DML sem WHERE (MANTIDO)
+    const isUpdate = /\bUPDATE\b/.test(upperSql);
+    const isDelete = /\bDELETE\b/.test(upperSql);
+    const hasWhere = /\bWHERE\b/.test(upperSql);
+    if ((isUpdate || isDelete) && !hasWhere) {
+       insights.push({
+          id: 'no-where',
+          type: 'danger',
+          title: 'DML sem Filtro (WHERE)',
+          message: 'Esta operação afetará TODOS os registros da tabela. Recomendamos fortemente adicionar um filtro ou usar o modo de segurança.'
+       });
+    }
+
+    // 2. Joins em colunas sem PK/FK (MANTIDO)
+    if (schema) {
+       const joinRegex = /JOIN\s+([^\s]+)\s+ON\s+([^\s.]+)\.([^\s]+)\s*=\s*([^\s.]+)\.([^\s]+)/gi;
+       let match;
+       while ((match = joinRegex.exec(sql)) !== null) {
+          const [,, t1, c1, t2, c2] = match;
+          
+          const isKey = (tbl: string, col: string) => {
+             const table = schema.tables.find(t => t.name.toLowerCase() === tbl.toLowerCase());
+             const column = table?.columns.find(c => c.name.toLowerCase() === col.toLowerCase());
+             return column?.isPrimaryKey || column?.isForeignKey;
+          };
+
+          if (!isKey(t1, c1) && !isKey(t2, c2)) {
+             insights.push({
+                id: `unindexed-join-${t1}-${t2}`,
+                type: 'warning',
+                title: 'Join sem Índice Detectado',
+                message: `O vínculo entre ${t1}.${c1} e ${t2}.${c2} parece ser feito em colunas não indexadas, o que pode causar Nested Loops extremamente lentos.`
+             });
+          }
+       }
+    }
+
+    // 3. Inserções em lote ou TRUNCATE (MANTIDO)
+    if (/\bTRUNCATE\b/.test(upperSql)) {
+       insights.push({
+          id: 'truncate',
+          type: 'danger',
+          title: 'Comando Destrutivo',
+          message: 'TRUNCATE é uma operação DDL que não gera logs de UNDO individuais. Use com cautela extrema.'
+       });
+    }
+
+    return insights;
+  }, [editedSql, schema]);
+
   const safetyError = useMemo(() => {
      const sql = editedSql.trim().toUpperCase();
      if (!sql) return null;
@@ -71,13 +136,11 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
      return null;
   }, [editedSql, settings, isSafetyUnlocked]);
 
-  // Fix: Move handlePreExecution before its usage in useEffect
   const handlePreExecution = async () => {
     if (isExecuting || !editedSql.trim()) return;
     if (!!safetyError && safetyError.type === 'BLOCK') return;
     if (!!safetyError && !isSafetyUnlocked) return;
 
-    // Se for DML, forçamos o Dry Run se a segurança estiver ligada (ou se o usuário quiser ver o impacto)
     if (isDml && credentials && credentials.host !== 'simulated') {
        setIsDryRunning(true);
        setDryRunResult(null);
@@ -141,6 +204,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
 
   const handleCopy = () => {
     navigator.clipboard.writeText(editedSql);
+    setCopied(false);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -182,6 +246,12 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
      fontFamily: "'Fira Code', monospace",
      scrollbar: { vertical: 'visible' as const, horizontal: 'visible' as const, useShadows: false, verticalScrollbarSize: 10 },
   }), []);
+
+  const advisorStatus = useMemo(() => {
+     if (dbaInsights.some(i => i.type === 'danger')) return 'danger';
+     if (dbaInsights.some(i => i.type === 'warning')) return 'warning';
+     return dbaInsights.length > 0 ? 'info' : 'clear';
+  }, [dbaInsights]);
 
   return (
     <div className="w-full h-full flex flex-col relative animate-in fade-in duration-500">
@@ -243,7 +313,7 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
       {showAnalysis && (
          <div className="absolute inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex justify-end">
             <div className="w-full max-w-lg h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-               <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+               <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
                   <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><Gauge className="w-5 h-5 text-indigo-500" /> Consultor DBA (IA)</h3>
                   <button onClick={() => setShowAnalysis(false)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500"><X className="w-5 h-5" /></button>
                </div>
@@ -275,8 +345,56 @@ const PreviewStep: React.FC<PreviewStepProps> = ({ queryResult, onExecute, onBac
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2"><Terminal className="w-6 h-6 text-indigo-600" /> Editor SQL</h2>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Revise e edite antes de rodar.</p>
         </div>
-        <div className="flex gap-2">
-           <button onClick={handleAnalyzePerformance} disabled={!schema} className="flex items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/50 rounded-lg text-xs font-bold transition-all border border-amber-200 dark:border-amber-800"><Zap className="w-3.5 h-3.5 fill-current" /> Otimizar</button>
+        <div className="flex gap-2 relative">
+           <button 
+              onClick={() => setShowAdvisor(!showAdvisor)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all border shadow-sm
+                ${advisorStatus === 'danger' ? 'bg-rose-50 text-rose-600 border-rose-200 animate-pulse-soft' :
+                  advisorStatus === 'warning' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                  advisorStatus === 'info' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
+                  'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'}
+              `}
+           >
+              <Lightbulb className={`w-3.5 h-3.5 ${advisorStatus !== 'clear' ? 'fill-current' : ''}`} />
+              DBA Advisor
+              {dbaInsights.length > 0 && (
+                 <span className="ml-1 px-1.5 py-0.5 rounded-full bg-current bg-opacity-20 text-[10px]">
+                    {dbaInsights.length}
+                 </span>
+              )}
+           </button>
+
+           {showAdvisor && (
+              <div className="absolute top-full right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-[100] p-4 animate-in fade-in zoom-in-95 origin-top-right">
+                 <div className="flex items-center justify-between mb-4 border-b border-slate-50 dark:border-slate-700 pb-2">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                       <Sparkles className="w-3 h-3 text-indigo-500" /> Recomendações Técnicas
+                    </h4>
+                    <button onClick={() => setShowAdvisor(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+                 </div>
+                 <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar">
+                    {dbaInsights.length === 0 ? (
+                       <div className="py-4 text-center text-slate-400 text-xs italic">Nenhum anti-padrão detectado até o momento. Bom trabalho!</div>
+                    ) : dbaInsights.map(insight => (
+                       <div key={insight.id} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                             {insight.type === 'danger' ? <ShieldAlert className="w-3.5 h-3.5 text-rose-500" /> : <Info className="w-3.5 h-3.5 text-indigo-500" />}
+                             <span className={`text-[11px] font-black uppercase ${insight.type === 'danger' ? 'text-rose-600' : insight.type === 'warning' ? 'text-amber-600' : 'text-indigo-600'}`}>
+                                {insight.title}
+                             </span>
+                          </div>
+                          <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-normal ml-5">{insight.message}</p>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+           )}
+
+           {settings?.enableAiGeneration && (
+              <button onClick={handleAnalyzePerformance} disabled={!schema} className="flex items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/50 rounded-lg text-xs font-bold transition-all border border-amber-200 dark:border-amber-800">
+                 <Zap className="w-3.5 h-3.5 fill-current" /> Deep Scan IA
+              </button>
+           )}
            <div className="bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 flex gap-1 shadow-sm">
               <button onClick={() => setViewMode('edit')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'edit' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 shadow-inner' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}><Code2 className="w-3.5 h-3.5" /> Editor</button>
               <button onClick={() => setViewMode('diff')} disabled={!hasChanges} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === 'diff' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 shadow-inner' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900/50 disabled:opacity-30'}`}><Split className="w-3.5 h-3.5" /> Diff</button>
