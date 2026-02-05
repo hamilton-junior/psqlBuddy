@@ -26,10 +26,9 @@ const getTableId = (t: any) => `${t.schema || 'public'}.${t.name}`;
 // Helper para limpar caracteres corrompidos antes de exibir no terminal
 const sanitizeAnsi = (str: string): string => {
    if (!str) return '';
-   // Tenta detectar e remover padrões comuns de encoding quebrado
+   // Removido o regex vazio que causava erro e unificado no regex de caracteres unicode inválidos
    return str
-      .replace(//g, '') // Remove o caractere de substituição comum
-      .replace(/[\uFFFD\uFFFE\uFFFF]/g, ''); // Remove outros caracteres Unicode inválidos
+      .replace(/[\uFFFD\uFFFE\uFFFF]/g, ''); 
 };
 
 interface ManualLink {
@@ -121,7 +120,7 @@ const AnsiTerminal: React.FC<{ text: string }> = ({ text }) => {
   const parts: string[] = text.split(/(\x1b\[\d+m)/);
   let currentColor = "";
   return (
-    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-2xl overflow-auto custom-scrollbar font-mono text-[11px] leading-tight min-h-[400px]">
+    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-2xl overflow-auto custom-scrollbar font-mono text-[11px] font-bold leading-tight min-h-[400px]">
       <div className="flex gap-1.5 mb-4 opacity-50 shrink-0">
         <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
         <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
@@ -243,7 +242,6 @@ const ManualMappingPopover: React.FC<{ column: string, schema: DatabaseSchema, o
     <div className="absolute z-[100] top-full mt-2 right-0 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right flex flex-col" onClick={e => e.stopPropagation()}>
        <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center"><span className="text-[10px] font-bold uppercase text-slate-500 truncate mr-2">{editingLinkId ? 'Editando Vínculo' : `Vínculos: ${column}`}</span><button onClick={onClose} className="p-1.5 hover:bg-slate-200 rounded transition-colors"><X className="w-4 h-4" /></button></div>
        <div className="p-3 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          {/* Fix: Pass link.id to handleRemoveLink on line 250 in ResultsStep.tsx instead of non-existent id */}
           {currentLinks.length > 0 && !editingLinkId && (<div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Vínculos Ativos ({currentLinks.length})</label>{currentLinks.map(link => (<div key={link.id} className="flex items-center justify-between p-2 bg-indigo-50 dark:bg-indigo-900/40 border border-indigo-100 dark:border-indigo-800 rounded-lg group"><div className="min-w-0"><div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300 truncate">{link.table}</div><div className="text-[9px] text-indigo-400 flex items-center gap-1"><Hash className="w-2.5 h-2.5" /> {link.keyCol} <ArrowRight className="w-2 h-2" /> <Eye className="w-2.5 h-2.5" /> {link.previewCol}</div></div><div className="flex gap-1 opacity-0 group-hover:opacity-100"><button onClick={() => handleEditLink(link)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors" title="Editar vínculo"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => handleRemoveLink(link.id)} className="p-1 text-slate-400 hover:text-red-500 transition-colors" title="Remover vínculo"><Trash2 className="w-3.5 h-3.5" /></button></div></div>))}</div>)}
           {isAdding ? (<div className="space-y-4 pt-2 animate-in slide-in-from-top-2"><div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Tabela de Destino</label><div className="relative"><Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" /><input autoFocus type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} onKeyDown={handleKeyDownSearch} placeholder="Filtrar tabelas..." className="w-full pl-7 pr-2 py-2 text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500" /></div><select size={5} value={selectedTable} onChange={e => setSelectedTable(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs outline-none custom-scrollbar">{filteredAndSortedTables.map(t => { const tableId = getTableId(t); const label = hasMultipleSchemas ? `${t.schema}.${t.name}` : t.name; return <option key={tableId} value={tableId}>{label}</option>; })}</select></div>{selectedTable && (<><div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Chave no Destino</label><select value={keyCol} onChange={e => setKeyCol(e.target.value)} className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none font-medium"><option value="">-- Selecione a Chave --</option>{targetColumns.map(c => <option key={c} value={c}>{c}</option>)}</select></div><div className="space-y-1.5"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Preview no Hover</label><select value={previewCol} onChange={e => setPreviewCol(e.target.value)} className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none font-medium"><option value="">-- Selecione a Coluna --</option>{targetColumns.map(c => <option key={c} value={c}>{c}</option>)}</select></div><button onClick={handleAddLink} disabled={!selectedTable || !keyCol || !previewCol} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-sm">{editingLinkId ? 'Salvar Alterações' : 'Confirmar Alvo'}</button></>)}<button onClick={() => { setIsAdding(false); setEditingLinkId(null); }} className="w-full py-1.5 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-bold">Cancelar</button></div>) : (<button onClick={() => setIsAdding(true)} className="w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 text-xs font-bold"><Plus className="w-4 h-4" /> Adicionar Outro Vínculo</button>)}
        </div>
@@ -312,7 +310,26 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
    const totalPages = Math.ceil(totalRows / Math.max(rowsPerPage, 1));
    const startIndex = (currentPage - 1) * rowsPerPage;
    const currentData = sortedData.slice(startIndex, startIndex + rowsPerPage);
-   const getLinksForColumn = (colName: string): ManualLink[] => { let links: ManualLink[] = [...(manualMappings[colName] || [])]; if (links.length === 0 && schema && colName) { const lowerCol = colName.toLowerCase(); const leafName = lowerCol.split('.').pop() || ''; if (leafName === 'grid' || leafName === 'mlid') { const parts = lowerCol.split('.'); let targetTableObj = null; if (parts.length >= 2) { const potentialTableName = parts[parts.length - 2]; targetTableObj = schema.tables.find(t => t.name.toLowerCase() === targetTableObj.toLowerCase()); } if (targetTableObj) { links.push({ id: 'auto', table: `${targetTableObj.schema || 'public'}.${targetTableObj.name}`, keyCol: leafName, previewCol: '' }); } } } return links; };
+   const getLinksForColumn = (colName: string): ManualLink[] => { 
+     let links: ManualLink[] = [...(manualMappings[colName] || [])]; 
+     if (links.length === 0 && schema && colName) { 
+        const lowerCol = colName.toLowerCase(); 
+        const leafName = lowerCol.split('.').pop() || ''; 
+        if (leafName === 'grid' || leafName === 'mlid') { 
+           const parts = lowerCol.split('.'); 
+           let targetTableObj = null; 
+           if (parts.length >= 2) { 
+              const potentialTableName = parts[parts.length - 2]; 
+              // Fix: Corrected comparison logic to use potentialTableName instead of targetTableObj
+              targetTableObj = schema.tables.find(t => t.name.toLowerCase() === potentialTableName.toLowerCase()); 
+           } 
+           if (targetTableObj) { 
+              links.push({ id: 'auto', table: `${targetTableObj.schema || 'public'}.${targetTableObj.name}`, keyCol: leafName, previewCol: '' }); 
+           } 
+        } 
+     } 
+     return links; 
+   };
 
    const SENSITIVE_REGEX = /pass|pwd|token|key|email|cpf|cnpj|fone|phone|cel|card|ccv|secret|document|auth/i;
 
@@ -320,7 +337,6 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
    const handleDragStart = (e: React.DragEvent, index: number) => {
       setDraggedColIndex(index);
       e.dataTransfer.effectAllowed = 'move';
-      // Definir imagem vazia opcional se quiser customizar o ghost
    };
 
    const handleDragOver = (e: React.DragEvent, index: number) => {
@@ -572,7 +588,7 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
      return out; 
   }, [filteredData]);
 
-  const highlightMatch = (text: string) => { const term = localSearch || filters.find(f => f.operator === 'contains')?.value || ''; if (!term) return text; const escapedSearch = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); const parts = text.split(new RegExp(`(${escapedSearch})`, 'gi')); return <>{parts.map((part, i) => part.toLowerCase() === term.toLowerCase() ? <span key={i} className="bg-yellow-200 dark:bg-yellow-600/50 text-slate-900 dark:white font-semibold rounded px-0.5">{part}</span> : part)}</>; };
+  const highlightMatch = (text: string) => { const term = localSearch || filters.find(f => f.operator === 'contains')?.value || ''; if (!term) return text; const escapedSearch = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); const parts = text.split(new RegExp(`(${escapedSearch})`, 'gi')); return <>{parts.map((part, i) => part.toLowerCase() === term.toLowerCase() ? <span key={i} className="bg-yellow-200/20 text-slate-900 dark:white font-semibold rounded px-0.5">{part}</span> : part)}</>; };
   const handleUpdateCell = (rowIdx: number, colKey: string, newValue: string) => { if (!settings?.advancedMode) return; const editKey = `${rowIdx}-${colKey}`; setPendingEdits(prev => ({ ...prev, [editKey]: newValue })); };
   const auditLog = useMemo(() => { const logs: Array<{ rowIdx: number, col: string, oldVal: any, newVal: string, pkVal: any }> = []; (Object.entries(pendingEdits) as Array<[string, string]>).forEach(([key, val]) => { const [rowIdx] = key.split('-').map(Number); const col = key.split('-').slice(1).join('-'); const row = localData[rowIdx]; logs.push({ rowIdx, col, oldVal: row[col], newVal: val, pkVal: row[finalPkColumn] }); }); return logs; }, [pendingEdits, localData, finalPkColumn]);
   const sqlStatementsPreview = useMemo(() => { if (Object.keys(pendingEdits).length === 0 || !finalPkColumn) return ""; const tableName = mainTableName || "table_name"; let lines = ["BEGIN; -- Início da transação de auditoria"]; const editsByRow: Record<number, Record<string, string>> = {}; (Object.entries(pendingEdits) as Array<[string, string]>).forEach(([key, val]) => { const [rowIdx] = key.split('-').map(Number); const col = key.split('-').slice(1).join('-'); if (!editsByRow[rowIdx]) editsByRow[rowIdx] = {}; editsByRow[rowIdx][col] = val; }); for (const [rowIdxStr, cols] of Object.entries(editsByRow)) { const rowIdx = Number(rowIdxStr); const row = localData[rowIdx]; const pkVal = row[finalPkColumn]; if (pkVal === undefined || pkVal === null) continue; const setClause = (Object.entries(cols) as Array<[string, string]>).map(([col, val]) => `"${col}" = '${val.replace(/'/g, "''")}'`).join(', '); const formattedPkVal = typeof pkVal === 'string' ? `'${pkVal.replace(/'/g, "''")}'` : pkVal; lines.push(`UPDATE ${tableName} SET ${setClause} WHERE "${finalPkColumn}" = ${formattedPkVal};`); } lines.push("COMMIT; -- Persistência definitiva"); return lines.join('\n'); }, [pendingEdits, localData, mainTableName, finalPkColumn]);
