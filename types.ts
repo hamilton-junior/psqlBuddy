@@ -20,6 +20,17 @@ export interface DatabaseSchema {
   connectionSource?: 'ai' | 'ddl' | 'simulated' | 'real';
 }
 
+export interface DatabaseObject {
+  id: string;
+  name: string;
+  schema: string;
+  type: 'function' | 'trigger' | 'procedure';
+  definition: string;
+  returnType?: string;
+  args?: string;
+  tableName?: string; // Para triggers
+}
+
 export interface DbCredentials {
   host: string;
   port: string;
@@ -41,6 +52,21 @@ export interface ServerStats {
   wraparoundAge: number;
   wraparoundPercent: number;
   statsReset?: string;
+}
+
+// Added ActiveProcess interface to fix import errors in geminiService, dbService, and ServerHealthStep
+export interface ActiveProcess {
+  pid: number;
+  user: string;
+  clientAddr: string;
+  duration: string;
+  durationMs: number;
+  state: string;
+  query: string;
+  waitEvent: string;
+  waitEventType: string;
+  blockingPids: number[];
+  backendType: string;
 }
 
 export interface StorageStats {
@@ -77,22 +103,7 @@ export interface UnusedIndex {
   size: string;
 }
 
-export interface ActiveProcess {
-  pid: number;
-  user: string;
-  clientAddr: string;
-  duration: string;
-  durationMs: number;
-  state: string;
-  query: string;
-  waitEvent: string;
-  waitEventType: string;
-  isBlocked: boolean;
-  blockingPids: number[];
-  backendType: string;
-}
-
-export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'serverhealth' | 'roadmap' | 'queryflow';
+export type AppStep = 'connection' | 'builder' | 'preview' | 'results' | 'datadiff' | 'dashboard' | 'serverhealth' | 'roadmap' | 'queryflow' | 'objects';
 
 export type ResultTab = 'table' | 'terminal' | 'chart' | 'analysis' | 'explain';
 export type FilterOperator = 'contains' | 'equals' | 'starts' | 'ends' | 'gt' | 'lt';

@@ -18,6 +18,7 @@ import DashboardStep from '@/components/steps/DashboardStep';
 import RoadmapStep from '@/components/steps/RoadmapStep';
 import ServerHealthStep from '@/components/steps/ServerHealthStep';
 import VisualQueryFlowStep from '@/components/steps/VisualQueryFlowStep';
+import ObjectExplorer from '@/components/ObjectExplorer';
 import SettingsModal from '@/components/SettingsModal';
 import SchemaDiagramModal from '@/components/SchemaDiagramModal';
 import HistoryModal from '@/components/HistoryModal';
@@ -336,6 +337,7 @@ const App: React.FC = () => {
                className="h-full w-full absolute top-0 left-0 p-6"
              >
                {globalStep === 'connection' && <ConnectionStep onSchemaLoaded={handleSchemaLoaded} settings={settings} />}
+               {globalStep === 'objects' && <ObjectExplorer credentials={credentials} />}
                {globalStep === 'query' && activeTab.currentStep === 'builder' && schema && (
                   <BuilderStep 
                     schema={schema} state={activeTab.builderState} 

@@ -1,5 +1,5 @@
 
-import { DatabaseSchema, DbCredentials, ExplainNode, IntersectionResult, ServerStats, ActiveProcess, TableInsight, UnusedIndex, QueryProfilingSnapshot, StorageStats } from "../types";
+import { DatabaseSchema, DbCredentials, ExplainNode, IntersectionResult, ServerStats, ActiveProcess, TableInsight, UnusedIndex, QueryProfilingSnapshot, StorageStats, DatabaseObject } from "../types";
 
 const API_URL = 'http://127.0.0.1:3000/api';
 
@@ -29,6 +29,26 @@ export const connectToDatabase = async (creds: DbCredentials): Promise<DatabaseS
     }
     return await response.json();
   } catch (error: any) {
+    throw error;
+  }
+};
+
+export const fetchDatabaseObjects = async (creds: DbCredentials): Promise<DatabaseObject[]> => {
+  const normalizedCreds = ensureIpv4(creds);
+  logger('FETCH_OBJECTS', 'Iniciando busca de funções e triggers...');
+  try {
+    const response = await fetch(`${API_URL}/objects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credentials: normalizedCreds })
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Falha ao carregar objetos do banco.');
+    }
+    return await response.json();
+  } catch (error: any) {
+    logger('FETCH_OBJECTS_ERROR', error.message);
     throw error;
   }
 };

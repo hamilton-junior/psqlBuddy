@@ -79,6 +79,83 @@ app.post('/api/connect', async (req, res) => {
   } finally { try { await client.end(); } catch (e) {} }
 });
 
+app.post('/api/objects', async (req, res) => {
+  let { credentials } = req.body;
+  if (!credentials) return res.status(400).json({ error: 'Missing credentials' });
+  if (credentials.host === 'localhost') credentials.host = '127.0.0.1';
+  const client = new Client(credentials);
+  try {
+    await client.connect();
+    await setupSession(client);
+    
+    serverLog('POST', '/api/objects', 'Buscando funções e triggers...');
+
+    // Busca Funções e Procedures
+    const funcQuery = `
+      SELECT 
+        p.oid::text as id,
+        n.nspname as schema,
+        p.proname as name,
+        pg_get_functiondef(p.oid) as definition,
+        CASE 
+          when p.prokind = 'f' then 'function'
+          when p.prokind = 'p' then 'procedure'
+          else 'function'
+        END as type,
+        pg_get_function_result(p.oid) as return_type,
+        pg_get_function_arguments(p.oid) as args
+      FROM pg_proc p
+      JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+      ORDER BY n.nspname, p.proname;
+    `;
+    const funcRes = await client.query(funcQuery);
+
+    // Busca Triggers
+    const triggerQuery = `
+      SELECT 
+        trig.tgrelid::text || '-' || trig.tgname as id,
+        n.nspname as schema,
+        trig.tgname as name,
+        pg_get_triggerdef(trig.oid) as definition,
+        'trigger' as type,
+        rel.relname as table_name
+      FROM pg_trigger trig
+      JOIN pg_class rel ON trig.tgrelid = rel.oid
+      JOIN pg_namespace n ON rel.relnamespace = n.oid
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND trig.tgisinternal = false
+      ORDER BY n.nspname, rel.relname, trig.tgname;
+    `;
+    const triggerRes = await client.query(triggerQuery);
+
+    const objects = [
+      ...funcRes.rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        schema: r.schema,
+        type: r.type,
+        definition: r.definition,
+        returnType: r.return_type,
+        args: r.args
+      })),
+      ...triggerRes.rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        schema: r.schema,
+        type: r.type,
+        definition: r.definition,
+        tableName: r.table_name
+      }))
+    ];
+
+    res.json(objects);
+  } catch (err) {
+    serverError('POST', '/api/objects', err);
+    res.status(500).json({ error: err.message });
+  } finally { try { await client.end(); } catch (e) {} }
+});
+
 app.post('/api/execute', async (req, res) => {
   let { credentials, sql } = req.body;
   if (!credentials || !sql) return res.status(400).json({ error: 'Missing credentials or SQL' });
