@@ -49,7 +49,8 @@ const FlowNode = React.forwardRef<HTMLDivElement, {
       `}>
          <div className="flex items-center gap-3 mb-3">
             <div className={`p-2 rounded-xl transition-colors ${isHighlighted ? 'bg-indigo-600 text-white' : colors[colorClass] || colors.indigo}`}>
-               {React.cloneElement(icon as React.ReactElement, { size: 18 })}
+               {/* Fixed TS error: Cast icon to React.ReactElement<any> to allow 'size' prop in cloneElement */}
+               {React.cloneElement(icon as React.ReactElement<any>, { size: 18 })}
             </div>
             <h4 className="font-black text-[11px] uppercase tracking-widest text-slate-800 dark:text-white truncate">{title}</h4>
          </div>

@@ -45,9 +45,13 @@ app.get('/api/ping', (req, res) => {
 
 async function setupSession(client) {
   try {
-    // Definimos UTF8 e o datestyle para evitar confusões de interpretação
+    // Forçamos o encoding para UTF8 na sessão. 
+    // Se o banco for Latin1, o Postgres tentará converter automaticamente para o cliente.
     await client.query("SET client_encoding TO 'UTF8'");
+    // Definimos o datestyle para evitar confusões de interpretação
     await client.query("SET datestyle TO 'ISO, MDY'");
+    // Aumentamos o work_mem para consultas de metadados pesadas se necessário
+    await client.query("SET work_mem TO '64MB'");
   } catch (e) {
     serverLog('SESSION', '-', 'Falha ao definir parâmetros da sessão.', e.message);
   }
@@ -91,19 +95,20 @@ app.post('/api/objects', async (req, res) => {
     serverLog('POST', '/api/objects', 'Buscando funções e triggers...');
 
     // Busca Funções e Procedures
+    // Adicionamos um casting robusto ::text para forçar o Postgres a tratar o encoding na origem
     const funcQuery = `
       SELECT 
         p.oid::text as id,
-        n.nspname as schema,
-        p.proname as name,
-        pg_get_functiondef(p.oid) as definition,
+        n.nspname::text as schema,
+        p.proname::text as name,
+        pg_get_functiondef(p.oid)::text as definition,
         CASE 
           when p.prokind = 'f' then 'function'
           when p.prokind = 'p' then 'procedure'
           else 'function'
         END as type,
-        pg_get_function_result(p.oid) as return_type,
-        pg_get_function_arguments(p.oid) as args
+        pg_get_function_result(p.oid)::text as return_type,
+        pg_get_function_arguments(p.oid)::text as args
       FROM pg_proc p
       JOIN pg_namespace n ON p.pronamespace = n.oid
       WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -114,12 +119,12 @@ app.post('/api/objects', async (req, res) => {
     // Busca Triggers
     const triggerQuery = `
       SELECT 
-        trig.tgrelid::text || '-' || trig.tgname as id,
-        n.nspname as schema,
-        trig.tgname as name,
-        pg_get_triggerdef(trig.oid) as definition,
+        (trig.tgrelid::text || '-' || trig.tgname)::text as id,
+        n.nspname::text as schema,
+        trig.tgname::text as name,
+        pg_get_triggerdef(trig.oid)::text as definition,
         'trigger' as type,
-        rel.relname as table_name
+        rel.relname::text as table_name
       FROM pg_trigger trig
       JOIN pg_class rel ON trig.tgrelid = rel.oid
       JOIN pg_namespace n ON rel.relnamespace = n.oid
@@ -135,7 +140,7 @@ app.post('/api/objects', async (req, res) => {
         name: r.name,
         schema: r.schema,
         type: r.type,
-        definition: r.definition,
+        definition: r.definition || '',
         returnType: r.return_type,
         args: r.args
       })),
@@ -144,7 +149,7 @@ app.post('/api/objects', async (req, res) => {
         name: r.name,
         schema: r.schema,
         type: r.type,
-        definition: r.definition,
+        definition: r.definition || '',
         tableName: r.table_name
       }))
     ];
@@ -152,7 +157,12 @@ app.post('/api/objects', async (req, res) => {
     res.json(objects);
   } catch (err) {
     serverError('POST', '/api/objects', err);
-    res.status(500).json({ error: err.message });
+    // Se falhar por encoding, tentamos uma mensagem mais amigável
+    if (err.message.includes('invalid byte sequence')) {
+       res.status(500).json({ error: "Erro de Encoding: Seu banco contém caracteres (ex: acentos) em definições de funções que não estão em UTF-8. Tente normalizar o banco ou as descrições dos objetos." });
+    } else {
+       res.status(500).json({ error: err.message });
+    }
   } finally { try { await client.end(); } catch (e) {} }
 });
 
