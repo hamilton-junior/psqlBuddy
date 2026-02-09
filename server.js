@@ -30,7 +30,7 @@ const serverError = (method, path, error) => {
   console.error(`[${timestamp}] [ERROR] ${method} ${path} - ${error.message}`, error.stack);
 };
 
-// Configurações de tipos do Postgres para garantir UTF-8
+// Configurações de tipos do Postgres para garantir UTF-8 no driver
 types.setTypeParser(25, (v) => v); // TEXT
 types.setTypeParser(1043, (v) => v); // VARCHAR
 types.setTypeParser(1042, (v) => v); // BPCHAR
@@ -43,17 +43,31 @@ app.get('/api/ping', (req, res) => {
   res.json({ status: 'online', timestamp: new Date().toISOString(), ipv4: true });
 });
 
+/**
+ * Configura a sessão e detecta se o banco é SQL_ASCII para aplicar patches de compatibilidade.
+ */
 async function setupSession(client) {
   try {
-    // Forçamos o encoding para UTF8 na sessão. 
-    // Se o banco for Latin1, o Postgres tentará converter automaticamente para o cliente.
-    await client.query("SET client_encoding TO 'UTF8'");
-    // Definimos o datestyle para evitar confusões de interpretação
+    const encRes = await client.query("SHOW server_encoding");
+    const serverEncoding = encRes.rows[0].server_encoding;
+    
+    serverLog('SESSION', '-', `Encoding detectado no servidor: ${serverEncoding}`);
+
+    if (serverEncoding === 'SQL_ASCII') {
+      // Se o banco é ASCII, ele aceita lixo. Definimos o cliente como UTF8 
+      // mas teremos que converter campos de texto manualmente nas queries de metadados.
+      await client.query("SET client_encoding TO 'UTF8'");
+    } else {
+      await client.query("SET client_encoding TO 'UTF8'");
+    }
+
     await client.query("SET datestyle TO 'ISO, MDY'");
-    // Aumentamos o work_mem para consultas de metadados pesadas se necessário
     await client.query("SET work_mem TO '64MB'");
+    
+    return serverEncoding;
   } catch (e) {
     serverLog('SESSION', '-', 'Falha ao definir parâmetros da sessão.', e.message);
+    return 'UTF8';
   }
 }
 
@@ -65,13 +79,20 @@ app.post('/api/connect', async (req, res) => {
   const client = new Client({ host, port, user, password, database, connectionTimeoutMillis: 5000 });
   try {
     await client.connect();
-    await setupSession(client);
-    const tablesRes = await client.query(`SELECT table_schema, table_name, obj_description((table_schema || '.' || table_name)::regclass) as description FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog') AND table_type = 'BASE TABLE' ORDER BY table_schema, table_name;`);
+    const serverEncoding = await setupSession(client);
+    
+    // Patch para descrições em bancos SQL_ASCII
+    const descExpr = serverEncoding === 'SQL_ASCII' 
+      ? `convert_from(obj_description((table_schema || '.' || table_name)::regclass)::text::bytea, 'LATIN1')`
+      : `obj_description((table_schema || '.' || table_name)::regclass)`;
+
+    const tablesRes = await client.query(`SELECT table_schema, table_name, ${descExpr} as description FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog') AND table_type = 'BASE TABLE' ORDER BY table_schema, table_name;`);
     const columnsRes = await client.query(`SELECT c.table_schema, c.table_name, c.column_name, c.data_type, (SELECT COUNT(*) > 0 FROM information_schema.key_column_usage kcu JOIN information_schema.table_constraints tc ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema WHERE kcu.table_name = c.table_name AND kcu.column_name = c.column_name AND tc.constraint_type = 'PRIMARY KEY') as is_primary FROM information_schema.columns c WHERE c.table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY c.ordinal_position;`);
     const fkRes = await client.query(`SELECT tc.table_schema, tc.table_name, kcu.column_name, ccu.table_schema AS foreign_table_schema, ccu.table_name AS foreign_table_name, ccu.column_name AS foreign_column_name FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema WHERE tc.constraint_type = 'FOREIGN KEY';`);
+    
     const tables = tablesRes.rows.map(t => {
       const tableCols = columnsRes.rows.filter(c => c.table_name === t.table_name && c.table_schema === t.table_schema).map(c => {
-          const fk = fkRes.rows.find(f => f.table_name === t.table_name && f.table_schema === t.table_schema && f.column_name === c.column_name);
+          const fk = fkRes.rows.find(f => f.table_name === t.table_name && f.table_schema === f.table_schema && f.column_name === c.column_name);
           return { name: c.column_name, type: c.data_type, isPrimaryKey: !!c.is_primary, isForeignKey: !!fk, references: fk ? `${fk.foreign_table_schema}.${fk.foreign_table_name}.${fk.foreign_column_name}` : undefined };
         });
       return { name: t.table_name, schema: t.table_schema, description: t.description, columns: tableCols };
@@ -90,25 +111,33 @@ app.post('/api/objects', async (req, res) => {
   const client = new Client(credentials);
   try {
     await client.connect();
-    await setupSession(client);
+    const serverEncoding = await setupSession(client);
     
     serverLog('POST', '/api/objects', 'Buscando funções e triggers...');
 
-    // Busca Funções e Procedures
-    // Adicionamos um casting robusto ::text para forçar o Postgres a tratar o encoding na origem
+    // Se o banco for SQL_ASCII, precisamos forçar a conversão de bytea para UTF8 assumindo LATIN1
+    const wrapSql = (field) => {
+      if (serverEncoding === 'SQL_ASCII') {
+        // Explicação: Convertemos o resultado da função do sistema para bytea (bytes puros) 
+        // e então dizemos ao Postgres: "interprete esses bytes como LATIN1 e me dê o texto em UTF8"
+        return `convert_from(${field}::text::bytea, 'LATIN1')`;
+      }
+      return `${field}::text`;
+    };
+
     const funcQuery = `
       SELECT 
         p.oid::text as id,
         n.nspname::text as schema,
         p.proname::text as name,
-        pg_get_functiondef(p.oid)::text as definition,
+        ${wrapSql('pg_get_functiondef(p.oid)')} as definition,
         CASE 
           when p.prokind = 'f' then 'function'
           when p.prokind = 'p' then 'procedure'
           else 'function'
         END as type,
-        pg_get_function_result(p.oid)::text as return_type,
-        pg_get_function_arguments(p.oid)::text as args
+        ${wrapSql('pg_get_function_result(p.oid)')} as return_type,
+        ${wrapSql('pg_get_function_arguments(p.oid)')} as args
       FROM pg_proc p
       JOIN pg_namespace n ON p.pronamespace = n.oid
       WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -116,13 +145,12 @@ app.post('/api/objects', async (req, res) => {
     `;
     const funcRes = await client.query(funcQuery);
 
-    // Busca Triggers
     const triggerQuery = `
       SELECT 
         (trig.tgrelid::text || '-' || trig.tgname)::text as id,
         n.nspname::text as schema,
         trig.tgname::text as name,
-        pg_get_triggerdef(trig.oid)::text as definition,
+        ${wrapSql('pg_get_triggerdef(trig.oid)')} as definition,
         'trigger' as type,
         rel.relname::text as table_name
       FROM pg_trigger trig
@@ -157,12 +185,7 @@ app.post('/api/objects', async (req, res) => {
     res.json(objects);
   } catch (err) {
     serverError('POST', '/api/objects', err);
-    // Se falhar por encoding, tentamos uma mensagem mais amigável
-    if (err.message.includes('invalid byte sequence')) {
-       res.status(500).json({ error: "Erro de Encoding: Seu banco contém caracteres (ex: acentos) em definições de funções que não estão em UTF-8. Tente normalizar o banco ou as descrições dos objetos." });
-    } else {
-       res.status(500).json({ error: err.message });
-    }
+    res.status(500).json({ error: err.message });
   } finally { try { await client.end(); } catch (e) {} }
 });
 
