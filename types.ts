@@ -24,7 +24,7 @@ export interface DatabaseObject {
   id: string;
   name: string;
   schema: string;
-  type: 'function' | 'trigger' | 'procedure';
+  type: 'function' | 'trigger' | 'procedure' | 'view' | 'mview';
   definition: string;
   returnType?: string;
   args?: string;

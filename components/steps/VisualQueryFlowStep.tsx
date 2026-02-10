@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { DatabaseSchema, BuilderState } from '../../types';
 import { 
@@ -24,7 +23,7 @@ const FlowNode = React.forwardRef<HTMLDivElement, {
   isHighlighted?: boolean;
 }>(({ id, title, icon, colorClass, children, isActive = true, onHover, isHighlighted }, ref) => {
   const colors: Record<string, string> = {
-    indigo: 'border-indigo-500 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30',
+    indigo: 'border-indigo-50 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30',
     cyan: 'border-cyan-500 text-cyan-600 bg-cyan-50 dark:bg-cyan-900/30',
     rose: 'border-rose-500 text-rose-600 bg-rose-50 dark:bg-rose-900/30',
     amber: 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-900/30',
@@ -49,8 +48,8 @@ const FlowNode = React.forwardRef<HTMLDivElement, {
       `}>
          <div className="flex items-center gap-3 mb-3">
             <div className={`p-2 rounded-xl transition-colors ${isHighlighted ? 'bg-indigo-600 text-white' : colors[colorClass] || colors.indigo}`}>
-               {/* Fixed TS error: Cast icon to React.ReactElement<any> to allow 'size' prop in cloneElement */}
-               {React.cloneElement(icon as React.ReactElement<any>, { size: 18 })}
+               {/* Fix: Validate element and cast to ReactElement<any> to allow 'size' prop for Lucide icons */}
+               {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<any>, { size: 18 }) : icon}
             </div>
             <h4 className="font-black text-[11px] uppercase tracking-widest text-slate-800 dark:text-white truncate">{title}</h4>
          </div>

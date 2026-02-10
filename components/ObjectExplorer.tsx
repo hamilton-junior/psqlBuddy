@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { DatabaseObject, DbCredentials } from '../types';
 import { fetchDatabaseObjects } from '../services/dbService';
-import { Boxes, Search, Filter, Code2, Play, Hash, Terminal, Box, Cog, ChevronRight, Loader2, Copy, Check, FileCode, Workflow } from 'lucide-react';
+import { Boxes, Search, Filter, Code2, Play, Hash, Terminal, Box, Cog, ChevronRight, Loader2, Copy, Check, FileCode, Workflow, Eye, DatabaseZap } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { toast } from 'react-hot-toast';
 
@@ -64,6 +64,8 @@ const ObjectExplorer: React.FC<ObjectExplorerProps> = ({ credentials }) => {
       case 'function': return <Code2 className="w-4 h-4 text-indigo-500" />;
       case 'procedure': return <Terminal className="w-4 h-4 text-amber-500" />;
       case 'trigger': return <Workflow className="w-4 h-4 text-emerald-500" />;
+      case 'view': return <Eye className="w-4 h-4 text-blue-500" />;
+      case 'mview': return <DatabaseZap className="w-4 h-4 text-rose-500" />;
       default: return <Box className="w-4 h-4 text-slate-400" />;
     }
   };
@@ -96,14 +98,22 @@ const ObjectExplorer: React.FC<ObjectExplorerProps> = ({ credentials }) => {
                   className="w-full pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                 />
               </div>
-              <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
-                 {['all', 'function', 'trigger', 'procedure'].map(t => (
+              <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                 {[
+                   {id: 'all', label: 'Tudo'}, 
+                   {id: 'function', label: 'Fun'}, 
+                   {id: 'trigger', label: 'Tri'}, 
+                   {id: 'procedure', label: 'Pro'},
+                   {id: 'view', label: 'Vie'},
+                   {id: 'mview', label: 'MVi'}
+                 ].map(t => (
                     <button 
-                      key={t}
-                      onClick={() => setFilterType(t)}
-                      className={`flex-1 py-1 rounded-md text-[9px] font-black uppercase transition-all ${filterType === t ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      key={t.id}
+                      onClick={() => setFilterType(t.id)}
+                      className={`flex-1 py-1 rounded-md text-[9px] font-black uppercase transition-all ${filterType === t.id ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      title={t.label}
                     >
-                      {t === 'all' ? 'Tudo' : t.charAt(0)}
+                      {t.label}
                     </button>
                  ))}
               </div>
@@ -216,7 +226,7 @@ const ObjectExplorer: React.FC<ObjectExplorerProps> = ({ credentials }) => {
                </div>
                <div className="text-center max-w-sm">
                   <h4 className="text-xl font-black uppercase tracking-tight mb-2 text-white">Nenhum objeto selecionado</h4>
-                  <p className="text-sm font-bold leading-relaxed">Selecione uma função ou trigger na lista lateral para visualizar sua definição SQL completa e metadados de execução.</p>
+                  <p className="text-sm font-bold leading-relaxed">Selecione uma função, trigger ou view na lista lateral para visualizar sua definição SQL completa e metadados de execução.</p>
                </div>
             </div>
          )}

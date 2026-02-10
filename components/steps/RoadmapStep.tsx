@@ -361,7 +361,7 @@ const RoadmapStep: React.FC<{ onNavigate?: (step: AppStep) => void }> = ({ onNav
                                  <div className="flex items-center gap-2 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-1.5 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
                                     <GitBranch className="w-3.5 h-3.5 text-indigo-500" />
                                     <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
-                                       Proposta {item.addedInVersion || '0.1.0'}
+                                       Proposta v{item.addedInVersion || '0.1.0'}
                                     </span>
                                  </div>
 

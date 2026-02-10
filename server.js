@@ -30,7 +30,30 @@ const serverError = (method, path, error) => {
   console.error(`[${timestamp}] [ERROR] ${method} ${path} - ${error.message}`, error.stack);
 };
 
-// Configurações de tipos do Postgres para garantir UTF-8 no driver
+/**
+ * Sanitização de Strings: Remove caracteres de controle ou corrompidos que podem quebrar o JSON/UTF-8.
+ */
+const sanitizeRows = (rows) => {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map(row => {
+    const sanitized = {};
+    for (const key in row) {
+      const val = row[key];
+      if (typeof val === 'string') {
+        // Remove caracteres nulos (\x00) e sequências UTF-8 inválidas comuns
+        sanitized[key] = val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\uFFFD\uFFFE\uFFFF]/g, '');
+      } else if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+        // Sanitização recursiva simples para objetos aninhados (JSONB)
+        sanitized[key] = sanitizeRows([val])[0];
+      } else {
+        sanitized[key] = val;
+      }
+    }
+    return sanitized;
+  });
+};
+
+// Configurações de tipos do Postgres para garantir UTF-8
 types.setTypeParser(25, (v) => v); // TEXT
 types.setTypeParser(1043, (v) => v); // VARCHAR
 types.setTypeParser(1042, (v) => v); // BPCHAR
@@ -43,26 +66,13 @@ app.get('/api/ping', (req, res) => {
   res.json({ status: 'online', timestamp: new Date().toISOString(), ipv4: true });
 });
 
-/**
- * Configura a sessão e detecta se o banco é SQL_ASCII para aplicar patches de compatibilidade.
- */
 async function setupSession(client) {
   try {
-    const encRes = await client.query("SHOW server_encoding");
-    const serverEncoding = encRes.rows[0].server_encoding;
-    
-    serverLog('SESSION', '-', `Encoding detectado no servidor: ${serverEncoding}`);
-
-    // Em bancos SQL_ASCII, o servidor não valida os bytes. 
-    // Definimos o client_encoding como UTF8, mas faremos a conversão manual nas queries de metadados.
+    // Definimos UTF8 e o datestyle para evitar confusões de interpretação
     await client.query("SET client_encoding TO 'UTF8'");
     await client.query("SET datestyle TO 'ISO, MDY'");
-    await client.query("SET work_mem TO '64MB'");
-    
-    return serverEncoding;
   } catch (e) {
     serverLog('SESSION', '-', 'Falha ao definir parâmetros da sessão.', e.message);
-    return 'UTF8';
   }
 }
 
@@ -74,24 +84,18 @@ app.post('/api/connect', async (req, res) => {
   const client = new Client({ host, port, user, password, database, connectionTimeoutMillis: 5000 });
   try {
     await client.connect();
-    const serverEncoding = await setupSession(client);
-    
-    // Patch para descrições em bancos SQL_ASCII
-    // Usamos convert_to para extrair bytes brutos e convert_from para interpretar como LATIN1
-    const wrapSql = (field) => {
-       if (serverEncoding === 'SQL_ASCII') {
-          return `convert_from(convert_to(COALESCE(${field}::text, ''), 'SQL_ASCII'), 'LATIN1')`;
-       }
-       return field;
-    };
-
-    const tablesRes = await client.query(`SELECT table_schema, table_name, ${wrapSql('obj_description((table_schema || \'.\' || table_name)::regclass)')} as description FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog') AND table_type = 'BASE TABLE' ORDER BY table_schema, table_name;`);
+    await setupSession(client);
+    const tablesRes = await client.query(`SELECT table_schema, table_name, obj_description((table_schema || '.' || table_name)::regclass) as description FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog') AND table_type = 'BASE TABLE' ORDER BY table_schema, table_name;`);
     const columnsRes = await client.query(`SELECT c.table_schema, c.table_name, c.column_name, c.data_type, (SELECT COUNT(*) > 0 FROM information_schema.key_column_usage kcu JOIN information_schema.table_constraints tc ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema WHERE kcu.table_name = c.table_name AND kcu.column_name = c.column_name AND tc.constraint_type = 'PRIMARY KEY') as is_primary FROM information_schema.columns c WHERE c.table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY c.ordinal_position;`);
     const fkRes = await client.query(`SELECT tc.table_schema, tc.table_name, kcu.column_name, ccu.table_schema AS foreign_table_schema, ccu.table_name AS foreign_table_name, ccu.column_name AS foreign_column_name FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema WHERE tc.constraint_type = 'FOREIGN KEY';`);
     
-    const tables = tablesRes.rows.map(t => {
-      const tableCols = columnsRes.rows.filter(c => c.table_name === t.table_name && c.table_schema === t.table_schema).map(c => {
-          const fk = fkRes.rows.find(f => f.table_name === t.table_name && f.table_schema === f.table_schema && f.column_name === c.column_name);
+    const sanitizedTables = sanitizeRows(tablesRes.rows);
+    const sanitizedCols = sanitizeRows(columnsRes.rows);
+    const sanitizedFks = sanitizeRows(fkRes.rows);
+
+    const tables = sanitizedTables.map(t => {
+      const tableCols = sanitizedCols.filter(c => c.table_name === t.table_name && c.table_schema === t.table_schema).map(c => {
+          const fk = sanitizedFks.find(f => f.table_name === t.table_name && f.table_schema === t.table_schema && f.column_name === c.column_name);
           return { name: c.column_name, type: c.data_type, isPrimaryKey: !!c.is_primary, isForeignKey: !!fk, references: fk ? `${fk.foreign_table_schema}.${fk.foreign_table_name}.${fk.foreign_column_name}` : undefined };
         });
       return { name: t.table_name, schema: t.table_schema, description: t.description, columns: tableCols };
@@ -110,31 +114,24 @@ app.post('/api/objects', async (req, res) => {
   const client = new Client(credentials);
   try {
     await client.connect();
-    const serverEncoding = await setupSession(client);
+    await setupSession(client);
     
-    serverLog('POST', '/api/objects', 'Buscando funções e triggers com patch de encoding...');
+    serverLog('POST', '/api/objects', 'Buscando funções, triggers e views...');
 
-    // Se o banco for SQL_ASCII, precisamos re-interpretar os bytes para UTF8 via LATIN1
-    const wrapSql = (field) => {
-      if (serverEncoding === 'SQL_ASCII') {
-        return `convert_from(convert_to(COALESCE(${field}::text, ''), 'SQL_ASCII'), 'LATIN1')`;
-      }
-      return `${field}::text`;
-    };
-
+    // Busca Funções e Procedures
     const funcQuery = `
       SELECT 
         p.oid::text as id,
-        n.nspname::text as schema,
-        p.proname::text as name,
-        ${wrapSql('pg_get_functiondef(p.oid)')} as definition,
+        n.nspname as schema,
+        p.proname as name,
+        pg_get_functiondef(p.oid) as definition,
         CASE 
           when p.prokind = 'f' then 'function'
           when p.prokind = 'p' then 'procedure'
           else 'function'
         END as type,
-        ${wrapSql('pg_get_function_result(p.oid)')} as return_type,
-        ${wrapSql('pg_get_function_arguments(p.oid)')} as args
+        pg_get_function_result(p.oid) as return_type,
+        pg_get_function_arguments(p.oid) as args
       FROM pg_proc p
       JOIN pg_namespace n ON p.pronamespace = n.oid
       WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -142,14 +139,15 @@ app.post('/api/objects', async (req, res) => {
     `;
     const funcRes = await client.query(funcQuery);
 
+    // Busca Triggers
     const triggerQuery = `
       SELECT 
-        (trig.tgrelid::text || '-' || trig.tgname)::text as id,
-        n.nspname::text as schema,
-        trig.tgname::text as name,
-        ${wrapSql('pg_get_triggerdef(trig.oid)')} as definition,
+        trig.tgrelid::text || '-' || trig.tgname as id,
+        n.nspname as schema,
+        trig.tgname as name,
+        pg_get_triggerdef(trig.oid) as definition,
         'trigger' as type,
-        rel.relname::text as table_name
+        rel.relname as table_name
       FROM pg_trigger trig
       JOIN pg_class rel ON trig.tgrelid = rel.oid
       JOIN pg_namespace n ON rel.relnamespace = n.oid
@@ -159,24 +157,54 @@ app.post('/api/objects', async (req, res) => {
     `;
     const triggerRes = await client.query(triggerQuery);
 
+    // Busca Views
+    const viewsQuery = `
+      SELECT 
+        table_schema || '.' || table_name as id,
+        table_schema as schema,
+        table_name as name,
+        view_definition as definition,
+        'view' as type
+      FROM information_schema.views
+      WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+      ORDER BY table_schema, table_name;
+    `;
+    const viewsRes = await client.query(viewsQuery);
+
+    // Busca Materialized Views (PG Específico)
+    const matViewsQuery = `
+      SELECT 
+        schemaname || '.' || matviewname as id,
+        schemaname as schema,
+        matviewname as name,
+        definition as definition,
+        'mview' as type
+      FROM pg_matviews
+      WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+      ORDER BY schemaname, matviewname;
+    `;
+    const matViewsRes = await client.query(matViewsQuery);
+
     const objects = [
-      ...funcRes.rows.map(r => ({
+      ...sanitizeRows(funcRes.rows).map(r => ({
         id: r.id,
         name: r.name,
         schema: r.schema,
         type: r.type,
-        definition: r.definition || '',
+        definition: r.definition,
         returnType: r.return_type,
         args: r.args
       })),
-      ...triggerRes.rows.map(r => ({
+      ...sanitizeRows(triggerRes.rows).map(r => ({
         id: r.id,
         name: r.name,
         schema: r.schema,
         type: r.type,
-        definition: r.definition || '',
+        definition: r.definition,
         tableName: r.table_name
-      }))
+      })),
+      ...sanitizeRows(viewsRes.rows),
+      ...sanitizeRows(matViewsRes.rows)
     ];
 
     res.json(objects);
@@ -195,8 +223,11 @@ app.post('/api/execute', async (req, res) => {
     await client.connect();
     await setupSession(client);
     const result = await client.query(sql);
-    if (Array.isArray(result)) res.json(result[result.length - 1].rows);
-    else res.json(result.rows);
+    if (Array.isArray(result)) {
+      res.json(sanitizeRows(result[result.length - 1].rows));
+    } else {
+      res.json(sanitizeRows(result.rows));
+    }
   } catch (err) { 
     serverError('POST', '/api/execute', err);
     res.status(500).json({ error: err.message }); 
@@ -313,10 +344,10 @@ app.post('/api/server-stats', async (req, res) => {
     const unusedRes = await client.query(unusedIndexesQuery);
 
     res.json({
-      summary: statsRes.rows[0] || {},
-      processes: procRes.rows || [],
-      tableInsights: bloatRes.rows || [],
-      unusedIndexes: unusedRes.rows || []
+      summary: sanitizeRows(statsRes.rows)[0] || {},
+      processes: sanitizeRows(procRes.rows) || [],
+      tableInsights: sanitizeRows(bloatRes.rows) || [],
+      unusedIndexes: sanitizeRows(unusedRes.rows) || []
     });
   } catch (err) { 
     serverError('POST', '/api/server-stats', err);
@@ -361,6 +392,7 @@ app.post('/api/storage-stats', async (req, res) => {
        } else {
           // Windows Fallback using wmic
           const { stdout } = await execAsync(`wmic logicaldisk get size,freespace,caption`);
+          // Note: Windows wmic parsing is more complex, returning first disk for now
           const lines = stdout.trim().split('\n').filter(l => l.includes(':'));
           if (lines.length > 0) {
              const parts = lines[0].trim().replace(/\s+/g, ' ').split(' ');
@@ -377,7 +409,7 @@ app.post('/api/storage-stats', async (req, res) => {
 
     res.json({
        partition: diskInfo,
-       databases: dbSizeRes.rows.map(r => ({ name: r.name, size: parseInt(r.size_bytes), prettySize: r.pretty_size })),
+       databases: sanitizeRows(dbSizeRes.rows).map(r => ({ name: r.name, size: parseInt(r.size_bytes), prettySize: r.pretty_size })),
        dataDirectory: dataDir
     });
 
