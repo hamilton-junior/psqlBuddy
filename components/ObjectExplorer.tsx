@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { DatabaseObject, DbCredentials } from '../types';
 import { fetchDatabaseObjects } from '../services/dbService';
-import { Boxes, Search, Filter, Code2, Play, Hash, Terminal, Box, Cog, ChevronRight, Loader2, Copy, Check, FileCode, Workflow, Eye, DatabaseZap } from 'lucide-react';
+import { Boxes, Search, Filter, Code2, Play, Hash, Terminal, Box, Cog, ChevronRight, Loader2, Copy, Check, FileCode, Workflow, Eye, DatabaseZap, FileWarning, AlertTriangle } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { toast } from 'react-hot-toast';
 
@@ -139,13 +139,17 @@ const ObjectExplorer: React.FC<ObjectExplorerProps> = ({ credentials }) => {
                   ${selectedObjectId === obj.id 
                     ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/20' 
                     : 'bg-transparent border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100 dark:hover:border-slate-700'}
+                  ${obj.isSanitized ? 'border-amber-300 dark:border-amber-900/50' : ''}
                 `}
               >
                 <div className={`p-2 rounded-xl transition-colors ${selectedObjectId === obj.id ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                   {getObjectIcon(obj.type)}
+                   {obj.isSanitized ? <AlertTriangle className="w-4 h-4 text-amber-500" /> : getObjectIcon(obj.type)}
                 </div>
                 <div className="flex-1 min-w-0">
-                   <div className="font-bold text-xs truncate">{obj.name}</div>
+                   <div className="flex items-center gap-2">
+                      <div className="font-bold text-xs truncate">{obj.name}</div>
+                      {obj.isSanitized && <span className="text-[7px] bg-amber-500 text-white px-1 rounded-sm font-black">BYTE ERROR</span>}
+                   </div>
                    <div className={`text-[9px] font-black uppercase tracking-tighter mt-0.5 ${selectedObjectId === obj.id ? 'text-indigo-200' : 'text-slate-400'}`}>
                       {obj.schema} • {obj.type}
                    </div>
@@ -163,7 +167,7 @@ const ObjectExplorer: React.FC<ObjectExplorerProps> = ({ credentials }) => {
                <div className="px-8 py-5 border-b border-white/5 bg-white/5 backdrop-blur-md flex justify-between items-center shrink-0">
                   <div className="flex items-center gap-4">
                      <div className="p-3 bg-indigo-500/20 rounded-2xl">
-                        {getObjectIcon(selectedObject.type)}
+                        {selectedObject.isSanitized ? <FileWarning className="w-6 h-6 text-amber-500" /> : getObjectIcon(selectedObject.type)}
                      </div>
                      <div>
                         <div className="flex items-center gap-2">
@@ -186,6 +190,16 @@ const ObjectExplorer: React.FC<ObjectExplorerProps> = ({ credentials }) => {
                      </button>
                   </div>
                </div>
+
+               {selectedObject.isSanitized && (
+                  <div className="px-8 py-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-3">
+                     <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                     <p className="text-[11px] text-amber-200 font-medium">
+                        <strong>Aviso de Codificação:</strong> Este objeto contém sequências de bytes incompatíveis com UTF-8 (ex: 0xea). 
+                        As partes corrompidas foram substituídas pelo símbolo <span className="bg-amber-500/20 px-1 rounded"></span> para permitir a visualização.
+                     </p>
+                  </div>
+               )}
 
                <div className="flex-1 relative">
                   <Editor 

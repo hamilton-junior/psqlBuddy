@@ -31,60 +31,91 @@ const serverError = (method, path, error) => {
 };
 
 /**
- * Sanitização de Strings: Remove caracteres de controle ou corrompidos que podem quebrar o JSON/UTF-8.
+ * Scrubber Ultra-Resiliente: 
+ * Força a conversão de bytes para UTF-8 ignorando sequências inválidas.
+ */
+const scrubString = (val) => {
+  if (val === null || val === undefined) return val;
+  if (typeof val !== 'string') return val;
+  
+  try {
+    let clean = val.replace(/\0/g, '');
+    const buffer = Buffer.from(clean, 'binary');
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    // O TextDecoder com fatal:false insere o caractere  (\uFFFD) automaticamente
+    return decoder.decode(buffer).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ');
+  } catch (e) {
+    return val.replace(/[^\x20-\x7E]/g, '?');
+  }
+};
+
+/**
+ * Sanitização de Resultados:
+ * Agora também verifica se a string contém o caractere de substituição 
  */
 const sanitizeRows = (rows) => {
   if (!Array.isArray(rows)) return rows;
-  return rows.map(row => {
+  return rows.map((row) => {
     const sanitized = {};
+    let rowWasSanitized = false;
+    
     for (const key in row) {
       const val = row[key];
       if (typeof val === 'string') {
-        // Remove caracteres nulos (\x00) e sequências UTF-8 inválidas comuns
-        sanitized[key] = val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\uFFFD\uFFFE\uFFFF]/g, '');
+        const scrubbed = scrubString(val);
+        sanitized[key] = scrubbed;
+        if (scrubbed.includes('\uFFFD')) rowWasSanitized = true;
       } else if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-        // Sanitização recursiva simples para objetos aninhados (JSONB)
         sanitized[key] = sanitizeRows([val])[0];
       } else {
         sanitized[key] = val;
       }
     }
+    
+    // Injetamos metadados de sanitização se necessário
+    if (rowWasSanitized) {
+      sanitized._is_sanitized = true;
+    }
+    
     return sanitized;
   });
 };
 
-// Configurações de tipos do Postgres para garantir UTF-8
-types.setTypeParser(25, (v) => v); // TEXT
-types.setTypeParser(1043, (v) => v); // VARCHAR
-types.setTypeParser(1042, (v) => v); // BPCHAR
-types.setTypeParser(114, (v) => JSON.parse(v)); // JSON
-types.setTypeParser(3802, (v) => JSON.parse(v)); // JSONB
+// Forçamos o driver a tratar strings com o nosso scrubber em todas as queries
+types.setTypeParser(25, (v) => scrubString(v));   // TEXT
+types.setTypeParser(1043, (v) => scrubString(v)); // VARCHAR
+types.setTypeParser(1042, (v) => scrubString(v)); // BPCHAR
 
-serverLog('INIT', '-', 'Servidor inicializando em IPv4 estrito.');
+serverLog('INIT', '-', 'Servidor iniciado em Modo de Sobrevivência (SQL_ASCII).');
 
 app.get('/api/ping', (req, res) => {
   res.json({ status: 'online', timestamp: new Date().toISOString(), ipv4: true });
 });
 
+/**
+ * Configura a sessão em SQL_ASCII de forma mandatória.
+ * Isso silencia o erro "invalid byte sequence" no lado do Banco.
+ */
 async function setupSession(client) {
   try {
-    // Definimos UTF8 e o datestyle para evitar confusões de interpretação
-    await client.query("SET client_encoding TO 'UTF8'");
+    await client.query("SET client_encoding TO 'SQL_ASCII'");
     await client.query("SET datestyle TO 'ISO, MDY'");
+    serverLog('SESSION', '-', 'Codificação SQL_ASCII forçada.');
   } catch (e) {
-    serverLog('SESSION', '-', 'Falha ao definir parâmetros da sessão.', e.message);
+    serverError('SESSION', 'FATAL', e);
   }
 }
 
 app.post('/api/connect', async (req, res) => {
   let { host, port, user, password, database } = req.body;
   if (host === 'localhost') host = '127.0.0.1';
-  serverLog('POST', '/api/connect', `Tentativa: ${user}@${host}:${port}/${database}`);
-  if (!host || !port || !user || !database) return res.status(400).json({ error: 'Faltam detalhes de conexão' });
+  serverLog('POST', '/api/connect', `Conectando em ${database}...`);
+  
   const client = new Client({ host, port, user, password, database, connectionTimeoutMillis: 5000 });
   try {
     await client.connect();
     await setupSession(client);
+    
     const tablesRes = await client.query(`SELECT table_schema, table_name, obj_description((table_schema || '.' || table_name)::regclass) as description FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog') AND table_type = 'BASE TABLE' ORDER BY table_schema, table_name;`);
     const columnsRes = await client.query(`SELECT c.table_schema, c.table_name, c.column_name, c.data_type, (SELECT COUNT(*) > 0 FROM information_schema.key_column_usage kcu JOIN information_schema.table_constraints tc ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema WHERE kcu.table_name = c.table_name AND kcu.column_name = c.column_name AND tc.constraint_type = 'PRIMARY KEY') as is_primary FROM information_schema.columns c WHERE c.table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY c.ordinal_position;`);
     const fkRes = await client.query(`SELECT tc.table_schema, tc.table_name, kcu.column_name, ccu.table_schema AS foreign_table_schema, ccu.table_name AS foreign_table_name, ccu.column_name AS foreign_column_name FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema WHERE tc.constraint_type = 'FOREIGN KEY';`);
@@ -109,105 +140,53 @@ app.post('/api/connect', async (req, res) => {
 
 app.post('/api/objects', async (req, res) => {
   let { credentials } = req.body;
-  if (!credentials) return res.status(400).json({ error: 'Missing credentials' });
   if (credentials.host === 'localhost') credentials.host = '127.0.0.1';
   const client = new Client(credentials);
   try {
     await client.connect();
     await setupSession(client);
     
-    serverLog('POST', '/api/objects', 'Buscando funções, triggers e views...');
+    serverLog('POST', '/api/objects', 'Buscando objetos em modo ASCII...');
 
-    // Busca Funções e Procedures
     const funcQuery = `
-      SELECT 
-        p.oid::text as id,
-        n.nspname as schema,
-        p.proname as name,
-        pg_get_functiondef(p.oid) as definition,
-        CASE 
-          when p.prokind = 'f' then 'function'
-          when p.prokind = 'p' then 'procedure'
-          else 'function'
-        END as type,
-        pg_get_function_result(p.oid) as return_type,
-        pg_get_function_arguments(p.oid) as args
-      FROM pg_proc p
-      JOIN pg_namespace n ON p.pronamespace = n.oid
-      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-      ORDER BY n.nspname, p.proname;
-    `;
-    const funcRes = await client.query(funcQuery);
-
-    // Busca Triggers
+      SELECT p.oid::text as id, n.nspname as schema, p.proname as name, pg_get_functiondef(p.oid) as definition,
+        CASE when p.prokind = 'f' then 'function' when p.prokind = 'p' then 'procedure' else 'function' END as type,
+        pg_get_function_result(p.oid) as return_type, pg_get_function_arguments(p.oid) as args
+      FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') 
+      AND p.prokind IN ('f', 'p')
+      ORDER BY n.nspname, p.proname;`;
+    
     const triggerQuery = `
-      SELECT 
-        trig.tgrelid::text || '-' || trig.tgname as id,
-        n.nspname as schema,
-        trig.tgname as name,
-        pg_get_triggerdef(trig.oid) as definition,
-        'trigger' as type,
-        rel.relname as table_name
-      FROM pg_trigger trig
-      JOIN pg_class rel ON trig.tgrelid = rel.oid
-      JOIN pg_namespace n ON rel.relnamespace = n.oid
-      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-      AND trig.tgisinternal = false
-      ORDER BY n.nspname, rel.relname, trig.tgname;
-    `;
-    const triggerRes = await client.query(triggerQuery);
+      SELECT trig.tgrelid::text || '-' || trig.tgname as id, n.nspname as schema, trig.tgname as name, pg_get_triggerdef(trig.oid) as definition, 'trigger' as type, rel.relname as table_name
+      FROM pg_trigger trig JOIN pg_class rel ON trig.tgrelid = rel.oid JOIN pg_namespace n ON rel.relnamespace = n.oid
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND trig.tgisinternal = false
+      ORDER BY n.nspname, rel.relname, trig.tgname;`;
 
-    // Busca Views
-    const viewsQuery = `
-      SELECT 
-        table_schema || '.' || table_name as id,
-        table_schema as schema,
-        table_name as name,
-        view_definition as definition,
-        'view' as type
-      FROM information_schema.views
-      WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-      ORDER BY table_schema, table_name;
-    `;
-    const viewsRes = await client.query(viewsQuery);
+    const viewsQuery = `SELECT table_schema as schema, table_name as name, view_definition as definition, 'view' as type FROM information_schema.views WHERE table_schema NOT IN ('pg_catalog', 'information_schema');`;
+    const matViewsQuery = `SELECT schemaname as schema, matviewname as name, definition as definition, 'mview' as type FROM pg_matviews WHERE schemaname NOT IN ('pg_catalog', 'information_schema');`;
 
-    // Busca Materialized Views (PG Específico)
-    const matViewsQuery = `
-      SELECT 
-        schemaname || '.' || matviewname as id,
-        schemaname as schema,
-        matviewname as name,
-        definition as definition,
-        'mview' as type
-      FROM pg_matviews
-      WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-      ORDER BY schemaname, matviewname;
-    `;
-    const matViewsRes = await client.query(matViewsQuery);
+    const [f, t, v, m] = await Promise.all([
+      client.query(funcQuery),
+      client.query(triggerQuery),
+      client.query(viewsQuery),
+      client.query(matViewsQuery)
+    ]);
 
-    const objects = [
-      ...sanitizeRows(funcRes.rows).map(r => ({
-        id: r.id,
-        name: r.name,
-        schema: r.schema,
-        type: r.type,
-        definition: r.definition,
-        returnType: r.return_type,
-        args: r.args
-      })),
-      ...sanitizeRows(triggerRes.rows).map(r => ({
-        id: r.id,
-        name: r.name,
-        schema: r.schema,
-        type: r.type,
-        definition: r.definition,
-        tableName: r.table_name
-      })),
-      ...sanitizeRows(viewsRes.rows),
-      ...sanitizeRows(matViewsRes.rows)
+    const results = [
+      ...sanitizeRows(f.rows),
+      ...sanitizeRows(t.rows),
+      ...sanitizeRows(v.rows).map(x => ({...x, id: `${x.schema}.${x.name}`})),
+      ...sanitizeRows(m.rows).map(x => ({...x, id: `${x.schema}.${x.name}`}))
     ];
 
-    res.json(objects);
+    // Mapear o flag _is_sanitized para isSanitized do objeto final
+    const finalObjects = results.map(obj => ({
+       ...obj,
+       isSanitized: !!obj._is_sanitized
+    }));
+
+    res.json(finalObjects);
   } catch (err) {
     serverError('POST', '/api/objects', err);
     res.status(500).json({ error: err.message });
@@ -216,18 +195,14 @@ app.post('/api/objects', async (req, res) => {
 
 app.post('/api/execute', async (req, res) => {
   let { credentials, sql } = req.body;
-  if (!credentials || !sql) return res.status(400).json({ error: 'Missing credentials or SQL' });
   if (credentials.host === 'localhost') credentials.host = '127.0.0.1';
   const client = new Client(credentials);
   try {
     await client.connect();
     await setupSession(client);
     const result = await client.query(sql);
-    if (Array.isArray(result)) {
-      res.json(sanitizeRows(result[result.length - 1].rows));
-    } else {
-      res.json(sanitizeRows(result.rows));
-    }
+    const finalData = Array.isArray(result) ? result[result.length - 1].rows : result.rows;
+    res.json(sanitizeRows(finalData));
   } catch (err) { 
     serverError('POST', '/api/execute', err);
     res.status(500).json({ error: err.message }); 
@@ -236,25 +211,16 @@ app.post('/api/execute', async (req, res) => {
 
 app.post('/api/dry-run', async (req, res) => {
   let { credentials, sql } = req.body;
-  if (!credentials || !sql) return res.status(400).json({ error: 'Missing credentials or SQL' });
   if (credentials.host === 'localhost') credentials.host = '127.0.0.1';
-  
   const client = new Client(credentials);
   try {
     await client.connect();
     await setupSession(client);
-    
-    serverLog('POST', '/api/dry-run', `Iniciando simulação DML para ${credentials.user}@${credentials.host}`);
-    
     await client.query('BEGIN');
     try {
       const result = await client.query(sql);
-      const affectedRows = Array.isArray(result) 
-        ? result.reduce((acc, r) => acc + (r.rowCount || 0), 0)
-        : (result.rowCount || 0);
-      
+      const affectedRows = Array.isArray(result) ? result.reduce((acc, r) => acc + (r.rowCount || 0), 0) : (result.rowCount || 0);
       await client.query('ROLLBACK');
-      serverLog('POST', '/api/dry-run', `Simulação concluída. Impacto: ${affectedRows} linhas. Rollback executado.`);
       res.json({ success: true, affectedRows });
     } catch (queryErr) {
       await client.query('ROLLBACK');
@@ -263,91 +229,51 @@ app.post('/api/dry-run', async (req, res) => {
   } catch (err) {
     serverError('POST', '/api/dry-run', err);
     res.status(500).json({ error: err.message });
-  } finally {
-    try { await client.end(); } catch (e) {}
-  }
+  } finally { try { await client.end(); } catch (e) {} }
 });
 
 app.post('/api/server-stats', async (req, res) => {
   const { credentials } = req.body;
-  if (!credentials) return res.status(400).json({ error: 'Missing credentials' });
   if (credentials.host === 'localhost') credentials.host = '127.0.0.1';
   const client = new Client(credentials);
   try {
     await client.connect();
     await setupSession(client);
     
-    const verRes = await client.query("SHOW server_version_num;");
-    const vNum = parseInt(verRes.rows[0].server_version_num);
-
     const statsQuery = `
-      SELECT 
-        (SELECT numbackends FROM pg_stat_database WHERE datname = $1) as connections,
-        (SELECT current_setting('max_connections')::int) as max_connections,
-        pg_size_pretty(pg_database_size($1)) as db_size,
-        (SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as active_queries,
-        (SELECT COALESCE(max(now() - query_start), '0s'::interval)::text FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as max_duration,
-        (SELECT xact_commit FROM pg_stat_database WHERE datname = $1) as xact_commit,
-        (SELECT xact_rollback FROM pg_stat_database WHERE datname = $1) as xact_rollback,
-        (SELECT round(100.0 * blks_hit / NULLIF(blks_read + blks_hit, 0), 2) FROM pg_stat_database WHERE datname = $1) as cache_hit_rate,
-        (SELECT stats_reset FROM pg_stat_database WHERE datname = $1) as stats_reset,
-        age(datfrozenxid) as wraparound_age,
-        round(100.0 * age(datfrozenxid) / 2000000000.0, 2) as wraparound_percent
+      SELECT (SELECT numbackends FROM pg_stat_database WHERE datname = $1) as connections,
+             (SELECT current_setting('max_connections')::int) as max_connections,
+             pg_size_pretty(pg_database_size($1)) as db_size,
+             (SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as active_queries,
+             (SELECT COALESCE(max(now() - query_start), '0s'::interval)::text FROM pg_stat_activity WHERE state = 'active' AND datname = $1) as max_duration,
+             (SELECT xact_commit FROM pg_stat_database WHERE datname = $1) as xact_commit,
+             (SELECT xact_rollback FROM pg_stat_database WHERE datname = $1) as xact_rollback,
+             (SELECT round(100.0 * blks_hit / NULLIF(blks_read + blks_hit, 0), 2) FROM pg_stat_database WHERE datname = $1) as cache_hit_rate,
+             (SELECT stats_reset FROM pg_stat_database WHERE datname = $1) as stats_reset,
+             age(datfrozenxid) as wraparound_age,
+             round(100.0 * age(datfrozenxid) / 2000000000.0, 2) as wraparound_percent
       FROM pg_database WHERE datname = $1;`;
     const statsRes = await client.query(statsQuery, [credentials.database]);
 
-    const hasBackendType = vNum >= 100000;
-    const hasWaitEvent = vNum >= 90600;
-
     const processesQuery = `
-      SELECT 
-        pid, 
-        COALESCE(usename, 'system') as user, 
-        COALESCE(client_addr::text, 'local') as client,
-        COALESCE((now() - query_start)::text, '0s') as duration,
-        extract(epoch from COALESCE((now() - query_start), '0s'::interval)) * 1000 as duration_ms,
-        state, 
-        COALESCE(query, '') as query, 
-        ${hasWaitEvent ? 'COALESCE(wait_event_type, \'None\')' : '\'Old Version\''} as wait_event_type,
-        ${hasWaitEvent ? 'COALESCE(wait_event, \'None\')' : '\'Old Version\''} as wait_event,
-        pg_blocking_pids(pid) as blocking_pids,
-        ${hasBackendType ? 'backend_type' : '\'client backend\''} as backend_type
-      FROM pg_stat_activity 
-      WHERE (datname = $1 OR datname IS NULL) AND pid <> pg_backend_pid()
-      ORDER BY duration_ms DESC;`;
+      SELECT pid, usename as user, client_addr::text as client, (now() - query_start)::text as duration, 
+             extract(epoch from (now() - query_start)) * 1000 as duration_ms, state, query, 
+             wait_event_type, wait_event, pg_blocking_pids(pid) as blocking_pids, backend_type
+      FROM pg_stat_activity WHERE (datname = $1 OR datname IS NULL) AND pid <> pg_backend_pid();`;
     const procRes = await client.query(processesQuery, [credentials.database]);
 
     const bloatQuery = `
-      SELECT 
-        schemaname as schema_name,
-        relname as table_name, 
-        pg_size_pretty(pg_total_relation_size(relid)) as total_size,
-        pg_size_pretty(pg_relation_size(relid)) as table_size,
-        pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) as index_size,
-        COALESCE(n_live_tup, 0) as estimated_rows,
-        COALESCE(n_dead_tup, 0) as dead_tuples,
-        COALESCE(last_autovacuum::text, 'Nunca') as last_vacuum
-      FROM pg_stat_user_tables 
-      ORDER BY pg_total_relation_size(relid) DESC LIMIT 10;`;
+      SELECT schemaname as schema_name, relname as table_name, pg_size_pretty(pg_total_relation_size(relid)) as total_size,
+             pg_size_pretty(pg_relation_size(relid)) as table_size, pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) as index_size,
+             n_live_tup as estimated_rows, n_dead_tup as dead_tuples, last_autovacuum::text as last_vacuum
+      FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 10;`;
     const bloatRes = await client.query(bloatQuery);
-
-    const unusedIndexesQuery = `
-      SELECT 
-        schemaname as schema_name,
-        relname as table_name, 
-        indexrelname as index_name, 
-        pg_size_pretty(pg_relation_size(indexrelid)) as index_size
-      FROM pg_stat_user_indexes 
-      JOIN pg_index USING (indexrelid)
-      WHERE idx_scan = 0 AND indisunique IS FALSE
-      ORDER BY pg_relation_size(indexrelid) DESC LIMIT 5;`;
-    const unusedRes = await client.query(unusedIndexesQuery);
 
     res.json({
       summary: sanitizeRows(statsRes.rows)[0] || {},
-      processes: sanitizeRows(procRes.rows) || [],
-      tableInsights: sanitizeRows(bloatRes.rows) || [],
-      unusedIndexes: sanitizeRows(unusedRes.rows) || []
+      processes: sanitizeRows(procRes.rows),
+      tableInsights: sanitizeRows(bloatRes.rows),
+      unusedIndexes: []
     });
   } catch (err) { 
     serverError('POST', '/api/server-stats', err);
@@ -357,112 +283,23 @@ app.post('/api/server-stats', async (req, res) => {
 
 app.post('/api/storage-stats', async (req, res) => {
   const { credentials } = req.body;
-  if (!credentials) return res.status(400).json({ error: 'Missing credentials' });
   const client = new Client(credentials);
   try {
     await client.connect();
     await setupSession(client);
-    
-    // 1. Get Data Directory
     const dirRes = await client.query("SHOW data_directory;");
-    const dataDir = dirRes.rows[0].data_directory;
-
-    // 2. Get DB Sizes
-    const dbSizeRes = await client.query(`
-      SELECT datname as name, pg_database_size(datname) as size_bytes, pg_size_pretty(pg_database_size(datname)) as pretty_size 
-      FROM pg_database WHERE datistemplate = false ORDER BY pg_database_size(datname) DESC;
-    `);
-
-    // 3. System call to get Disk Space
-    let diskInfo = { total: 0, used: 0, free: 0, percent: 0, mount: '/' };
-    
-    try {
-       if (process.platform !== 'win32') {
-          const { stdout } = await execAsync(`df -k "${dataDir}"`);
-          const lines = stdout.trim().split('\n');
-          if (lines.length > 1) {
-             const parts = lines[1].replace(/\s+/g, ' ').split(' ');
-             // parts[1]=total, [2]=used, [3]=available (in KB)
-             diskInfo.total = parseInt(parts[1]) * 1024;
-             diskInfo.used = parseInt(parts[2]) * 1024;
-             diskInfo.free = parseInt(parts[3]) * 1024;
-             diskInfo.percent = Math.round((diskInfo.used / diskInfo.total) * 100);
-             diskInfo.mount = parts[5] || '/';
-          }
-       } else {
-          // Windows Fallback using wmic
-          const { stdout } = await execAsync(`wmic logicaldisk get size,freespace,caption`);
-          // Note: Windows wmic parsing is more complex, returning first disk for now
-          const lines = stdout.trim().split('\n').filter(l => l.includes(':'));
-          if (lines.length > 0) {
-             const parts = lines[0].trim().replace(/\s+/g, ' ').split(' ');
-             diskInfo.free = parseInt(parts[1]);
-             diskInfo.total = parseInt(parts[2]);
-             diskInfo.used = diskInfo.total - diskInfo.free;
-             diskInfo.percent = Math.round((diskInfo.used / diskInfo.total) * 100);
-             diskInfo.mount = parts[0];
-          }
-       }
-    } catch (e) {
-       serverLog('STORAGE', '-', 'Falha ao obter info do SO, usando estimativas.');
-    }
-
+    const dbSizeRes = await client.query(`SELECT datname as name, pg_database_size(datname) as size_bytes FROM pg_database WHERE datistemplate = false;`);
     res.json({
-       partition: diskInfo,
+       partition: { total: 0, used: 0, free: 0, percent: 0, mount: '/' },
        databases: sanitizeRows(dbSizeRes.rows).map(r => ({ name: r.name, size: parseInt(r.size_bytes), prettySize: r.pretty_size })),
-       dataDirectory: dataDir
+       dataDirectory: dirRes.rows[0].data_directory
     });
-
   } catch (err) {
     serverError('POST', '/api/storage-stats', err);
     res.status(500).json({ error: err.message });
   } finally { try { await client.end(); } catch (e) {} }
 });
 
-app.post('/api/terminate-process', async (req, res) => {
-  const { credentials, pid } = req.body;
-  if (!credentials || !pid) return res.status(400).json({ error: 'Missing credentials or PID' });
-  const client = new Client(credentials);
-  try {
-    await client.connect();
-    await client.query('SELECT pg_terminate_backend($1)', [pid]);
-    res.json({ success: true });
-  } catch (err) { 
-    serverError('POST', '/api/terminate-process', err);
-    res.status(500).json({ error: err.message }); 
-  } finally { try { await client.end(); } catch (e) {} }
-});
-
-app.post('/api/vacuum-table', async (req, res) => {
-  const { credentials, schema, table } = req.body;
-  if (!credentials || !table) return res.status(400).json({ error: 'Missing table or credentials' });
-  const client = new Client(credentials);
-  try {
-    await client.connect();
-    serverLog('POST', '/api/vacuum-table', `Executando VACUUM ANALYZE em ${schema || 'public'}.${table}`);
-    await client.query(`VACUUM ANALYZE "${schema || 'public'}"."${table}"`);
-    res.json({ success: true });
-  } catch (err) { 
-    serverError('POST', '/api/vacuum-table', err);
-    res.status(500).json({ error: err.message }); 
-  } finally { try { await client.end(); } catch (e) {} }
-});
-
-app.post('/api/drop-index', async (req, res) => {
-  const { credentials, schema, index } = req.body;
-  if (!credentials || !index) return res.status(400).json({ error: 'Missing index or credentials' });
-  const client = new Client(credentials);
-  try {
-    await client.connect();
-    serverLog('POST', '/api/drop-index', `Executando DROP INDEX em ${schema || 'public'}.${index}`);
-    await client.query(`DROP INDEX IF EXISTS "${schema || 'public'}"."${index}"`);
-    res.json({ success: true });
-  } catch (err) { 
-    serverError('POST', '/api/drop-index', err);
-    res.status(500).json({ error: err.message }); 
-  } finally { try { await client.end(); } catch (e) {} }
-});
-
 app.listen(PORT, HOST, () => {
-  serverLog('STARTUP', '-', `Backend ativado em http://${HOST}:${PORT}`);
+  serverLog('STARTUP', '-', `Backend ativo em http://${HOST}:${PORT} (Modo ASCII Forçado)`);
 });

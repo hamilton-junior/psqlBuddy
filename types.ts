@@ -29,6 +29,7 @@ export interface DatabaseObject {
   returnType?: string;
   args?: string;
   tableName?: string; // Para triggers
+  isSanitized?: boolean; // Indica se continha bytes inválidos
 }
 
 export interface DbCredentials {
@@ -54,7 +55,6 @@ export interface ServerStats {
   statsReset?: string;
 }
 
-// Added ActiveProcess interface to fix import errors in geminiService, dbService, and ServerHealthStep
 export interface ActiveProcess {
   pid: number;
   user: string;
