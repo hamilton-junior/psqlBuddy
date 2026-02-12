@@ -38,6 +38,7 @@ export interface DbCredentials {
   user: string;
   password?: string;
   database: string;
+  color?: string; // Hex ou classe de cor para o contexto
 }
 
 export interface ServerStats {
@@ -145,6 +146,7 @@ export interface QueryTab {
   isGenerating: boolean;
   isExecuting: boolean;
   resultsState: TabResultsState;
+  contextColor?: string; // Cor de destaque herdada da conexão
 }
 
 export interface AppSettings {

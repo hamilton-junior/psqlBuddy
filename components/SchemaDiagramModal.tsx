@@ -96,16 +96,19 @@ const CanvasMinimap = memo(({
    pan, 
    scale,
    containerSize,
-   tableColors
+   tableColors,
+   onJumpTo
 }: { 
    positions: Record<string, NodePosition>, 
    bounds: { minX: number, minY: number, maxX: number, maxY: number, w: number, h: number },
    pan: {x: number, y: number},
    scale: number,
    containerSize: {w: number, h: number},
-   tableColors: Record<string, string>
+   tableColors: Record<string, string>,
+   onJumpTo: (worldX: number, worldY: number) => void
 }) => {
    const canvasRef = useRef<HTMLCanvasElement>(null);
+   const [mapScaleFactor, setMapScaleFactor] = useState(1);
 
    useEffect(() => {
       const canvas = canvasRef.current;
@@ -116,6 +119,7 @@ const CanvasMinimap = memo(({
       const mapWidth = 200;
       const mapScale = mapWidth / Math.max(bounds.w, 1); 
       const mapHeight = Math.max(bounds.h * mapScale, 50);
+      setMapScaleFactor(mapScale);
 
       canvas.width = mapWidth;
       canvas.height = mapHeight;
@@ -147,11 +151,29 @@ const CanvasMinimap = memo(({
       ctx.fillRect(viewportX, viewportY, viewportW, viewportH);
    }, [positions, bounds, pan, scale, containerSize, tableColors]);
 
+   const handleMapClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      // Converte coordenadas do canvas para mundo (World Space)
+      const worldX = (clickX / mapScaleFactor) + bounds.minX;
+      const worldY = (clickY / mapScaleFactor) + bounds.minY;
+      
+      onJumpTo(worldX, worldY);
+   };
+
    return (
-      <div className="absolute bottom-4 right-4 bg-white/90 dark:bg-slate-900/90 border border-slate-300 dark:border-slate-600 rounded-lg shadow-2xl overflow-hidden z-[60] backdrop-blur opacity-80 hover:opacity-100 transition-opacity">
+      <div 
+         className="absolute bottom-4 right-4 bg-white/90 dark:bg-slate-900/90 border border-slate-300 dark:border-slate-600 rounded-lg shadow-2xl overflow-hidden z-[60] backdrop-blur opacity-80 hover:opacity-100 transition-opacity"
+         onClick={handleMapClick}
+      >
          <canvas ref={canvasRef} className="block cursor-pointer" />
          <div className="px-2 py-1 text-[9px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center gap-1">
-             <MapIcon className="w-3 h-3" /> Minimap ({Object.keys(positions).length})
+             <MapIcon className="w-3 h-3" /> Clique para navegar ({Object.keys(positions).length})
          </div>
       </div>
    );
@@ -734,6 +756,15 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
      setSecondSelectedColumn(null);
   };
 
+  // Implementação do teletransporte via clique no minimap
+  const handleJumpTo = useCallback((worldX: number, worldY: number) => {
+     setPan({
+        x: -(worldX * scale) + (containerSize.w / 2),
+        y: -(worldY * scale) + (containerSize.h / 2)
+     });
+     triggerInteraction();
+  }, [scale, containerSize, triggerInteraction]);
+
   return (
     <div className="fixed inset-0 z-[70] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
       <style>{`
@@ -905,7 +936,7 @@ const SchemaDiagramModal: React.FC<SchemaDiagramModalProps> = ({ schema, onClose
            </div>
         )}
         <div className="minimap-ignore">
-           <CanvasMinimap positions={positions} bounds={bounds} pan={pan} scale={scale} containerSize={containerSize} tableColors={tableColors} />
+           <CanvasMinimap positions={positions} bounds={bounds} pan={pan} scale={scale} containerSize={containerSize} tableColors={tableColors} onJumpTo={handleJumpTo} />
         </div>
       </div>
     </div>

@@ -62,7 +62,7 @@ const INITIAL_RESULTS_STATE: TabResultsState = {
   }
 };
 
-function createNewTab(index: number): QueryTab {
+function createNewTab(index: number, contextColor?: string): QueryTab {
   return {
     id: crypto.randomUUID(),
     name: index === 0 ? 'Consulta Principal' : `Consulta ${index + 1}`,
@@ -72,7 +72,8 @@ function createNewTab(index: number): QueryTab {
     executionResult: [],
     isGenerating: false,
     isExecuting: false,
-    resultsState: { ...INITIAL_RESULTS_STATE }
+    resultsState: { ...INITIAL_RESULTS_STATE },
+    contextColor
   };
 }
 
@@ -99,7 +100,7 @@ const App: React.FC = () => {
   }, [updateActiveTab]);
 
   const handleAddTab = () => {
-    const newTab = createNewTab(tabs.length);
+    const newTab = createNewTab(tabs.length, credentials?.color);
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newTab.id);
     setGlobalStep('query');
@@ -233,6 +234,9 @@ const App: React.FC = () => {
     setCredentials(creds);
     if (loadedSchema.connectionSource === 'simulated') setSimulationData(initializeSimulation(loadedSchema));
     setGlobalStep('query');
+    
+    // Sincroniza cor de contexto em todas as abas abertas
+    setTabs(prev => prev.map(t => ({ ...t, contextColor: creds.color })));
     updateActiveTab(() => ({ currentStep: 'builder' }));
   };
 

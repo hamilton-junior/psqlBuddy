@@ -25,6 +25,8 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onSwitch, onClose, o
     <div className="flex items-center bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 gap-1 overflow-x-auto no-scrollbar shrink-0 h-11">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
+        const contextColor = tab.contextColor || '';
+        
         return (
           <div
             key={tab.id}
@@ -35,6 +37,15 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onSwitch, onClose, o
                 : 'bg-transparent text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800/50 border-transparent'}
             `}
           >
+            {/* Indicador de Contexto (Cor do Ambiente) */}
+            {contextColor && (
+              <div 
+                className="absolute top-0 left-0 right-0 h-0.5" 
+                style={{ backgroundColor: contextColor }}
+                title="Cor do Ambiente de Conexão"
+              />
+            )}
+            
             <div className={`mr-2 shrink-0 ${isActive ? 'text-indigo-500' : 'text-slate-400'}`}>
               {getIcon(tab.currentStep)}
             </div>

@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { DatabaseSchema, DbCredentials, AppSettings, SAMPLE_SCHEMA } from '../../types';
 import { connectToDatabase } from '../../services/dbService';
 import { generateSchemaFromTopic } from '../../services/geminiService';
-import { Server, Shield, Info, Loader2, Database, AlertCircle, Bot, Wand2, HardDrive, Save, Trash2, Bookmark, Tag } from 'lucide-react';
+import { Server, Shield, Info, Loader2, Database, AlertCircle, Bot, Wand2, HardDrive, Save, Trash2, Bookmark, Tag, Palette } from 'lucide-react';
 import Dialog from '../common/Dialog';
 
 interface ConnectionStepProps {
@@ -19,10 +20,19 @@ interface SavedConnection {
   port: string;
   user: string;
   database: string;
+  color?: string;
 }
 
 declare const __APP_VERSION__: string;
 const CURRENT_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'd.e.v';
+
+const CONTEXT_COLORS = [
+  { name: 'Padrao', value: '' },
+  { name: 'Producao', value: '#ef4444' }, // Vermelho
+  { name: 'Staging', value: '#f59e0b' },   // Amarelo/Laranja
+  { name: 'Dev', value: '#10b981' },       // Verde
+  { name: 'Local', value: '#6366f1' }       // Indigo
+];
 
 const formatVersionDisplay = (v: string): string => {
   const parts = v.split('.');
@@ -40,6 +50,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
   const [user, setUser] = useState(settings.defaultDbUser);
   const [password, setPassword] = useState('');
   const [dbName, setDbName] = useState(settings.defaultDbName);
+  const [activeColor, setActiveColor] = useState('');
   
   const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
@@ -71,6 +82,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         setPort(settings.defaultDbPort);
         setUser(settings.defaultDbUser);
         setDbName(settings.defaultDbName);
+        setActiveColor('');
     }
   }, [settings, selectedProfileId]);
 
@@ -95,7 +107,8 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
             host,
             port,
             user,
-            database: dbName
+            database: dbName,
+            color: activeColor
          };
          const updatedList = [...savedConnections, newProfile];
          setSavedConnections(updatedList);
@@ -130,6 +143,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         setPort(profile.port);
         setUser(profile.user);
         setDbName(profile.database);
+        setActiveColor(profile.color || '');
         setPassword('');
     }
   };
@@ -142,13 +156,13 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
       if (mode === 'real') {
         if (!dbName) throw new Error("Nome do banco é obrigatório");
         const finalPassword = password || 'postgres';
-        const creds: DbCredentials = { host, port, user, password: finalPassword, database: dbName };
+        const creds: DbCredentials = { host, port, user, password: finalPassword, database: dbName, color: activeColor };
         const schema = await connectToDatabase(creds);
         onSchemaLoaded(schema, creds);
       } else {
         if (!settings.enableAiGeneration || useOfflineSample) {
            const schema: DatabaseSchema = JSON.parse(JSON.stringify(SAMPLE_SCHEMA));
-           const fakeCreds: DbCredentials = { host: 'simulated', port: '0000', user: 'offline_user', database: schema.name };
+           const fakeCreds: DbCredentials = { host: 'simulated', port: '0000', user: 'offline_user', database: schema.name, color: activeColor };
            await new Promise(resolve => setTimeout(resolve, 600));
            onSchemaLoaded(schema, fakeCreds);
            return;
@@ -157,7 +171,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
         const context = simDescription || `A database named ${simName}`;
         const schema = await generateSchemaFromTopic(simName, context);
         schema.name = simName;
-        const fakeCreds: DbCredentials = { host: 'simulated', port: '0000', user: 'ai_user', database: simName };
+        const fakeCreds: DbCredentials = { host: 'simulated', port: '0000', user: 'ai_user', database: simName, color: activeColor };
         onSchemaLoaded(schema, fakeCreds);
       }
     } catch (err: any) {
@@ -311,6 +325,30 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({ onSchemaLoaded, setting
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-all"
                   placeholder="5432" 
                 />
+              </div>
+
+              <div className="col-span-2">
+                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <Palette className="w-3.5 h-3.5" /> Cor do Contexto (Ambiente)
+                 </label>
+                 <div className="flex gap-4">
+                    {CONTEXT_COLORS.map(c => (
+                       <button
+                          key={c.name}
+                          type="button"
+                          onClick={() => setActiveColor(c.value)}
+                          className={`group flex flex-col items-center gap-1 transition-all ${activeColor === c.value ? 'scale-110' : 'opacity-60 hover:opacity-100'}`}
+                       >
+                          <div 
+                             className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${activeColor === c.value ? 'border-indigo-500 shadow-lg' : 'border-transparent'}`}
+                             style={{ backgroundColor: c.value || '#cbd5e1' }}
+                          >
+                             {activeColor === c.value && <div className="w-2 h-2 bg-white rounded-full shadow-sm" />}
+                          </div>
+                          <span className={`text-[9px] font-black uppercase tracking-tighter ${activeColor === c.value ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>{c.name}</span>
+                       </button>
+                    ))}
+                 </div>
               </div>
 
               <div className="col-span-2 flex justify-end">
