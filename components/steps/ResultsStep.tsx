@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, Database, ChevronLeft, ChevronRight, FileSpreadsheet, Search, Copy, Check, BarChart2, MessageSquare, Download, Activity, LayoutGrid, FileText, Pin, AlertCircle, Info, MoreHorizontal, FileJson, FileCode, Hash, Type, Filter, Plus, X, Trash2, SlidersHorizontal, Clock, Maximize2, Minimize2, ExternalLink, Braces, PenTool, Save, Eye, Anchor, Link as LinkIcon, Settings2, Loader2, Folder, Terminal as TerminalIcon, ChevronDown, ChevronUp, Layers, Target, CornerDownRight, AlertTriangle, Undo2, ShieldAlert, Pencil, ArrowUp, ArrowDown, ArrowUpDown, History, RotateCcw, FileWarning, Gauge, Camera, Settings, EyeOff, GripVertical } from 'lucide-react';
 import { AppSettings, ExplainNode, DatabaseSchema, Table, QueryProfilingSnapshot, DbCredentials, ResultTab, FilterRule, TabResultsState } from '../../types';
@@ -22,7 +23,6 @@ const resultsLogger = (context: string, message: string, data?: any) => {
 
 const getTableId = (t: any) => `${t.schema || 'public'}.${t.name}`;
 
-// Helper para limpar caracteres corrompidos antes de exibir no terminal
 const sanitizeAnsi = (str: string): string => {
    if (!str) return '';
    return str.replace(/[\uFFFD\uFFFE\uFFFF]/g, ''); 
@@ -282,7 +282,6 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
    return (<div className="w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 animate-in fade-in zoom-in-95 origin-top-left" onMouseLeave={onClose}><div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-100 dark:border-slate-700"><h4 className="font-bold text-xs text-slate-800 dark:text-white truncate">{column}</h4></div><div className="grid grid-cols-2 gap-2 text-[10px]"><div className="bg-slate-50 dark:bg-slate-900 p-2 rounded"><span className="block text-slate-400 mb-0.5">Únicos</span><span className="font-mono font-bold text-slate-700 dark:text-slate-300">{stats.distinct}</span></div><div className="bg-slate-50 dark:bg-slate-900 p-2 rounded"><span className="block text-slate-400 mb-0.5">Nulos</span><span className={`font-mono font-bold ${stats.nulls > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{stats.nulls}</span></div></div></div>);
 };
 
-// Fix: Removed duplicate VirtualTable component definition around line 617.
 const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell, onOpenJson, onDrillDown, schema, defaultTableName, credentials, pendingEdits = {}, settings }: VirtualTableProps) => {
    const [currentPage, setCurrentPage] = useState(1);
    const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -297,18 +296,50 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
    const [manualMappings, setManualMappings] = useState<Record<string, ManualLink[]>>(() => { try { const stored = localStorage.getItem('psql-buddy-manual-drilldown-links-v2'); return stored ? JSON.parse(stored) : {}; } catch { return {}; } });
 
    const [orderedColumns, setOrderedColumns] = useState<string[]>(columns);
+   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
    const [draggedColIndex, setDraggedColIndex] = useState<number | null>(null);
    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+   const resizingRef = useRef<{ col: string, startX: number, startWidth: number } | null>(null);
 
    useEffect(() => {
       const sortedNew = [...columns].sort().join(',');
       const sortedOld = [...orderedColumns].sort().join(',');
       if (sortedNew !== sortedOld) {
          setOrderedColumns(columns);
+         const initialWidths: Record<string, number> = {};
+         columns.forEach(c => initialWidths[c] = 180);
+         setColumnWidths(initialWidths);
       }
    }, [columns]);
 
    useEffect(() => { if (editingCell && editInputRef.current) { editInputRef.current.focus(); editInputRef.current.select(); } }, [editingCell]);
+
+   const handleResizeStart = (e: React.MouseEvent, col: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resizingRef.current = { col, startX: e.pageX, startWidth: columnWidths[col] || 180 };
+      document.addEventListener('mousemove', handleResizeMove);
+      document.addEventListener('mouseup', handleResizeStop);
+      document.body.style.cursor = 'col-resize';
+      console.log(`[RESIZE] Iniciando redimensionamento da coluna: ${col}`);
+   };
+
+   const handleResizeMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const { col, startX, startWidth } = resizingRef.current;
+      const delta = e.pageX - startX;
+      const newWidth = Math.max(80, startWidth + delta);
+      setColumnWidths(prev => ({ ...prev, [col]: newWidth }));
+   };
+
+   const handleResizeStop = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeStop);
+      document.body.style.cursor = '';
+      console.log(`[RESIZE] Redimensionamento finalizado.`);
+   };
+
    const handleSaveManualLinks = (colName: string, links: ManualLink[]) => { const newMappings = { ...manualMappings }; if (links.length === 0) { delete newMappings[colName]; } else { newMappings[colName] = links; } setManualMappings(newMappings); localStorage.setItem('psql-buddy-manual-drilldown-links-v2', JSON.stringify(newMappings)); };
    const handleSort = (col: string) => { setSortConfig(prev => { if (prev.key === col) { if (prev.direction === 'asc') return { key: col, direction: 'desc' }; return { key: '', direction: null }; } return { key: col, direction: 'asc' }; }); setCurrentPage(1); };
    const sortedData = useMemo(() => { if (!sortConfig.key || !sortConfig.direction) return data; return [...data].sort((a, b) => { const aVal = a[sortConfig.key]; const bVal = b[sortConfig.key]; if (aVal === bVal) return 0; if (aVal === null || aVal === undefined) return 1; if (bVal === null || bVal === undefined) return -1; let comparison = 0; if (typeof aVal === 'number' && typeof bVal === 'number') { comparison = aVal - bVal; } else if (typeof aVal === 'boolean' && typeof bVal === 'boolean') { comparison = aVal === bVal ? 0 : aVal ? 1 : -1; } else { comparison = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' }); } return sortConfig.direction === 'asc' ? comparison : -comparison; }); }, [data, sortConfig]);
@@ -316,6 +347,7 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
    const totalPages = Math.ceil(totalRows / Math.max(rowsPerPage, 1));
    const startIndex = (currentPage - 1) * rowsPerPage;
    const currentData = sortedData.slice(startIndex, startIndex + rowsPerPage);
+   
    const getLinksForColumn = (colName: string): ManualLink[] => { 
      let links: ManualLink[] = [...(manualMappings[colName] || [])]; 
      if (links.length === 0 && schema && colName) { 
@@ -432,6 +464,7 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
                         const isSorted = sortConfig.key === col; 
                         const isDragging = draggedColIndex === idx;
                         const isDragOver = dragOverIndex === idx;
+                        const width = columnWidths[col] || 180;
 
                         return (
                            <th 
@@ -441,7 +474,8 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
                               onDragOver={(e) => handleDragOver(e, idx)}
                               onDrop={(e) => handleDrop(e, idx)}
                               onDragEnd={() => { setDraggedColIndex(null); setDragOverIndex(null); }}
-                              className={`px-4 py-3 text-xs font-bold uppercase border-b border-slate-200 dark:border-slate-700 w-[180px] group relative select-none transition-all
+                              style={{ width: `${width}px` }}
+                              className={`px-4 py-3 text-xs font-bold uppercase border-b border-slate-200 dark:border-slate-700 group relative select-none transition-all
                                  ${isDragging ? 'opacity-30 bg-slate-100 dark:bg-slate-800' : 'opacity-100'}
                                  ${isDragOver ? 'border-r-4 border-r-indigo-500' : ''}
                                  ${isSorted ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'} 
@@ -450,20 +484,20 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
                               `}
                            >
                               <div className="flex items-center justify-between min-w-0">
-                                 <div className="flex items-center gap-1.5 truncate">
+                                 <div className="flex items-center gap-1.5 truncate flex-1">
                                     {!isAdvancedMode && (
                                        <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-indigo-400 p-0.5 -ml-1 transition-colors">
                                           <GripVertical className="w-3 h-3" />
                                        </div>
                                     )}
                                     <span 
-                                       className="truncate cursor-pointer hover:underline" 
+                                       className="truncate cursor-pointer hover:underline flex-1" 
                                        title={col}
                                        onClick={() => handleSort(col)}
                                     >
                                        {col.replace(/_/g, ' ')}
                                     </span>
-                                    <div className="shrink-0">
+                                    <div className="shrink-0 w-4">
                                        {isSorted ? (sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : (
                                           <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                                        )}
@@ -480,6 +514,14 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
                                     </button>
                                  </div>
                               </div>
+                              
+                              {/* Separador de redimensionamento */}
+                              <div 
+                                 onMouseDown={(e) => handleResizeStart(e, col)}
+                                 className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500/30 active:bg-indigo-500 transition-colors z-20"
+                                 title="Arraste para redimensionar coluna"
+                              />
+
                               {activeMappingCol === col && schema && (
                                  <ManualMappingPopover column={col} schema={schema} currentLinks={links} onSave={(newLinks) => handleSaveManualLinks(col, newLinks)} onClose={() => setActiveMappingCol(null)} />
                               )}
@@ -506,6 +548,7 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
                            {orderedColumns.map((col, cIdx) => (
                               <td 
                                  key={col} 
+                                 style={{ width: `${columnWidths[col] || 180}px` }}
                                  className={`px-4 py-2 text-sm text-slate-600 dark:text-slate-300 truncate ${cIdx === 0 ? 'pl-6 font-medium' : ''} ${isAdvancedMode ? 'hover:bg-slate-100 dark:hover:bg-slate-800' : ''}`}
                                  onClick={(e) => {
                                     if (isAdvancedMode) {
@@ -532,7 +575,6 @@ const ResultsStep: React.FC<ResultsStepProps> = ({ data, sql, onBackToBuilder, o
   const [localData, setLocalData] = useState(data); 
   const columns = useMemo(() => (localData.length > 0 ? Object.keys(localData[0]) : []), [localData]);
   
-  // Estados elevados e persistentes
   const { activeTab, filters, search: localSearch } = resultsState;
 
   const [explainPlan, setExplainPlan] = useState<ExplainNode | null>(null);

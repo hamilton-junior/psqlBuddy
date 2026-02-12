@@ -1,8 +1,9 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon, AlertCircle, Settings2, CheckSquare, Square } from 'lucide-react';
+import { BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon, AlertCircle, Settings2, CheckSquare, Square, Loader2 } from 'lucide-react';
 import { ChartConfig } from '../types';
+import { ChartSkeleton } from './common/Skeleton';
 
 interface DataVisualizerProps {
   data: any[];
@@ -13,6 +14,7 @@ interface DataVisualizerProps {
 
 const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, chartConfig, onConfigChange, onDrillDown }) => {
   const [configOpen, setConfigOpen] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // 1. Process Data (Ensure numbers are numbers) & Extract Keys
   const { processedData, allKeys, potentialNumberKeys } = useMemo(() => {
@@ -49,23 +51,36 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, chartConfig, onCo
     return { processedData: cleanData, allKeys: allUniqueKeys, potentialNumberKeys: numKeys };
   }, [data]);
 
-  // 2. Initialize Defaults (Heuristics) - Only if empty
+  // 2. Initialize Defaults (Heuristics)
   useEffect(() => {
-    if (allKeys.length === 0 || chartConfig.xAxis) return;
-
-    const defaultX = allKeys.find(k => {
-       const kLower = k.toLowerCase();
-       return kLower.includes('name') || kLower.includes('date') || kLower.includes('time') || kLower.includes('country') || kLower.includes('category');
-    }) || allKeys.find(k => {
-        return processedData.some(row => typeof row[k] === 'string');
-    }) || allKeys[0];
-
-    let defaultY = [];
-    if (potentialNumberKeys.length > 0) {
-       defaultY = potentialNumberKeys.slice(0, 3);
+    if (allKeys.length === 0) {
+      setIsInitializing(false);
+      return;
+    }
+    
+    if (chartConfig.xAxis) {
+      setIsInitializing(false);
+      return;
     }
 
-    onConfigChange({ ...chartConfig, xAxis: defaultX, yKeys: defaultY });
+    const timer = setTimeout(() => {
+      const defaultX = allKeys.find(k => {
+         const kLower = k.toLowerCase();
+         return kLower.includes('name') || kLower.includes('date') || kLower.includes('time') || kLower.includes('country') || kLower.includes('category');
+      }) || allKeys.find(k => {
+          return processedData.some(row => typeof row[k] === 'string');
+      }) || allKeys[0];
+
+      let defaultY = [];
+      if (potentialNumberKeys.length > 0) {
+         defaultY = potentialNumberKeys.slice(0, 3);
+      }
+
+      onConfigChange({ ...chartConfig, xAxis: defaultX, yKeys: defaultY });
+      setIsInitializing(false);
+    }, 600); // Pequeno delay para efeito visual do skeleton
+
+    return () => clearTimeout(timer);
   }, [processedData, allKeys, potentialNumberKeys, chartConfig.xAxis]);
 
   const toggleYKey = (key: string) => {
@@ -93,6 +108,10 @@ const DataVisualizer: React.FC<DataVisualizerProps> = ({ data, chartConfig, onCo
         }
      }
   };
+
+  if (isInitializing) {
+     return <ChartSkeleton type={chartConfig.type === 'line' || chartConfig.type === 'area' ? 'line' : 'bar'} />;
+  }
 
   if (!processedData || processedData.length === 0) return (
      <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8">
