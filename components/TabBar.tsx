@@ -22,7 +22,7 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onSwitch, onClose, o
   };
 
   return (
-    <div className="flex items-center bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 gap-1 overflow-x-auto no-scrollbar shrink-0 h-11">
+    <div className="flex items-center bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 gap-1 overflow-x-auto no-scrollbar shrink-0 h-11 transition-colors duration-300">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
         const contextColor = tab.contextColor || '';
@@ -33,14 +33,14 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onSwitch, onClose, o
             onClick={() => onSwitch(tab.id)}
             className={`group relative flex items-center h-8 px-4 rounded-t-lg text-xs font-bold cursor-pointer transition-all min-w-[120px] max-w-[200px] border-x border-t
               ${isActive 
-                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border-slate-200 dark:border-slate-700 z-10' 
+                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border-slate-200 dark:border-slate-700 z-10 shadow-sm' 
                 : 'bg-transparent text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800/50 border-transparent'}
             `}
           >
             {/* Indicador de Contexto (Cor do Ambiente) */}
             {contextColor && (
               <div 
-                className="absolute top-0 left-0 right-0 h-0.5" 
+                className="absolute top-0 left-0 right-0 h-0.5 rounded-t-lg" 
                 style={{ backgroundColor: contextColor }}
                 title="Cor do Ambiente de Conexão"
               />

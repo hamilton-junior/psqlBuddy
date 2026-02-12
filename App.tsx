@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { 
   DatabaseSchema, AppStep, BuilderState, QueryResult, DbCredentials, 
   AppSettings, DEFAULT_SETTINGS, VirtualRelation, DashboardItem, QueryTab,
-  TabResultsState
+  TabResultsState, ConnectionGroup
 } from './types';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, Database, Plus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from '@/components/Sidebar';
 import TabBar from '@/components/TabBar';
@@ -29,7 +29,6 @@ import LogAnalyzerModal from '@/components/LogAnalyzerModal';
 import TemplateModal from '@/components/TemplateModal';
 import SqlExtractorModal from '@/components/SqlExtractorModal';
 import UpdateModal from '@/components/UpdateModal';
-import Dialog from '@/components/common/Dialog';
 import { generateSqlFromBuilderState } from '@/services/geminiService';
 import { generateLocalSql } from '@/services/localSqlService';
 import { executeQueryReal } from '@/services/dbService';
@@ -52,20 +51,16 @@ const INITIAL_RESULTS_STATE: TabResultsState = {
   search: '',
   filters: [],
   chatMessages: [
-    { id: '1', role: 'assistant', text: 'Olá! Analisei os dados retornados pela sua consulta. O que você gostaria de saber sobre eles? Posso encontrar tendências, anomalias ou resumir os resultados.' }
+    { id: '1', role: 'assistant', text: 'Olá! Analisei os dados retornados pela sua consulta. O que você gostaria de saber sobre eles?' }
   ],
   chatInput: '',
-  chartConfig: {
-    type: 'bar',
-    xAxis: '',
-    yKeys: []
-  }
+  chartConfig: { type: 'bar', xAxis: '', yKeys: [] }
 };
 
-function createNewTab(index: number, contextColor?: string): QueryTab {
+function createNewQueryTab(index: number): QueryTab {
   return {
     id: crypto.randomUUID(),
-    name: index === 0 ? 'Consulta Principal' : `Consulta ${index + 1}`,
+    name: `Consulta ${index + 1}`,
     currentStep: 'builder',
     builderState: { ...INITIAL_BUILDER_STATE },
     queryResult: null,
@@ -73,64 +68,36 @@ function createNewTab(index: number, contextColor?: string): QueryTab {
     isGenerating: false,
     isExecuting: false,
     resultsState: { ...INITIAL_RESULTS_STATE },
-    contextColor
+  };
+}
+
+function createNewConnectionGroup(): ConnectionGroup {
+  const firstTab = createNewQueryTab(0);
+  return {
+    id: crypto.randomUUID(),
+    name: 'Nova Conexão',
+    schema: null,
+    credentials: null,
+    simulationData: {},
+    tabs: [firstTab],
+    activeTabId: firstTab.id,
+    contextColor: ''
   };
 }
 
 const App: React.FC = () => {
-  const [schema, setSchema] = useState<DatabaseSchema | null>(null);
-  const [credentials, setCredentials] = useState<DbCredentials | null>(null);
-  const [simulationData, setSimulationData] = useState<SimulationData>({});
-  
-  // Tab Management
-  const [tabs, setTabs] = useState<QueryTab[]>([createNewTab(0)]);
-  const [activeTabId, setActiveTabId] = useState<string>(tabs[0].id);
+  // Connection Groups Management
+  const [connections, setConnections] = useState<ConnectionGroup[]>([]);
+  const [activeConnectionId, setActiveConnectionId] = useState<string>('');
   const [globalStep, setGlobalStep] = useState<AppStep | 'query'>('connection');
-
-  const activeTab = useMemo(() => tabs.find(t => t.id === activeTabId) || tabs[0], [tabs, activeTabId]);
-
-  const updateActiveTab = useCallback((updater: (tab: QueryTab) => Partial<QueryTab>) => {
-    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, ...updater(t) } : t));
-  }, [activeTabId]);
-
-  const updateActiveResultsState = useCallback((partial: Partial<TabResultsState>) => {
-    updateActiveTab(tab => ({
-      resultsState: { ...tab.resultsState, ...partial }
-    }));
-  }, [updateActiveTab]);
-
-  const handleAddTab = () => {
-    const newTab = createNewTab(tabs.length, credentials?.color);
-    setTabs(prev => [...prev, newTab]);
-    setActiveTabId(newTab.id);
-    setGlobalStep('query');
-  };
-
-  const handleCloseTab = (id: string) => {
-    if (tabs.length === 1) return;
-    const newTabs = tabs.filter(t => t.id !== id);
-    setTabs(newTabs);
-    if (activeTabId === id) {
-      setActiveTabId(newTabs[newTabs.length - 1].id);
-    }
-  };
-
-  const [isHydrated, setIsHydrated] = useState(false);
   
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    try {
-      const savedSettings = localStorage.getItem('psqlBuddy-settings');
-      return savedSettings ? { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) } : DEFAULT_SETTINGS;
-    } catch { return DEFAULT_SETTINGS; }
-  });
-
-  const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>(() => {
-    try {
-      const stored = localStorage.getItem('psqlBuddy-dashboard');
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
-  });
-
+  // Hydration & Global State
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>([]);
+  const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
+  
+  // Modals visibility
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'interface' | 'ai' | 'database' | 'diagnostics'>('interface');
   const [showDiagram, setShowDiagram] = useState(false);
@@ -141,166 +108,174 @@ const App: React.FC = () => {
   const [showLogAnalyzer, setShowLogAnalyzer] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSqlExtractor, setShowSqlExtractor] = useState(false);
-  const [virtualRelations, setVirtualRelations] = useState<VirtualRelation[]>([]);
   
-  const [updateInfo, setUpdateInfo] = useState<{version: string, notes: string, branch?: string, updateType?: 'upgrade' | 'downgrade', currentVersion?: string, isManual?: boolean} | null>(null);
-  const [remoteVersions, setRemoteVersions] = useState<{ stable: string; wip: string; bleedingEdge: string; totalCommits?: number } | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [remoteVersions, setRemoteVersions] = useState<any>(null);
   const [currentAppVersion, setCurrentAppVersion] = useState<string>('...');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
-  const manualCheckRef = useRef(false);
 
   const generationIdRef = useRef(0);
 
+  // Computations
+  const activeConnection = useMemo(() => 
+    connections.find(c => c.id === activeConnectionId) || null
+  , [connections, activeConnectionId]);
+
+  const activeQuery = useMemo(() => 
+    activeConnection?.tabs.find(t => t.id === activeConnection?.activeTabId) || null
+  , [activeConnection]);
+
+  // Actions
+  const updateActiveConnection = useCallback((updater: (conn: ConnectionGroup) => Partial<ConnectionGroup>) => {
+    setConnections(prev => prev.map(c => c.id === activeConnectionId ? { ...c, ...updater(c) } : c));
+  }, [activeConnectionId]);
+
+  const updateActiveQuery = useCallback((updater: (tab: QueryTab) => Partial<QueryTab>) => {
+    if (!activeConnection) return;
+    setConnections(prev => prev.map(c => {
+      if (c.id !== activeConnectionId) return c;
+      const updatedTabs = c.tabs.map(t => t.id === c.activeTabId ? { ...t, ...updater(t) } : t);
+      return { ...c, tabs: updatedTabs };
+    }));
+  }, [activeConnectionId, activeConnection]);
+
+  const handleAddConnection = () => {
+    console.log("[WORKSPACE] Adicionando novo grupo de conexão.");
+    const newConn = createNewConnectionGroup();
+    setConnections(prev => [...prev, newConn]);
+    setActiveConnectionId(newConn.id);
+    setGlobalStep('connection');
+  };
+
+  const handleCloseConnection = (id: string) => {
+    if (connections.length === 1) {
+        toast.error("Mantenha pelo menos um banco de dados ativo.");
+        return;
+    }
+    const newConns = connections.filter(c => c.id !== id);
+    setConnections(newConns);
+    if (activeConnectionId === id) setActiveConnectionId(newConns[newConns.length - 1].id);
+    console.log(`[WORKSPACE] Conexão ${id} encerrada.`);
+  };
+
+  const handleAddQueryTab = () => {
+    if (!activeConnection) return;
+    const newTab = createNewQueryTab(activeConnection.tabs.length);
+    updateActiveConnection(conn => ({
+        tabs: [...conn.tabs, newTab],
+        activeTabId: newTab.id
+    }));
+    setGlobalStep('query');
+    console.log(`[WORKSPACE] Nova query adicionada ao banco ${activeConnection.name}.`);
+  };
+
+  const handleCloseQueryTab = (id: string) => {
+    if (!activeConnection) return;
+    if (activeConnection.tabs.length === 1) return;
+    const newTabs = activeConnection.tabs.filter(t => t.id !== id);
+    updateActiveConnection(conn => ({
+        tabs: newTabs,
+        activeTabId: activeConnection.activeTabId === id ? newTabs[newTabs.length - 1].id : activeConnection.activeTabId
+    }));
+  };
+
+  // Init & Persistence
   useEffect(() => {
-    const hydrateFromDisk = async () => {
+    const hydrate = async () => {
         const electron = (window as any).electron;
-        if (electron && electron.invoke) {
-            try {
-                const diskData = await electron.invoke('get-persistent-store');
-                if (diskData && Object.keys(diskData).length > 0) {
-                    Object.entries(diskData).forEach(([key, val]) => {
-                        localStorage.setItem(key, val as string);
-                    });
-                    const savedSettings = localStorage.getItem('psqlBuddy-settings');
-                    if (savedSettings) setSettings(JSON.parse(savedSettings));
-                    const savedDash = localStorage.getItem('psqlBuddy-dashboard');
-                    if (savedDash) setDashboardItems(JSON.parse(savedDash));
-                }
-            } catch (e) {
-                console.error("[PERSISTENCE] Falha ao sincronizar disco -> localStorage:", e);
+        if (electron?.invoke) {
+            const diskData = await electron.invoke('get-persistent-store');
+            if (diskData) {
+                Object.entries(diskData).forEach(([k, v]) => localStorage.setItem(k, v as string));
+                const s = localStorage.getItem('psqlBuddy-settings');
+                if (s) setSettings(JSON.parse(s));
             }
         }
+        const initial = createNewConnectionGroup();
+        setConnections([initial]);
+        setActiveConnectionId(initial.id);
         setIsHydrated(true);
     };
-    hydrateFromDisk();
+    hydrate();
   }, []);
 
-  useEffect(() => {
-    if (!isHydrated) return;
-    const syncToDisk = () => {
-        const electron = (window as any).electron;
-        if (electron) {
-            const allKeys: Record<string, string> = {};
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && (key.startsWith('psqlBuddy-') || key.startsWith('psql-buddy-'))) {
-                    allKeys[key] = localStorage.getItem(key) || '';
-                }
-            }
-            electron.send('save-persistent-store', allKeys);
-        }
-    };
-    const timer = setTimeout(syncToDisk, 2000); 
-    return () => clearTimeout(timer);
-  }, [settings, dashboardItems, virtualRelations, isHydrated]);
-
+  // Theme Sync
   useEffect(() => {
     if (settings.theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
     localStorage.setItem('psqlBuddy-settings', JSON.stringify(settings));
   }, [settings.theme, settings]);
 
-  const handleUpdateDetection = useCallback((info: any) => {
-    const type = info.updateType;
-    if (type === 'downgrade') toast("Aviso: Downgrade disponível", { icon: '⚠️' });
-    else toast("Nova atualização encontrada!", { icon: '✨' });
-    setUpdateInfo({ ...info, currentVersion: currentAppVersion, isManual: manualCheckRef.current });
-    manualCheckRef.current = false;
-  }, [currentAppVersion]);
-
-  useEffect(() => {
-    const electron = (window as any).electron;
-    if (electron) {
-      electron.on('app-version', (v: string) => setCurrentAppVersion(v));
-      electron.on('sync-versions', (v: any) => setRemoteVersions(v));
-      electron.on('update-available', handleUpdateDetection);
-      electron.on('update-not-available', () => {
-        if (manualCheckRef.current) toast.success("Você já está na versão sincronizada!");
-        manualCheckRef.current = false;
-      });
-      electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
-      electron.on('update-ready', () => {
-        setUpdateReady(true);
-        setDownloadProgress(100);
-        toast.success("Download pronto!");
-      });
-      return () => electron.removeAllListeners('update-available');
-    }
-  }, [handleUpdateDetection]);
-
   const handleSchemaLoaded = (loadedSchema: DatabaseSchema, creds: DbCredentials) => {
-    setSchema(loadedSchema);
-    setCredentials(creds);
-    if (loadedSchema.connectionSource === 'simulated') setSimulationData(initializeSimulation(loadedSchema));
+    console.log(`[CONNECTION] Schema carregado para: ${creds.database}. Iniciando workspace.`);
+    updateActiveConnection(() => ({
+       schema: loadedSchema,
+       credentials: creds,
+       simulationData: loadedSchema.connectionSource === 'simulated' ? initializeSimulation(loadedSchema) : {},
+       name: creds.database || loadedSchema.name,
+       contextColor: creds.color
+    }));
     setGlobalStep('query');
-    
-    // Sincroniza cor de contexto em todas as abas abertas
-    setTabs(prev => prev.map(t => ({ ...t, contextColor: creds.color })));
-    updateActiveTab(() => ({ currentStep: 'builder' }));
   };
 
   const handleGenerateSql = async () => {
-    if (!schema) return;
+    if (!activeConnection?.schema || !activeQuery) return;
     const currentGenId = ++generationIdRef.current;
-    updateActiveTab(() => ({ isGenerating: true }));
+    updateActiveQuery(() => ({ isGenerating: true }));
     
     try {
       let result = settings.enableAiGeneration 
-        ? await generateSqlFromBuilderState(schema, activeTab.builderState, settings.enableAiTips)
-        : generateLocalSql(schema, activeTab.builderState);
+        ? await generateSqlFromBuilderState(activeConnection.schema, activeQuery.builderState, settings.enableAiTips)
+        : generateLocalSql(activeConnection.schema, activeQuery.builderState);
       
       if (currentGenId !== generationIdRef.current) return;
-
-      updateActiveTab(() => ({ 
-        queryResult: result, 
-        currentStep: 'preview', 
-        isGenerating: false 
-      }));
-    } catch (error: any) { 
-      if (currentGenId !== generationIdRef.current) return;
-      updateActiveTab(() => ({ isGenerating: false }));
-      toast.error(error.message || "Erro ao gerar SQL"); 
+      updateActiveQuery(() => ({ queryResult: result, currentStep: 'preview', isGenerating: false }));
+    } catch (e: any) { 
+      updateActiveQuery(() => ({ isGenerating: false }));
+      toast.error(e.message || "Erro na geração");
     }
   };
 
   const handleExecuteQuery = async (sqlOverride?: string) => {
-    if (!credentials || !schema) return;
-    const sqlToRun = sqlOverride || activeTab.queryResult?.sql;
+    if (!activeConnection?.credentials || !activeConnection.schema || !activeQuery) return;
+    const sqlToRun = sqlOverride || activeQuery.queryResult?.sql;
     if (!sqlToRun) return;
-    updateActiveTab(() => ({ isExecuting: true }));
+
+    updateActiveQuery(() => ({ isExecuting: true }));
     try {
-       let data = credentials.host === 'simulated'
-          ? executeOfflineQuery(schema, simulationData, activeTab.builderState)
-          : await executeQueryReal(credentials, sqlToRun);
-       updateActiveTab(() => ({ 
+       let data = activeConnection.credentials.host === 'simulated'
+          ? executeOfflineQuery(activeConnection.schema, activeConnection.simulationData, activeQuery.builderState)
+          : await executeQueryReal(activeConnection.credentials, sqlToRun);
+       
+       updateActiveQuery(() => ({ 
          executionResult: data, 
          currentStep: 'results', 
          isExecuting: false,
-         resultsState: { ...INITIAL_RESULTS_STATE } // Resetar estado visual para novos dados
+         resultsState: { ...INITIAL_RESULTS_STATE }
        }));
-    } catch (error: any) { 
-      updateActiveTab(() => ({ isExecuting: false }));
-      toast.error(error.message || "Falha na execução"); 
+    } catch (e: any) { 
+      updateActiveQuery(() => ({ isExecuting: false }));
+      toast.error(e.message || "Falha na execução");
     }
   };
 
-  const handleSidebarNavigate = (step: AppStep) => {
-    if (['builder', 'preview', 'results', 'queryflow'].includes(step)) {
+  const handleNavigate = (step: AppStep) => {
+    if (['builder', 'preview', 'results', 'queryflow', 'connection'].includes(step)) {
       setGlobalStep('query');
-      updateActiveTab(() => ({ currentStep: step as AppStep }));
+      updateActiveQuery(() => ({ currentStep: step as AppStep }));
     } else {
       setGlobalStep(step);
     }
   };
 
   if (!isHydrated) {
-      return (
-          <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-indigo-400">
-              <Loader2 className="w-12 h-12 animate-spin mb-4" />
-              <span className="text-xs font-black uppercase tracking-[0.3em]">Restaurando Sessão...</span>
-          </div>
-      );
+    return (
+        <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-indigo-400 transition-colors duration-500">
+            <Loader2 className="w-12 h-12 animate-spin mb-4" />
+            <span className="text-xs font-black uppercase tracking-[0.3em]">Restaurando Ambiente...</span>
+        </div>
+    );
   }
 
   return (
@@ -308,85 +283,118 @@ const App: React.FC = () => {
       <Toaster position="top-right" />
       
       <Sidebar 
-        currentStep={globalStep === 'query' ? activeTab.currentStep : globalStep} 
-        onNavigate={handleSidebarNavigate} schema={schema} hasResults={activeTab.executionResult.length > 0}
-        onOpenSettings={() => { setSettingsTab('interface'); setShowSettings(true); }} onOpenDiagram={() => setShowDiagram(true)}
+        currentStep={globalStep === 'query' ? (activeQuery?.currentStep || 'builder') : globalStep} 
+        onNavigate={handleNavigate} schema={activeConnection?.schema || null} hasResults={(activeQuery?.executionResult?.length || 0) > 0}
+        onOpenSettings={() => setShowSettings(true)} onOpenDiagram={() => setShowDiagram(true)}
         onOpenHistory={() => setShowHistory(true)} onOpenShortcuts={() => setShowShortcuts(true)}
         onOpenCheatSheet={() => setShowCheatSheet(true)} onOpenVirtualRelations={() => setShowVirtualRelations(true)}
         onOpenLogAnalyzer={() => setShowLogAnalyzer(true)} onOpenTemplates={() => setShowTemplates(true)}
         onOpenSqlExtractor={() => setShowSqlExtractor(true)} 
-        onCheckUpdate={() => { 
-          const electron = (window as any).electron;
-          if (electron) { manualCheckRef.current = true; electron.send('check-update', settings.updateBranch); }
-        }}
+        onCheckUpdate={() => (window as any).electron?.send('check-update', settings.updateBranch)}
       />
       
       <main className="flex-1 overflow-hidden relative flex flex-col">
-        {globalStep === 'query' && (
-          <TabBar 
-            tabs={tabs} 
-            activeTabId={activeTabId} 
-            onSwitch={setActiveTabId} 
-            onClose={handleCloseTab} 
-            onAdd={handleAddTab} 
-          />
+        {/* Camada 1: Barra de Conexões (Bancos de Dados) */}
+        <div className="flex items-center bg-slate-200/50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-4 h-10 gap-1 overflow-x-auto no-scrollbar shrink-0 transition-colors duration-300">
+            {connections.map(conn => (
+                <div 
+                    key={conn.id}
+                    onClick={() => setActiveConnectionId(conn.id)}
+                    className={`group relative flex items-center h-7 px-3 rounded-t-lg text-[10px] font-black uppercase tracking-tighter cursor-pointer transition-all min-w-[100px] border-x border-t
+                        ${activeConnectionId === conn.id 
+                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-slate-200 dark:border-slate-800 z-10' 
+                            : 'bg-transparent text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 border-transparent'}
+                    `}
+                >
+                    {conn.contextColor && <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-lg" style={{ backgroundColor: conn.contextColor }} />}
+                    <Database className="w-3 h-3 mr-2 opacity-50" />
+                    <span className="truncate flex-1">{conn.name}</span>
+                    {connections.length > 1 && (
+                        <button onClick={(e) => { e.stopPropagation(); handleCloseConnection(conn.id); }} className="ml-2 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity"><X size={10} /></button>
+                    )}
+                </div>
+            ))}
+            <button onClick={handleAddConnection} className="p-1.5 ml-2 text-slate-400 hover:text-indigo-500 transition-all shrink-0" title="Nova Conexão"><Plus size={14} /></button>
+        </div>
+
+        {/* Camada 2: Barra de Queries do Banco Ativo */}
+        {globalStep === 'query' && activeConnection && (
+            <TabBar 
+                tabs={activeConnection.tabs} 
+                activeTabId={activeConnection.activeTabId} 
+                onSwitch={(id) => updateActiveConnection(() => ({ activeTabId: id }))} 
+                onClose={handleCloseQueryTab} 
+                onAdd={handleAddQueryTab} 
+            />
         )}
         
         <div className="flex-1 overflow-hidden h-full relative">
            <AnimatePresence mode="popLayout">
              <motion.div
-               key={`${globalStep}-${activeTabId}-${activeTab.currentStep}`}
+               key={`${activeConnectionId}-${activeConnection?.activeTabId}-${globalStep}`}
                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-               transition={{ duration: 0.15, ease: "linear" }}
+               transition={{ duration: 0.1 }}
                className="h-full w-full absolute top-0 left-0 p-6"
              >
                {globalStep === 'connection' && <ConnectionStep onSchemaLoaded={handleSchemaLoaded} settings={settings} />}
-               {globalStep === 'objects' && <ObjectExplorer credentials={credentials} />}
-               {globalStep === 'query' && activeTab.currentStep === 'builder' && schema && (
-                  <BuilderStep 
-                    schema={schema} state={activeTab.builderState} 
-                    onStateChange={(s) => updateActiveTab(() => ({ builderState: s }))} 
-                    onGenerate={handleGenerateSql} isGenerating={activeTab.isGenerating} 
-                    settings={settings} 
-                  />
+               
+               {activeConnection && (
+                   <>
+                       {globalStep === 'objects' && <ObjectExplorer credentials={activeConnection.credentials} />}
+                       {globalStep === 'query' && activeQuery?.currentStep === 'builder' && activeConnection.schema && (
+                          <BuilderStep 
+                            schema={activeConnection.schema} state={activeQuery.builderState} 
+                            onStateChange={(s) => updateActiveQuery(() => ({ builderState: s }))} 
+                            onGenerate={handleGenerateSql} isGenerating={activeQuery.isGenerating} 
+                            settings={settings} 
+                          />
+                       )}
+                       {globalStep === 'query' && activeQuery?.currentStep === 'queryflow' && activeConnection.schema && (
+                          <VisualQueryFlowStep schema={activeConnection.schema} state={activeQuery.builderState} />
+                       )}
+                       {globalStep === 'query' && activeQuery?.currentStep === 'preview' && activeQuery.queryResult && (
+                          <PreviewStep 
+                            queryResult={activeQuery.queryResult} onExecute={handleExecuteQuery} 
+                            onBack={() => updateActiveQuery(() => ({ currentStep: 'builder' }))} 
+                            isExecuting={activeQuery.isExecuting} isValidating={false} 
+                            schema={activeConnection.schema || undefined} settings={settings} credentials={activeConnection.credentials} />
+                       )}
+                       {globalStep === 'query' && activeQuery?.currentStep === 'results' && activeQuery.executionResult && (
+                          <ResultsStep 
+                            data={activeQuery.executionResult} sql={activeQuery.queryResult?.sql || ''} 
+                            onBackToBuilder={() => updateActiveQuery(() => ({ currentStep: 'builder' }))} 
+                            onNewConnection={() => setGlobalStep('connection')} settings={settings} 
+                            onShowToast={(m) => toast(m)} credentials={activeConnection.credentials} 
+                            schema={activeConnection.schema || undefined} 
+                            resultsState={activeQuery.resultsState} 
+                            onResultsStateChange={(p) => updateActiveQuery(q => ({ resultsState: { ...q.resultsState, ...p } }))}
+                          />
+                       )}
+                       {globalStep === 'datadiff' && activeConnection.schema && (
+                            <DataDiffStep schema={activeConnection.schema} credentials={activeConnection.credentials} simulationData={activeConnection.simulationData} settings={settings} />
+                       )}
+                       {globalStep === 'serverhealth' && <ServerHealthStep credentials={activeConnection.credentials} />}
+                   </>
                )}
-               {globalStep === 'query' && activeTab.currentStep === 'queryflow' && schema && (
-                  <VisualQueryFlowStep schema={schema} state={activeTab.builderState} />
-               )}
-               {globalStep === 'query' && activeTab.currentStep === 'preview' && activeTab.queryResult && (
-                  <PreviewStep 
-                    queryResult={activeTab.queryResult} onExecute={handleExecuteQuery} 
-                    onBack={() => updateActiveTab(() => ({ currentStep: 'builder' }))} 
-                    isExecuting={activeTab.isExecuting} isValidating={false} schema={schema || undefined} settings={settings} credentials={credentials} />
-               )}
-               {globalStep === 'query' && activeTab.currentStep === 'results' && (
-                  <ResultsStep 
-                    data={activeTab.executionResult} sql={activeTab.queryResult?.sql || ''} 
-                    onBackToBuilder={() => updateActiveTab(() => ({ currentStep: 'builder' }))} 
-                    onNewConnection={() => setGlobalStep('connection')} settings={settings} 
-                    onShowToast={(m) => toast(m)} credentials={credentials} schema={schema || undefined} 
-                    resultsState={activeTab.resultsState} onResultsStateChange={updateActiveResultsState}
-                  />
-               )}
-               {globalStep === 'datadiff' && schema && <DataDiffStep schema={schema} credentials={credentials} simulationData={simulationData} settings={settings} />}
+
                {globalStep === 'dashboard' && <DashboardStep items={dashboardItems} onRemoveItem={(id) => setDashboardItems(prev => prev.filter(i => i.id !== id))} onClearAll={() => setDashboardItems([])} />}
-               {globalStep === 'serverhealth' && <ServerHealthStep credentials={credentials} />}
-               {globalStep === 'roadmap' && <RoadmapStep onNavigate={handleSidebarNavigate} />}
+               {globalStep === 'roadmap' && <RoadmapStep onNavigate={handleNavigate} />}
              </motion.div>
            </AnimatePresence>
         </div>
       </main>
 
-      {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={simulationData} schema={schema} credentials={credentials} remoteVersions={remoteVersions} initialTab={settingsTab} />}
-      {showDiagram && schema && <SchemaDiagramModal schema={schema} onClose={() => setShowDiagram(false)} credentials={credentials} />}
-      {showHistory && <HistoryModal onClose={() => setShowHistory(false)} onLoadQuery={sql => { updateActiveTab(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
+      {/* Modais de contexto global (usam o activeConnection quando necessário) */}
+      {showSettings && <SettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} simulationData={activeConnection?.simulationData} schema={activeConnection?.schema} credentials={activeConnection?.credentials} remoteVersions={remoteVersions} initialTab={settingsTab} />}
+      {showDiagram && activeConnection?.schema && <SchemaDiagramModal schema={activeConnection.schema} onClose={() => setShowDiagram(false)} credentials={activeConnection.credentials} />}
+      {showHistory && <HistoryModal onClose={() => setShowHistory(false)} onLoadQuery={sql => { updateActiveQuery(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
       {showCheatSheet && <SqlCheatSheetModal onClose={() => setShowCheatSheet(false)} />}
-      {showVirtualRelations && schema && <VirtualRelationsModal schema={schema} existingRelations={virtualRelations} onAddRelation={r => setVirtualRelations(p => [...p, r])} onRemoveRelation={id => setVirtualRelations(p => p.filter(r => r.id !== id))} onClose={() => setShowVirtualRelations(false)} credentials={credentials} />}
-      {showLogAnalyzer && schema && <LogAnalyzerModal schema={schema} onClose={() => setShowLogAnalyzer(false)} onRunSql={sql => { updateActiveTab(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
-      {showTemplates && <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={sql => { updateActiveTab(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
-      {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={sql => { updateActiveTab(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} settings={settings} />}
-      {updateInfo && <UpdateModal updateInfo={updateInfo} downloadProgress={downloadProgress} isReady={updateReady} onClose={() => setUpdateInfo(null)} onStartDownload={() => { setDownloadProgress(0); (window as any).electron.send('start-download'); }} onInstall={() => (window as any).electron.send('install-update')} onIgnore={() => setUpdateInfo(null)} />}
+      {showVirtualRelations && activeConnection?.schema && <VirtualRelationsModal schema={activeConnection.schema} existingRelations={virtualRelations} onAddRelation={r => setVirtualRelations(p => [...p, r])} onRemoveRelation={id => setVirtualRelations(p => p.filter(r => r.id !== id))} onClose={() => setShowVirtualRelations(false)} credentials={activeConnection.credentials} />}
+      {showLogAnalyzer && activeConnection?.schema && <LogAnalyzerModal schema={activeConnection.schema} onClose={() => setShowLogAnalyzer(false)} onRunSql={sql => { updateActiveQuery(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
+      {showTemplates && <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={sql => { updateActiveQuery(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
+      {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={sql => { updateActiveQuery(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} settings={settings} />}
+      {updateInfo && <UpdateModal updateInfo={updateInfo} downloadProgress={downloadProgress} isReady={updateReady} onClose={() => setUpdateInfo(null)} onStartDownload={() => (window as any).electron.send('start-download')} onInstall={() => (window as any).electron.send('install-update')} onIgnore={() => setUpdateInfo(null)} />}
     </div>
   );
 };

@@ -146,7 +146,17 @@ export interface QueryTab {
   isGenerating: boolean;
   isExecuting: boolean;
   resultsState: TabResultsState;
-  contextColor?: string; // Cor de destaque herdada da conexão
+}
+
+export interface ConnectionGroup {
+  id: string;
+  name: string;
+  contextColor?: string;
+  schema: DatabaseSchema | null;
+  credentials: DbCredentials | null;
+  simulationData: Record<string, any[]>;
+  tabs: QueryTab[];
+  activeTabId: string;
 }
 
 export interface AppSettings {
@@ -464,8 +474,8 @@ export const SAMPLE_SCHEMA: DatabaseSchema = {
       description: 'Detalhamento de produtos contidos em cada pedido.',
       columns: [
         { name: 'grid', type: 'integer', isPrimaryKey: true },
-        { name: 'order_id', type: 'integer', isForeignKey: true, references: 'public.orders.grid' },
         { name: 'product_id', type: 'integer', isForeignKey: true, references: 'public.products.grid' },
+        { name: 'order_id', type: 'integer', isForeignKey: true, references: 'public.orders.grid' },
         { name: 'quantity', type: 'integer' },
         { name: 'unit_price', type: 'numeric(10,2)' }
       ]
