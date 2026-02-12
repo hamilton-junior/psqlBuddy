@@ -207,6 +207,18 @@ const App: React.FC = () => {
     localStorage.setItem('psqlBuddy-settings', JSON.stringify(settings));
   }, [settings.theme, settings]);
 
+  // Monitora a troca de banco de dados para garantir que bancos não conectados mostrem a tela de conexão
+  useEffect(() => {
+    if (isHydrated && activeConnection && !activeConnection.schema) {
+      console.log(`[WORKSPACE] Banco "${activeConnection.name}" não conectado. Redirecionando para tela de conexão.`);
+      setGlobalStep('connection');
+    } else if (isHydrated && activeConnection && activeConnection.schema && globalStep === 'connection') {
+      // Se voltarmos para um banco já conectado via aba, mas estávamos no passo 'connection', restauramos o fluxo de query
+      console.log(`[WORKSPACE] Banco "${activeConnection.name}" já possui schema. Restaurando fluxo.`);
+      setGlobalStep('query');
+    }
+  }, [activeConnectionId, activeConnection?.schema, isHydrated]);
+
   const handleSchemaLoaded = (loadedSchema: DatabaseSchema, creds: DbCredentials) => {
     console.log(`[CONNECTION] Schema carregado para: ${creds.database}. Iniciando workspace.`);
     updateActiveConnection(() => ({
@@ -261,7 +273,13 @@ const App: React.FC = () => {
   };
 
   const handleNavigate = (step: AppStep) => {
-    if (['builder', 'preview', 'results', 'queryflow', 'connection'].includes(step)) {
+    console.log(`[NAVIGATION] Solicitado passo: ${step}`);
+    if (step === 'connection') {
+      setGlobalStep('connection');
+      return;
+    }
+
+    if (['builder', 'preview', 'results', 'queryflow'].includes(step)) {
       setGlobalStep('query');
       updateActiveQuery(() => ({ currentStep: step as AppStep }));
     } else {
@@ -317,8 +335,8 @@ const App: React.FC = () => {
             <button onClick={handleAddConnection} className="p-1.5 ml-2 text-slate-400 hover:text-indigo-500 transition-all shrink-0" title="Nova Conexão"><Plus size={14} /></button>
         </div>
 
-        {/* Camada 2: Barra de Queries do Banco Ativo */}
-        {globalStep === 'query' && activeConnection && (
+        {/* Camada 2: Barra de Queries do Banco Ativo (Só aparece se o banco estiver conectado) */}
+        {globalStep === 'query' && activeConnection?.schema && (
             <TabBar 
                 tabs={activeConnection.tabs} 
                 activeTabId={activeConnection.activeTabId} 
@@ -336,12 +354,15 @@ const App: React.FC = () => {
                transition={{ duration: 0.1 }}
                className="h-full w-full absolute top-0 left-0 p-6"
              >
-               {globalStep === 'connection' && <ConnectionStep onSchemaLoaded={handleSchemaLoaded} settings={settings} />}
+               {/* SEMPRE mostra conexão se o banco não possuir schema OU se solicitado explicitamente */}
+               {(globalStep === 'connection' || (activeConnection && !activeConnection.schema)) && (
+                  <ConnectionStep onSchemaLoaded={handleSchemaLoaded} settings={settings} />
+               )}
                
-               {activeConnection && (
+               {activeConnection && activeConnection.schema && (
                    <>
                        {globalStep === 'objects' && <ObjectExplorer credentials={activeConnection.credentials} />}
-                       {globalStep === 'query' && activeQuery?.currentStep === 'builder' && activeConnection.schema && (
+                       {globalStep === 'query' && activeQuery?.currentStep === 'builder' && (
                           <BuilderStep 
                             schema={activeConnection.schema} state={activeQuery.builderState} 
                             onStateChange={(s) => updateActiveQuery(() => ({ builderState: s }))} 
@@ -349,7 +370,7 @@ const App: React.FC = () => {
                             settings={settings} 
                           />
                        )}
-                       {globalStep === 'query' && activeQuery?.currentStep === 'queryflow' && activeConnection.schema && (
+                       {globalStep === 'query' && activeQuery?.currentStep === 'queryflow' && (
                           <VisualQueryFlowStep schema={activeConnection.schema} state={activeQuery.builderState} />
                        )}
                        {globalStep === 'query' && activeQuery?.currentStep === 'preview' && activeQuery.queryResult && (
@@ -370,7 +391,7 @@ const App: React.FC = () => {
                             onResultsStateChange={(p) => updateActiveQuery(q => ({ resultsState: { ...q.resultsState, ...p } }))}
                           />
                        )}
-                       {globalStep === 'datadiff' && activeConnection.schema && (
+                       {globalStep === 'datadiff' && (
                             <DataDiffStep schema={activeConnection.schema} credentials={activeConnection.credentials} simulationData={activeConnection.simulationData} settings={settings} />
                        )}
                        {globalStep === 'serverhealth' && <ServerHealthStep credentials={activeConnection.credentials} />}
