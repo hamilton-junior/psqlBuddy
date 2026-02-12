@@ -38,8 +38,8 @@ interface ManualLink {
 interface ResultsStepProps {
   data: any[];
   sql: string;
-  onBackToBuilder: () => void;
-  onNewConnection: () => void;
+  onBackToBuilder: void;
+  onNewConnection: void;
   settings: AppSettings;
   onShowToast: (message: string, type?: string) => void;
   credentials: DbCredentials | null;
@@ -255,12 +255,30 @@ const RowInspector: React.FC<{ row: any, onClose: () => void }> = ({ row, onClos
       <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200" onClick={onClose}>
          <div className="bg-white dark:bg-slate-800 w-full max-w-2xl max-h-[85vh] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50"><div className="flex items-center gap-3"><div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/30 rounded text-indigo-600 dark:text-indigo-400"><FileText className="w-4 h-4" /></div><h3 className="font-bold text-slate-800 dark:text-white">Detalhes do Registro</h3></div><div className="flex items-center gap-2"><div className="flex bg-slate-200 dark:bg-slate-700 rounded p-0.5"><button onClick={() => setViewMode('table')} className={`p-1.5 rounded text-xs font-bold transition-all ${viewMode === 'table' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-300' : 'text-slate-50'}`} title="Tabela"><LayoutGrid className="w-3.5 h-3.5" /></button><button onClick={() => setViewMode('json')} className={`p-1.5 rounded text-xs font-bold transition-all ${viewMode === 'json' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-300' : 'text-slate-50'}`} title="JSON"><Braces className="w-3.5 h-3.5" /></button></div><button onClick={onClose} className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500"><X className="w-5 h-5" /></button></div></div>
-            <div className="flex-1 overflow-y-auto p-0 bg-slate-50 dark:bg-slate-900 custom-scrollbar">{viewMode === 'table' ? (<table className="w-full text-left border-collapse"><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{filteredEntries.map(([key, val]) => (<tr key={key} className="group hover:bg-white dark:hover:bg-slate-800 transition-colors"><td className="px-4 py-3 w-1/3 bg-slate-100/50 dark:bg-slate-900/50 text-xs font-bold text-slate-500 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 font-mono break-all">{key}</td><td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200 relative break-all whitespace-pre-wrap">{val === null ? <span className="text-slate-400 italic text-xs">null</span> : sanitizeAnsi(String(val))}</td></tr>))}</tbody></table>) : (<div className="p-4"><pre className="text-xs font-mono text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-all p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">{JSON.stringify(row || {}, null, 2)}</pre></div>)}</div>
+            <div className="flex-1 overflow-y-auto p-0 bg-slate-50 dark:bg-slate-900 custom-scrollbar">
+               {viewMode === 'table' ? (
+                  <table className="w-full text-left border-collapse">
+                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {filteredEntries.map(([key, val]) => (
+                           <tr key={key} className="group hover:bg-white dark:hover:bg-slate-800 transition-colors">
+                              <td className="px-4 py-3 w-1/3 bg-slate-100/50 dark:bg-slate-900/50 text-xs font-bold text-slate-500 dark:text-slate-400 border-r border-slate-100 dark:border-slate-800 font-mono break-all">{key}</td>
+                              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200 relative break-all whitespace-pre-wrap">
+                                 {val === null ? <span className="text-slate-400 italic text-xs">null</span> : (typeof val === 'object' ? JSON.stringify(val, null, 2) : sanitizeAnsi(String(val)))}
+                              </td>
+                           </tr>
+                        ))}
+                     </tbody>
+                  </table>
+               ) : (
+                  <div className="p-4"><pre className="text-xs font-mono text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-all p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">{JSON.stringify(row || {}, null, 2)}</pre></div>
+               )}
+            </div>
          </div>
       </div>
    );
 };
 
+// Define VirtualTableProps only once
 interface VirtualTableProps {
    data: any[];
    columns: string[];
@@ -282,6 +300,7 @@ const ColumnProfiler: React.FC<{ data: any[], column: string, onClose: () => voi
    return (<div className="w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 animate-in fade-in zoom-in-95 origin-top-left" onMouseLeave={onClose}><div className="flex items-center justify-between mb-2 pb-1 border-b border-slate-100 dark:border-slate-700"><h4 className="font-bold text-xs text-slate-800 dark:text-white truncate">{column}</h4></div><div className="grid grid-cols-2 gap-2 text-[10px]"><div className="bg-slate-50 dark:bg-slate-900 p-2 rounded"><span className="block text-slate-400 mb-0.5">Únicos</span><span className="font-mono font-bold text-slate-700 dark:text-slate-300">{stats.distinct}</span></div><div className="bg-slate-50 dark:bg-slate-900 p-2 rounded"><span className="block text-slate-400 mb-0.5">Nulos</span><span className={`font-mono font-bold ${stats.nulls > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{stats.nulls}</span></div></div></div>);
 };
 
+// Define VirtualTable component only once
 const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMode, onUpdateCell, onOpenJson, onDrillDown, schema, defaultTableName, credentials, pendingEdits = {}, settings }: VirtualTableProps) => {
    const [currentPage, setCurrentPage] = useState(1);
    const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -412,7 +431,18 @@ const VirtualTable = ({ data, columns, highlightMatch, onRowClick, isAdvancedMod
       }
       if (displayVal === null || displayVal === undefined) { return <span className={`text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono font-bold tracking-tight border ${isPending ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'border-slate-200 dark:border-slate-700'}`}>NULL</span>; }
       if (typeof displayVal === 'boolean') { return (<span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border ${displayVal ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800' : 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800'} ${isPending ? 'ring-1 ring-orange-500' : ''}`}>{String(displayVal)}</span>); }
-      if (typeof displayVal === 'object') { return <button onClick={(e) => { e.stopPropagation(); onOpenJson(displayVal); }} className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded flex items-center gap-1 hover:bg-indigo-100 transition-colors"><Braces className="w-3 h-3" /> JSON</button>; }
+      
+      if (typeof displayVal === 'object') {
+         // Tenta verificar se é um objeto vazio ou se tem propriedades. 
+         // Se for um objeto com chaves, mostra o botão JSON.
+         const keys = Object.keys(displayVal);
+         if (keys.length > 0) {
+            return <button onClick={(e) => { e.stopPropagation(); onOpenJson(displayVal); }} className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded flex items-center gap-1 hover:bg-indigo-100 transition-colors"><Braces className="w-3 h-3" /> JSON</button>;
+         }
+         // Se for objeto vazio {}, provavelmente é uma data que foi mal sanitizada ou um objeto sem propriedades enumeráveis.
+         // Tratamos como string para evitar [object Object].
+         return <span className="text-slate-400 italic text-[11px]">{JSON.stringify(displayVal)}</span>;
+      }
       
       const links = getLinksForColumn(col);
 

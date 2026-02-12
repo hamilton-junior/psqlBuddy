@@ -64,6 +64,9 @@ const sanitizeRows = (rows) => {
         const scrubbed = scrubString(val);
         sanitized[key] = scrubbed;
         if (scrubbed.includes('\uFFFD')) rowWasSanitized = true;
+      } else if (val instanceof Date) {
+        // Preserva datas para que o JSON.stringify do Express converta em string ISO automaticamente
+        sanitized[key] = val;
       } else if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
         sanitized[key] = sanitizeRows([val])[0];
       } else {
