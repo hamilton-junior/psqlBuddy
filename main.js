@@ -134,52 +134,64 @@ function createWindow() {
 
 async function fetchGitHubVersions() {
   const repo = "Hamilton-Junior/psqlBuddy";
-  const headers = { 'User-Agent': 'PSQL-Buddy-App' };
+  const headers = { "User-Agent": "PSQL-Buddy-App" };
   try {
-    let stable = '---';
-    let wip = '---';
-    let bleedingEdge = '---';
+    let stable = "---";
+    let wip = "---";
+    let bleedingEdge = "---";
     let totalCommits = 0;
 
     // Busca Releases para separar Estável de Pré-release (WIP)
-    const releasesRes = await fetch(`https://api.github.com/repos/${repo}/releases`, { headers });
+    const releasesRes = await fetch(
+      `https://api.github.com/repos/${repo}/releases`,
+      { headers },
+    );
     if (releasesRes.ok) {
       const releases = await releasesRes.json();
-      const latestStable = releases.find(r => !r.prerelease);
-      const latestWip = releases.find(r => r.prerelease);
-      
-      if (latestStable) stable = latestStable.tag_name.replace(/^v/, '');
-      if (latestWip) wip = latestWip.tag_name.replace(/^v/, '');
+      const latestStable = releases.find((r) => !r.prerelease);
+      const latestWip = releases.find((r) => r.prerelease);
+
+      if (latestStable) stable = latestStable.tag_name.replace(/^v/, "");
+      if (latestWip) wip = latestWip.tag_name.replace(/^v/, "");
     }
 
     // Busca Commits para o Bleeding Edge
-    const commitsRes = await fetch(`https://api.github.com/repos/${repo}/commits?sha=main&per_page=1`, { headers });
+    const commitsRes = await fetch(
+      `https://api.github.com/repos/${repo}/commits?sha=main&per_page=1`,
+      { headers },
+    );
     if (commitsRes.ok) {
-       const link = commitsRes.headers.get('link');
-       if (link) {
-          const match = link.match(/&page=(\d+)>; rel="last"/);
-          if (match) {
-             totalCommits = parseInt(match[1]);
-             const major = Math.floor(totalCommits / 1000);
-             const minor = Math.floor((totalCommits % 1000) / 100);
-             const patch = totalCommits % 100;
-             bleedingEdge = `${major}.${minor}.${patch}`;
-          }
-       } else {
-          const single = await commitsRes.json();
-          if (Array.isArray(single)) {
-             totalCommits = single.length;
-             const major = Math.floor(totalCommits / 1000);
-             const minor = Math.floor((totalCommits % 1000) / 100);
-             const patch = totalCommits % 100;
-             bleedingEdge = `${major}.${minor}.${patch}`;
-          }
-       }
+      const link = commitsRes.headers.get("link");
+      if (link) {
+        // Regex mais robusto para capturar a última página, lidando com espaços e formatos variados
+        const match = link.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
+        if (match) {
+          totalCommits = parseInt(match[1]);
+          const major = Math.floor(totalCommits / 1000);
+          const minor = Math.floor((totalCommits % 1000) / 100);
+          const patch = totalCommits % 100;
+          bleedingEdge = `${major}.${minor}.${patch}`;
+        }
+      } else {
+        const single = await commitsRes.json();
+        if (Array.isArray(single)) {
+          totalCommits = single.length;
+          const major = Math.floor(totalCommits / 1000);
+          const minor = Math.floor((totalCommits % 1000) / 100);
+          const patch = totalCommits % 100;
+          bleedingEdge = `${major}.${minor}.${patch}`;
+        }
+      }
     }
     return { stable, wip, bleedingEdge, totalCommits };
-  } catch (e) { 
+  } catch (e) {
     console.error("[MAIN] Erro ao buscar versões remotas:", e);
-    return { stable: 'Erro', wip: 'Erro', bleedingEdge: 'Erro', totalCommits: 0 }; 
+    return {
+      stable: "Erro",
+      wip: "Erro",
+      bleedingEdge: "Erro",
+      totalCommits: 0,
+    };
   }
 }
 

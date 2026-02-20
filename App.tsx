@@ -58,6 +58,17 @@ const INITIAL_RESULTS_STATE: TabResultsState = {
   chartConfig: { type: 'bar', xAxis: '', yKeys: [] }
 };
 
+function compareVersions(v1: string, v2: string) {
+  if (!v1 || v1 === '...' || v1 === '---' || !v2 || v2 === '...' || v2 === '---') return 0;
+  const p1 = v1.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const p2 = v2.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if (p1[i] > p2[i]) return 1;
+    if (p1[i] < p2[i]) return -1;
+  }
+  return 0;
+}
+
 function createNewQueryTab(index: number): QueryTab {
   return {
     id: crypto.randomUUID(),
@@ -116,6 +127,7 @@ const App: React.FC = () => {
   const [currentAppVersion, setCurrentAppVersion] = useState<string>('...');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
+  const manualCheckRef = useRef(false);
 
   const generationIdRef = useRef(0);
 
@@ -208,6 +220,63 @@ const App: React.FC = () => {
     else document.documentElement.classList.remove('dark');
     localStorage.setItem('psqlBuddy-settings', JSON.stringify(settings));
   }, [settings.theme, settings]);
+
+  // --- VERSIONING & UPDATES ---
+
+  const handleUpdateDetection = useCallback((info: any) => {
+    const ignoredVersions = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]');
+    const isManual = manualCheckRef.current || info.isManual;
+    const type = info.updateType || (compareVersions(info.version, currentAppVersion) < 0 ? 'downgrade' : 'upgrade');
+    
+    if (type === 'downgrade') toast("Aviso: Downgrade disponível", { icon: '⚠️' });
+    else toast("Nova atualização encontrada!", { icon: '✨' });
+
+    if (isManual || !ignoredVersions.includes(info.version)) {
+      setUpdateInfo({
+        version: info.version,
+        notes: info.releaseNotes || (type === 'downgrade' ? 'Uma versão anterior foi solicitada ou está disponível para restauração.' : 'Novas melhorias e correções disponíveis.'),
+        branch: info.branch || (settings.updateBranch === 'main' ? 'WIP' : 'Stable'),
+        updateType: type,
+        currentVersion: currentAppVersion,
+        isManual: !!isManual
+      });
+    }
+    manualCheckRef.current = false;
+  }, [settings.updateBranch, currentAppVersion]);
+
+  useEffect(() => {
+    const electron = (window as any).electron;
+    if (electron && electron.on) {
+      electron.on('app-version', (v: string) => setCurrentAppVersion(v));
+      electron.on('sync-versions', (v: any) => setRemoteVersions(v));
+      electron.on('update-available', handleUpdateDetection);
+      electron.on('update-not-available', () => {
+        if (manualCheckRef.current) toast.success("Você já está na versão sincronizada!");
+        manualCheckRef.current = false;
+        setUpdateInfo(null);
+      });
+      electron.on('update-downloading', (p: any) => setDownloadProgress(p.percent));
+      electron.on('update-ready', () => {
+        setUpdateReady(true);
+        setDownloadProgress(100);
+        toast.success("Download pronto!");
+      });
+      electron.on('update-error', (msg: string) => {
+        if (manualCheckRef.current) toast.error("Falha ao verificar alterações.");
+        manualCheckRef.current = false;
+        setDownloadProgress(null);
+      });
+    }
+  }, [handleUpdateDetection]);
+
+  const handleStartDownload = () => {
+    const electron = (window as any).electron;
+    if (electron) { 
+      setDownloadProgress(0); 
+      electron.send('start-download');
+      toast.loading("Iniciando transferência...");
+    }
+  };
 
   // Monitora a troca de banco de dados para garantir que bancos não conectados mostrem a tela de conexão
   useEffect(() => {
@@ -311,7 +380,13 @@ const App: React.FC = () => {
         onOpenLogAnalyzer={() => setShowLogAnalyzer(true)} onOpenTemplates={() => setShowTemplates(true)}
         onOpenSqlExtractor={() => setShowSqlExtractor(true)} 
         onOpenWiki={() => setShowWiki(true)}
-        onCheckUpdate={() => (window as any).electron?.send('check-update', settings.updateBranch)}
+        onCheckUpdate={() => { 
+          const electron = (window as any).electron;
+          if (electron) {
+            manualCheckRef.current = true; 
+            electron.send('check-update', settings.updateBranch); 
+          }
+        }}
       />
       
       <main className="flex-1 overflow-hidden relative flex flex-col">
@@ -420,7 +495,22 @@ const App: React.FC = () => {
       {showTemplates && <TemplateModal onClose={() => setShowTemplates(false)} onRunTemplate={sql => { updateActiveQuery(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} />}
       {showSqlExtractor && <SqlExtractorModal onClose={() => setShowSqlExtractor(false)} onRunSql={sql => { updateActiveQuery(() => ({ queryResult: { sql, explanation: '', tips: [] }, currentStep: 'preview' })); setGlobalStep('query'); }} settings={settings} />}
       {showWiki && activeConnection?.schema && <SchemaWikiModal schema={activeConnection.schema} onClose={() => setShowWiki(false)} />}
-      {updateInfo && <UpdateModal updateInfo={updateInfo} downloadProgress={downloadProgress} isReady={updateReady} onClose={() => setUpdateInfo(null)} onStartDownload={() => (window as any).electron.send('start-download')} onInstall={() => (window as any).electron.send('install-update')} onIgnore={() => setUpdateInfo(null)} />}
+      {updateInfo && (
+        <UpdateModal 
+          updateInfo={updateInfo} 
+          downloadProgress={downloadProgress} 
+          isReady={updateReady} 
+          onClose={() => setUpdateInfo(null)} 
+          onStartDownload={handleStartDownload} 
+          onInstall={() => (window as any).electron.send('install-update')} 
+          onIgnore={() => { 
+            const ign = JSON.parse(localStorage.getItem('psqlBuddy-ignored-versions') || '[]'); 
+            ign.push(updateInfo.version); 
+            localStorage.setItem('psqlBuddy-ignored-versions', JSON.stringify(ign)); 
+            setUpdateInfo(null); 
+          }} 
+        />
+      )}
     </div>
   );
 };
