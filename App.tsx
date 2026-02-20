@@ -340,6 +340,7 @@ const App: React.FC = () => {
             <TabBar 
                 tabs={activeConnection.tabs} 
                 activeTabId={activeConnection.activeTabId} 
+                contextColor={activeConnection.contextColor}
                 onSwitch={(id) => updateActiveConnection(() => ({ activeTabId: id }))} 
                 onClose={handleCloseQueryTab} 
                 onAdd={handleAddQueryTab} 

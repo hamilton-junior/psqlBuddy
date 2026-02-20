@@ -6,12 +6,13 @@ import { QueryTab } from '../types';
 interface TabBarProps {
   tabs: QueryTab[];
   activeTabId: string;
+  contextColor?: string;
   onSwitch: (id: string) => void;
   onClose: (id: string) => void;
   onAdd: () => void;
 }
 
-const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onSwitch, onClose, onAdd }) => {
+const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, contextColor: globalContextColor, onSwitch, onClose, onAdd }) => {
   const getIcon = (step: string) => {
     switch (step) {
       case 'builder': return <MessageSquare className="w-3 h-3" />;
@@ -25,7 +26,7 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onSwitch, onClose, o
     <div className="flex items-center bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 gap-1 overflow-x-auto no-scrollbar shrink-0 h-11 transition-colors duration-300">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
-        const contextColor = tab.contextColor || '';
+        const contextColor = globalContextColor || '';
         
         return (
           <div
